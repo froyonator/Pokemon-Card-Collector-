@@ -1,0 +1,110 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Summary } from './Summary';
+import { useAppStore } from '../state/store';
+import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { setCachedCards, setCachedPricing } from '../storage/cardCache';
+import type { CardRecord } from '../types';
+
+const charizardCard: CardRecord = {
+  id: 'sv03.5-199',
+  name: 'Charizard ex',
+  dexNumber: 6,
+  setId: 'sv03.5',
+  setName: '151',
+  localId: '199',
+  rarity: 'Special illustration rare',
+  imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+  language: 'en',
+};
+
+const pikachuCard: CardRecord = {
+  id: 'swsh35-74',
+  name: 'Pikachu VMAX',
+  dexNumber: 25,
+  setId: 'swsh35',
+  setName: "Champion's Path",
+  localId: '74',
+  rarity: 'Ultra Rare',
+  imageBase: 'https://assets.tcgdex.net/en/swsh/swsh35/74',
+  language: 'en',
+};
+
+let tcgplayerPrice = 200;
+
+beforeEach(() => {
+  localStorage.clear();
+  tcgplayerPrice = 200;
+  setCachedCards('en', 6, [charizardCard]);
+  setCachedCards('en', 25, [pikachuCard]);
+  setCachedPricing('sv03.5-199', {
+    cardId: 'sv03.5-199',
+    cardmarketEurAvg: 372.8,
+    tcgplayerUsdMarket: 200,
+    fetchedAt: '',
+  });
+  useAppStore.setState({
+    language: 'en',
+    currency: 'USD',
+    activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+    groups: DEFAULT_RARITY_GROUPS,
+    owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
+    wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.includes('frankfurter')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            amount: 1,
+            base: 'USD',
+            date: '',
+            rates: { EUR: 0.87, AUD: 1.44, GBP: 0.75, CAD: 1.35 },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'sv03.5-199',
+          localId: '199',
+          name: 'Charizard ex',
+          set: { id: 'sv03.5', name: '151' },
+          pricing: { tcgplayer: { 'unlimited-holofoil': { marketPrice: tcgplayerPrice } } },
+        }),
+      } as Response;
+    })
+  );
+});
+
+describe('Summary', () => {
+  it('shows the total owned count out of 151', () => {
+    render(<Summary />);
+    expect(screen.getByText('1 / 151')).toBeInTheDocument();
+  });
+
+  it('shows the total collection value once pricing resolves', async () => {
+    render(<Summary />);
+    expect(await screen.findByText('200.00 USD')).toBeInTheDocument();
+  });
+
+  it('shows progress against Pokemon with at least one available card', () => {
+    render(<Summary />);
+    expect(screen.getByText(/1 of 2 pok.mon with an available card/i)).toBeInTheDocument();
+  });
+
+  it('refreshes market prices for owned and wishlisted cards when the button is clicked', async () => {
+    render(<Summary />);
+    await screen.findByText('200.00 USD');
+    tcgplayerPrice = 250;
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh Market Prices' }));
+    expect(await screen.findByText('250.00 USD')).toBeInTheDocument();
+  });
+});

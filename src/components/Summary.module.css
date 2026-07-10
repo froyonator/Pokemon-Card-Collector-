@@ -1,0 +1,43 @@
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+}
+
+.progressBarTrack {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.2);
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: #4a9eff;
+}
+
+.progressLabel {
+  font-size: 12px;
+  margin-bottom: 4px;
+  opacity: 0.8;
+}
