@@ -30,7 +30,9 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     // ('Shiny rare', 'Shiny rare V', 'Shiny rare VMAX', 'Shiny Ultra Rare') was also removed from
     // here: it maps to "Shiny Vault" cards (Hidden Fates Shiny Vault, Paldean Fates), which use
     // the standard card frame with just an inverted color palette, not full-bleed/special art.
-    // Users can still add rarities to this group manually via the Manage Groups panel.
+    // Note: the Manage Groups panel can only reassign rarities that already appear in some group
+    // (it lists fetchRarityList output, with no free-text entry), so it cannot be used to bring
+    // these specific rarities back — that requires editing an exported JSON backup and re-importing.
     rarities: [],
   },
 ];
