@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
 import styles from './CardImage.module.css';
 
@@ -30,6 +30,18 @@ export function CardImage({ imageBase, alt, className, width, loading }: CardIma
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
 
+  // A mounted CardImage instance can be handed a different imageBase later
+  // (e.g. DexGrid keeps its Tile components mounted across tab switches, and
+  // a user can mark a different card owned for the same Pokemon). Without
+  // this reset, retry/exhausted state from the PREVIOUS card would leak into
+  // the new one: an image that would have loaded fine at low/webp could
+  // stay stuck on a stale "high/png" variant, or worse, on the placeholder
+  // forever, even though the new card has a perfectly good image.
+  useEffect(() => {
+    setVariantIndex(0);
+    setExhausted(false);
+  }, [imageBase]);
+
   const hasNoImage = !imageBase || exhausted;
 
   if (hasNoImage) {
@@ -37,7 +49,8 @@ export function CardImage({ imageBase, alt, className, width, loading }: CardIma
       <div
         className={[styles.placeholder, className].filter(Boolean).join(' ')}
         style={width ? { width, height: width } : undefined}
-        title={alt}
+        role="img"
+        aria-label={alt}
       >
         No image available
       </div>
