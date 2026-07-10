@@ -24,7 +24,7 @@ export function convertViaUsdPivot(
     return amount;
   }
   const eurPerUsd = usdRates.EUR;
-  const usdAmount = nativeCurrency === 'USD' ? amount : eurPerUsd ? amount / eurPerUsd : null;
+  const usdAmount = nativeCurrency === 'USD' ? amount : eurPerUsd !== undefined ? amount / eurPerUsd : null;
   if (usdAmount === null) return null;
   const targetPerUsd = usdRates[targetCurrency];
   if (targetPerUsd === undefined) return null;
