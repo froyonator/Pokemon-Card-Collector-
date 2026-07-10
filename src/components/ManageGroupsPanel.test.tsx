@@ -50,8 +50,10 @@ describe('ManageGroupsPanel', () => {
 
   it('deletes a group, leaving its rarities unassigned', async () => {
     render(<ManageGroupsPanel onClose={() => {}} />);
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete group' });
-    await userEvent.click(deleteButtons[0]);
+    const deleteButton = screen.getByRole('button', {
+      name: `Delete ${DEFAULT_RARITY_GROUPS[0].name}`,
+    });
+    await userEvent.click(deleteButton);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(useAppStore.getState().groups).toHaveLength(3);
   });
