@@ -12,6 +12,15 @@ export interface PickerProps {
   pokemonName: string;
   cards: CardRecord[];
   onClose: () => void;
+  // Fired right after a "Show all cards" fetch lands in the localStorage
+  // cache. loadAllPrintingsForDex writes straight to localStorage, entirely
+  // outside React's reactivity, so nothing tells a parent like DexGrid (whose
+  // own cardsByDexNumber is a useMemo keyed on a local dataVersion counter)
+  // that the cache just changed. Without this, a card discovered only via
+  // "Show all cards" stays invisible to the grid's tile rendering -- not
+  // just filtered out, but absent from the array being read -- until
+  // something else (e.g. "Refresh Data") happens to bump that counter.
+  onAllCardsLoaded?: () => void;
 }
 
 function mergeCardsById(curated: CardRecord[], full: CardRecord[]): CardRecord[] {
@@ -21,7 +30,13 @@ function mergeCardsById(curated: CardRecord[], full: CardRecord[]): CardRecord[]
   return Array.from(merged.values());
 }
 
-export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) {
+export function Picker({
+  dexNumber,
+  pokemonName,
+  cards,
+  onClose,
+  onAllCardsLoaded,
+}: PickerProps) {
   const shouldReduceMotion = useReducedMotion();
   // The overlay only ever fades, so it needs no reduced-motion variant of
   // its own. The panel normally scales/slides in with a spring; under
@@ -72,6 +87,7 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
       setIsLoadingAllCards(true);
       const fetched = await loadAllPrintingsForDex(language, dexNumber);
       setAllCards(fetched);
+      onAllCardsLoaded?.();
       setIsLoadingAllCards(false);
     }
   }
