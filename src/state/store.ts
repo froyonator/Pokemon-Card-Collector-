@@ -2,7 +2,22 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
-import type { Condition, Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
+import type {
+  BinderConfig,
+  BinderSlotEntry,
+  Condition,
+  Currency,
+  OwnedRecord,
+  RarityGroup,
+  WishlistRecord,
+} from '../types';
+
+export const DEFAULT_BINDER_CONFIG: BinderConfig = {
+  rows: 3,
+  columns: 3,
+  pageCount: 17,
+  fillDirection: 'horizontal',
+};
 
 export interface ExportedUserData {
   version: 1;
@@ -15,6 +30,8 @@ export interface ExportedUserData {
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
+  binderConfig: BinderConfig;
+  binderCustomOrder: BinderSlotEntry[] | null;
 }
 
 export type ToggleWishlistResult = { ok: true } | { ok: false; reason: string };
@@ -35,6 +52,8 @@ export interface AppState {
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
+  binderConfig: BinderConfig;
+  binderCustomOrder: BinderSlotEntry[] | null;
   hasUnsavedChanges: boolean;
 
   setLanguage: (language: string) => void;
@@ -44,6 +63,8 @@ export interface AppState {
   toggleGeneration: (id: number) => void;
   setCardOverride: (cardId: string, groupId: string | null) => void;
   setUploadedImage: (cardId: string, dataUri: string | null) => void;
+  setBinderConfig: (config: Partial<BinderConfig>) => void;
+  setBinderCustomOrder: (order: BinderSlotEntry[] | null) => void;
 
   markOwned: (dexNumber: number, cardId: string, condition: Condition) => void;
   unmarkOwned: (dexNumber: number) => void;
@@ -84,6 +105,8 @@ export const useAppStore = create<AppState>()(
       // Unlike cardOverrides, there is no seed data for user-uploaded
       // images -- this always starts empty.
       uploadedImages: {},
+      binderConfig: DEFAULT_BINDER_CONFIG,
+      binderCustomOrder: null,
       priceVersion: 0,
       hasUnsavedChanges: false,
 
@@ -115,6 +138,14 @@ export const useAppStore = create<AppState>()(
             hasUnsavedChanges: true,
           };
         }),
+
+      setBinderConfig: (config) =>
+        set((state) => ({
+          binderConfig: { ...state.binderConfig, ...config },
+          hasUnsavedChanges: true,
+        })),
+      setBinderCustomOrder: (order) =>
+        set({ binderCustomOrder: order, hasUnsavedChanges: true }),
 
       setUploadedImage: (cardId, dataUri) =>
         set((state) => {
@@ -200,6 +231,8 @@ export const useAppStore = create<AppState>()(
           selectedGenerations: data.selectedGenerations,
           cardOverrides: data.cardOverrides,
           uploadedImages: data.uploadedImages,
+          binderConfig: data.binderConfig,
+          binderCustomOrder: data.binderCustomOrder,
           hasUnsavedChanges: false,
         }),
     }),
@@ -215,6 +248,8 @@ export const useAppStore = create<AppState>()(
         selectedGenerations: state.selectedGenerations,
         cardOverrides: state.cardOverrides,
         uploadedImages: state.uploadedImages,
+        binderConfig: state.binderConfig,
+        binderCustomOrder: state.binderCustomOrder,
         hasUnsavedChanges: state.hasUnsavedChanges,
       }),
     }

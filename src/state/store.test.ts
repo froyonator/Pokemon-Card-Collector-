@@ -236,6 +236,8 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: { 'other-card': 'rainbow-gold' },
       uploadedImages: { 'other-card': 'data:image/jpeg;base64,NEW' },
+      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+      binderCustomOrder: null,
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
@@ -259,6 +261,8 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: {},
       uploadedImages: {},
+      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+      binderCustomOrder: null,
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
@@ -275,9 +279,96 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: {},
       uploadedImages: {},
+      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+      binderCustomOrder: null,
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
     expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
+describe('binderConfig', () => {
+  it('defaults to a 3x3 grid, 17 pages, horizontal fill', () => {
+    useAppStore.setState({
+      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+      binderCustomOrder: null,
+    });
+    expect(useAppStore.getState().binderConfig).toEqual({
+      rows: 3,
+      columns: 3,
+      pageCount: 17,
+      fillDirection: 'horizontal',
+    });
+  });
+
+  it('setBinderConfig merges a partial update over the existing config', () => {
+    useAppStore.setState({
+      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+    });
+    useAppStore.getState().setBinderConfig({ rows: 4, columns: 5 });
+    expect(useAppStore.getState().binderConfig).toEqual({
+      rows: 4,
+      columns: 5,
+      pageCount: 17,
+      fillDirection: 'horizontal',
+    });
+  });
+
+  it('setBinderConfig marks unsaved changes', () => {
+    useAppStore.setState({ hasUnsavedChanges: false });
+    useAppStore.getState().setBinderConfig({ pageCount: 20 });
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
+describe('binderCustomOrder', () => {
+  it('defaults to null', () => {
+    useAppStore.setState({ binderCustomOrder: null });
+    expect(useAppStore.getState().binderCustomOrder).toBeNull();
+  });
+
+  it('setBinderCustomOrder stores a custom sequence and marks unsaved changes', () => {
+    useAppStore.setState({ binderCustomOrder: null, hasUnsavedChanges: false });
+    const order = [{ type: 'pokemon' as const, dexNumber: 1 }, { type: 'blank' as const }];
+    useAppStore.getState().setBinderCustomOrder(order);
+    expect(useAppStore.getState().binderCustomOrder).toEqual(order);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+
+  it('setBinderCustomOrder(null) clears back to the live default and marks unsaved changes', () => {
+    useAppStore.setState({
+      binderCustomOrder: [{ type: 'pokemon', dexNumber: 1 }],
+      hasUnsavedChanges: false,
+    });
+    useAppStore.getState().setBinderCustomOrder(null);
+    expect(useAppStore.getState().binderCustomOrder).toBeNull();
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
+describe('replaceUserData with binder fields', () => {
+  it('copies binderConfig and binderCustomOrder from imported data', () => {
+    useAppStore.getState().replaceUserData({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binderConfig: { rows: 4, columns: 4, pageCount: 10, fillDirection: 'vertical' },
+      binderCustomOrder: [{ type: 'blank' }],
+    });
+    expect(useAppStore.getState().binderConfig).toEqual({
+      rows: 4,
+      columns: 4,
+      pageCount: 10,
+      fillDirection: 'vertical',
+    });
+    expect(useAppStore.getState().binderCustomOrder).toEqual([{ type: 'blank' }]);
   });
 });

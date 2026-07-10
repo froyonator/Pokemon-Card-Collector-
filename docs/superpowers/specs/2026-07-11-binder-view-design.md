@@ -119,7 +119,34 @@ Same TDD expectations as the rest of this codebase. In particular: `computeBinde
 
 ## Non-goals
 
-- Per-language or per-card-variant binder positions. A binder slot is tied to a dex number, not a specific `CardRecord` id — same granularity as the rest of the app's ownership model.
+- Per-card-variant binder positions. A binder slot is tied to a dex number, not a specific `CardRecord` id — same granularity as the rest of the app's ownership model.
 - Automatic reconciliation of a custom order against newly-available Pokemon. Once customized, new Pokemon becoming available (e.g. a new set releasing, or the user selecting a new generation) do not automatically insert themselves into the custom sequence. The user can always hit "Reset arrangement" to fall back to the live default, or manually place the new entries themselves. Silently auto-inserting into a hand-arranged sequence risks moving cards the user deliberately placed, which is worse than requiring an explicit reset.
-- Multiple independent binders, or per-binder-page metadata (labels, notes). One binder configuration per user/project, matching how every other view-level setting in this app works today.
+- Per-binder-page metadata (labels, notes on individual pages). Out of scope for this pass.
 - A print/export-to-PDF view of the binder. Out of scope; the binder is an on-screen browsing layout only.
+- Deleting a binder. See the "Multiple Binders" addendum below — deliberately deferred.
+
+## Addendum: Multiple Binders (added 2026-07-11, after initial implementation was already underway)
+
+The user requested this after Tasks 1 and 5 of the implementation plan had already started, while asleep and unavailable for further clarification ("use your best judgement... tell me what you decided in case i want to make a change"). This section documents the judgment calls made. It supersedes the "Multiple independent binders" non-goal above, and the "Slot sequence and default ordering" / "Data model changes" sections above now describe the shape of a SINGLE binder within the collection described here, not the whole feature's state shape.
+
+**What was asked:** name a binder (included in the export), create multiple binders within one project, switch between them, and let different binders use different card languages (e.g. a Chinese binder and a Japanese binder side by side).
+
+**Data model:** the single top-level `binderConfig`/`binderCustomOrder` fields become a collection:
+
+```ts
+export interface Binder {
+  id: string;
+  name: string;
+  language: string;
+  config: BinderConfig;
+  customOrder: BinderSlotEntry[] | null;
+}
+```
+
+Store state: `binders: Binder[]` (never empty — a fresh project seeds one binder, name "My Binder", `language` matching the store's existing default `'en'`, `DEFAULT_BINDER_CONFIG`, `customOrder: null`) and `activeBinderId: string`. New actions: `createBinder(name, language)` (generates an id via `crypto.randomUUID()`, seeds default config/null order, and immediately makes it active), `setActiveBinder(id)`, `renameBinder(id, name)`, `setBinderLanguage(id, language)`, plus `setBinderConfig`/`setBinderCustomOrder` gaining a leading `binderId` parameter. Export/import: `binders`/`activeBinderId` replace `binderConfig`/`binderCustomOrder` in `ExportedUserData`; a backup missing these (either an older single-binder-era export or a pre-binder-feature one) defaults to the same single seeded binder described above.
+
+**Per-binder language and the Picker:** each binder's slots open the Picker using THAT binder's language, not the app's global language selector (used everywhere else — Dex Grid sprite/card view, etc.). `Picker` gains an optional `languageOverride?: string` prop; when provided it's used instead of reading the store's global `language`, for both the curated card list and the "Show all cards" fetch. `DexGrid` tracks which language (if any) applies to the currently-open Picker instance, set when opening from a binder slot and cleared when opening from a normal grid tile.
+
+**Deliberately not built in this pass:**
+- **Deleting a binder.** Not requested, and adding a destructive action to an unattended, judgment-call-driven pass felt like the wrong place to introduce one. Easy to add later.
+- **Auto-prefetching a whole binder's card data when it becomes active.** A binder's slots still show sprites immediately (sprites are language-independent), and clicking a slot fetches on demand the same way any not-yet-cached dex number already does elsewhere in the app (curated cards may start empty until "Show all cards" is used, or until that language happens to get fetched some other way). Full bulk-prefetching a second language's entire curated dataset in the background, the same way the main Dex Grid auto-loads its active language, would meaningfully improve first-click responsiveness for a freshly-created binder, but it's a real, separate chunk of work (reusing `loadAllCardData` with a binder's language, triggered on binder creation/switch) that wasn't explicitly asked for. Flagging this as the most likely thing to revisit.

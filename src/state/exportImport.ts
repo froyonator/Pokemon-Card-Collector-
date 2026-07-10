@@ -1,5 +1,6 @@
 import type { Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
 import type { ExportedUserData } from './store';
+import { DEFAULT_BINDER_CONFIG } from './store';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
 export type { ExportedUserData } from './store';
@@ -28,6 +29,11 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     selectedGenerations: state.selectedGenerations,
     cardOverrides: state.cardOverrides,
     uploadedImages: state.uploadedImages,
+    // Placeholder until ExportableState grows binderConfig/binderCustomOrder
+    // (planned in the binder view's export/import wiring task) -- this just
+    // keeps ExportedUserData's now-required binder fields satisfied here.
+    binderConfig: DEFAULT_BINDER_CONFIG,
+    binderCustomOrder: null,
   };
 }
 

@@ -55,6 +55,19 @@ export interface RarityGroup {
   rarities: RarityTier[];
 }
 
+export type BinderFillDirection = 'horizontal' | 'vertical';
+
+export type BinderSlotEntry =
+  | { type: 'pokemon'; dexNumber: number }
+  | { type: 'blank' };
+
+export interface BinderConfig {
+  rows: number;
+  columns: number;
+  pageCount: number;
+  fillDirection: BinderFillDirection;
+}
+
 export type Currency = 'USD' | 'EUR' | 'AUD' | 'GBP' | 'CAD';
 
 export const CURRENCIES: Currency[] = ['USD', 'EUR', 'AUD', 'GBP', 'CAD'];
