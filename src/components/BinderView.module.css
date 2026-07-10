@@ -8,6 +8,8 @@
 .spread {
   display: flex;
   gap: var(--space-4);
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .page {
