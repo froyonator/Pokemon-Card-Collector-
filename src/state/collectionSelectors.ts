@@ -32,6 +32,15 @@ function findCard(language: string, dexNumber: number, cardId: string): CardReco
   return getAllCachedCardsForDex(language, dexNumber).find((c) => c.id === cardId);
 }
 
+// Not memoized here: this is a plain function, not a hook, so unlike
+// DexGrid.tsx's cardsByDexNumber useMemo (DexGrid.tsx:63-68), it can't cache
+// its own result across calls. Every record in `owned` triggers one
+// getCachedPricing + getAllCachedCardsForDex call, and both of those fully
+// JSON.parse this app's single-key localStorage blob on every call (see
+// cardCache.ts) — the same full-blob-reparse pattern DexGrid hit and fixed
+// with a useMemo. Calling this directly in a component body would redo that
+// work on every render; callers should wrap the result in their own
+// useMemo/useCallback keyed on (language, owned) instead.
 export function buildCollectionRows(
   language: string,
   owned: Record<number, OwnedRecord>
@@ -49,6 +58,10 @@ export function buildCollectionRows(
   });
 }
 
+// Same caution as buildCollectionRows above: not memoized here since this is
+// a plain function, not a hook. Callers should wrap the result in their own
+// useMemo/useCallback keyed on (language, wishlist) rather than calling this
+// directly in a component body on every render.
 export function buildWishlistRows(
   language: string,
   wishlist: Record<number, WishlistRecord>
@@ -77,6 +90,11 @@ export function sortRows<T extends { dexNumber: number; pokemonName: string }>(
   const sorted = [...rows].sort((a, b) => {
     if (key === 'dexNumber') return a.dexNumber - b.dexNumber;
     if (key === 'name') return a.pokemonName.localeCompare(b.pokemonName);
+    // Missing prices fall back to -Infinity, so combined with the
+    // direction === 'asc' ? sorted : sorted.reverse() below, unpriced rows
+    // always sort to the low end first, then land at the top for 'asc'
+    // (cheapest-first) and the bottom for 'desc' (priciest-first).
+    // Intentional, not a bug.
     const priceA = priceOf(a) ?? -Infinity;
     const priceB = priceOf(b) ?? -Infinity;
     return priceA - priceB;
