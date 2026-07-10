@@ -1,0 +1,10 @@
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 10px;
+  opacity: 0.6;
+  background: rgba(127, 127, 127, 0.1);
+  border-radius: 6px;
+}

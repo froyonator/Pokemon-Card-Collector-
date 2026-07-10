@@ -1,7 +1,6 @@
 import { AnimatePresence } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
-import { cardImageUrl } from '../api/tcgdex';
 import { entriesForGenerations } from '../data/generations';
 import { getAllCachedCardsForDex, loadAllCardData } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
@@ -140,7 +139,7 @@ export function DexGrid() {
                   spriteUrl={spriteUrl(entry.number)}
                   state={state}
                   view={view}
-                  ownedCardImageUrl={ownedCard ? cardImageUrl(ownedCard.imageBase) : undefined}
+                  ownedCardImageBase={ownedCard?.imageBase}
                   onClick={() => setOpenDexNumber(entry.number)}
                 />
               </div>

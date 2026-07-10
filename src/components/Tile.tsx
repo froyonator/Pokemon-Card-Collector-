@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
+import { CardImage } from './CardImage';
 import styles from './Tile.module.css';
 
 export interface TileProps {
@@ -8,7 +9,7 @@ export interface TileProps {
   spriteUrl: string;
   state: TileState;
   view: 'sprite' | 'card';
-  ownedCardImageUrl?: string;
+  ownedCardImageBase?: string;
   onClick: () => void;
 }
 
@@ -18,7 +19,7 @@ export function Tile({
   spriteUrl,
   state,
   view,
-  ownedCardImageUrl,
+  ownedCardImageBase,
   onClick,
 }: TileProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -28,8 +29,6 @@ export function Tile({
       : state === 'owned'
         ? `You own a card for ${name}. Click to change or remove it.`
         : `Click to see the special art card options for ${name}.`;
-
-  const showCardImage = view === 'card' && ownedCardImageUrl;
 
   return (
     <motion.button
@@ -45,8 +44,8 @@ export function Tile({
       }
     >
       <span className={styles.number}>#{String(dexNumber).padStart(3, '0')}</span>
-      {showCardImage ? (
-        <img src={ownedCardImageUrl} alt={`${name} card`} loading="lazy" />
+      {view === 'card' && ownedCardImageBase !== undefined ? (
+        <CardImage imageBase={ownedCardImageBase} alt={`${name} card`} loading="lazy" width={68} />
       ) : (
         <img src={spriteUrl} alt={name} loading="lazy" />
       )}

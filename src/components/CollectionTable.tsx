@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { cardImageUrl } from '../api/tcgdex';
+import { CardImage } from './CardImage';
 import {
   buildCollectionRows,
   sortRows,
@@ -111,7 +111,7 @@ export function CollectionTable() {
               <td>{row.pokemonName}</td>
               <td>
                 {row.card && (
-                  <img src={cardImageUrl(row.card.imageBase)} alt={row.card.name} width={48} />
+                  <CardImage imageBase={row.card.imageBase} alt={row.card.name} width={48} />
                 )}
               </td>
               <td>{row.condition}</td>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { cardImageUrl } from '../api/tcgdex';
+import { CardImage } from './CardImage';
 import {
   buildWishlistRows,
   sortRows,
@@ -112,7 +112,7 @@ export function WishlistTable() {
                 <td>{row.pokemonName}</td>
                 <td>
                   {row.card && (
-                    <img src={cardImageUrl(row.card.imageBase)} alt={row.card.name} width={48} />
+                    <CardImage imageBase={row.card.imageBase} alt={row.card.name} width={48} />
                   )}
                 </td>
                 <td>{price !== null ? `${price.toFixed(2)} ${currency}` : 'Unknown'}</td>

@@ -152,6 +152,12 @@
   border-radius: var(--radius-sm);
 }
 
+.cardImage {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  border-radius: var(--radius-sm);
+}
+
 .toolbar {
   display: flex;
   justify-content: flex-end;

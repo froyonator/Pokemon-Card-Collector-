@@ -1,9 +1,9 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
-import { cardImageUrl } from '../api/tcgdex';
 import { loadAllPrintingsForDex } from '../state/loadCardData';
 import { useAppStore } from '../state/store';
 import type { CardRecord, Condition } from '../types';
+import { CardImage } from './CardImage';
 import { ConditionPicker } from './ConditionPicker';
 import styles from './Picker.module.css';
 
@@ -195,9 +195,10 @@ export function Picker({
                     className={isOwned ? styles.cardBodySelected : styles.cardBody}
                     onClick={() => setPendingCard(card)}
                   >
-                    <img
-                      src={cardImageUrl(card.imageBase)}
+                    <CardImage
+                      imageBase={card.imageBase}
                       alt={`${card.name} from ${card.setName}`}
+                      className={styles.cardImage}
                     />
                     <span>
                       {card.setName} #{card.localId}
