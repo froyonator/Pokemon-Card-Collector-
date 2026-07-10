@@ -57,11 +57,28 @@ describe('Tile', () => {
         spriteUrl="https://example.com/6.png"
         state="owned"
         view="card"
-        ownedCardImageUrl="https://example.com/card.png"
+        ownedCardImageBase="https://example.com/card"
         onClick={() => {}}
       />
     );
     expect(screen.getByAltText('Charizard card')).toBeInTheDocument();
+  });
+
+  it('shows the "no image available" placeholder, not the sprite, when the owned card has an empty image base', () => {
+    render(
+      <Tile
+        dexNumber={4}
+        name="Charmander"
+        spriteUrl="https://example.com/4.png"
+        state="owned"
+        view="card"
+        ownedCardImageBase=""
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+    expect(screen.queryByAltText('Charmander')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Charmander card')).not.toBeInTheDocument();
   });
 
   it('falls back to the sprite image in card view when no owned card image is provided', () => {
