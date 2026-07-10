@@ -72,4 +72,45 @@ describe('loadAllCardData', () => {
     });
     expect(getAllCachedCardsForDex('en', 11)).toEqual([]);
   });
+
+  it('accumulates cards across multiple rarity tiers for the same dex number', async () => {
+    // URLSearchParams.set encodes spaces as '+' (application/x-www-form-urlencoded),
+    // not '%20' — confirmed against src/api/tcgdex.ts's actual output.
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      if (url.includes('rarity=eq%3AUltra+Rare')) {
+        return jsonResponse([
+          {
+            id: 'sv03.5-199',
+            localId: '199',
+            name: 'Charizard ex',
+            image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+          },
+        ]);
+      }
+      if (url.includes('rarity=eq%3ASecret+Rare')) {
+        return jsonResponse([
+          {
+            id: 'sv03-223',
+            localId: '223',
+            name: 'Charizard ex',
+            image: 'https://assets.tcgdex.net/en/sv/sv03/223',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 6, name: 'Charizard' }],
+      rarities: ['Ultra Rare', 'Secret Rare'],
+      fetchImpl,
+    });
+
+    const cached = getAllCachedCardsForDex('en', 6);
+    expect(cached).toHaveLength(2);
+    expect(cached.map((c) => c.id).sort()).toEqual(['sv03-223', 'sv03.5-199']);
+  });
 });

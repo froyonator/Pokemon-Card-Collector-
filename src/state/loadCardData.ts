@@ -13,6 +13,12 @@ export interface LoadAllCardDataOptions {
   dexEntries?: DexEntry[];
   rarities?: string[];
   onProgress?: (progress: LoadProgress) => void;
+  // Method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under this
+  // project's strict mode, a plain function-typed property is checked
+  // contravariantly, and this test file's mock needs an explicitly
+  // `(url: string) => ...` typed callback (it branches on the URL), which
+  // fails that check. Method-shorthand members use bivariant checking
+  // instead and compile cleanly, with no change to runtime behavior.
   fetchImpl?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
