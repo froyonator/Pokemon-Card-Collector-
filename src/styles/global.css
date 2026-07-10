@@ -152,6 +152,17 @@ body {
   background-repeat: no-repeat;
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+  /* This app is a dashboard-style tool, not a document -- clicking a stat
+     number or a label shouldn't drop a text-selection caret into it. Text
+     inputs opt back in below, since they need normal select/edit behaviour. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 h1,
