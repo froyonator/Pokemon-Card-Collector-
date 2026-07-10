@@ -127,6 +127,46 @@ describe('Tile', () => {
     expect(button).toHaveAttribute('title', 'Loading card data for Metapod...');
   });
 
+  it('applies the extra dull-in-card-view class only when unavailable and in card view', () => {
+    const { rerender } = render(
+      <Tile
+        dexNumber={11}
+        name="Metapod"
+        spriteUrl="https://example.com/11.png"
+        state="unavailable"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('button')).not.toHaveClass('dullCardView');
+
+    rerender(
+      <Tile
+        dexNumber={11}
+        name="Metapod"
+        spriteUrl="https://example.com/11.png"
+        state="unavailable"
+        view="card"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('button')).toHaveClass('dullCardView');
+  });
+
+  it('does not apply the dull-in-card-view class to an available Pokemon in card view', () => {
+    render(
+      <Tile
+        dexNumber={1}
+        name="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        state="available"
+        view="card"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('button')).not.toHaveClass('dullCardView');
+  });
+
   it('sets aria-busy to false for non-loading states', () => {
     render(
       <Tile

@@ -32,10 +32,18 @@ export function Tile({
           ? `You own a card for ${name}. Click to change or remove it.`
           : `Click to see the special art card options for ${name}.`;
 
+  // Card view is specifically about collecting status, so a Pokemon with no
+  // cards at all should read as starkly, unmistakably dull there -- more so
+  // than the lighter dulling used in sprite view, where some color still
+  // helps identify the Pokemon while browsing the dex.
+  const isDullInCardView = state === 'unavailable' && view === 'card';
+
   return (
     <motion.button
       type="button"
-      className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
+      className={[styles.tile, styles[`tile--${state}`], isDullInCardView && styles.dullCardView]
+        .filter(Boolean)
+        .join(' ')}
       onClick={onClick}
       title={title}
       aria-busy={state === 'loading'}

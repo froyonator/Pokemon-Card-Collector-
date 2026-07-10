@@ -61,6 +61,14 @@
   opacity: 0.55;
 }
 
+/* Card view is specifically about collecting status: a Pokemon with no
+   cards at all should read as starkly, unmistakably dull there, more so
+   than the lighter dulling above used in sprite view. */
+.dullCardView img {
+  filter: grayscale(0.9) brightness(0.75);
+  opacity: 0.4;
+}
+
 /* Distinct from .tile--unavailable's dashed-border/desaturated "confirmed
    empty" look: this needs to read as "busy," not "confirmed empty," so it
    uses a pulsing opacity animation instead of a static muted state. */
