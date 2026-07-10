@@ -1,0 +1,26 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  max-width: 360px;
+}
+
+.note {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cancel {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
