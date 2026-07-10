@@ -42,6 +42,22 @@ describe('buildCollectionRows', () => {
     });
     expect(rows[0].card?.id).toBe('sv03.5-199');
   });
+
+  it('returns an empty array for empty owned/wishlist input', () => {
+    expect(buildCollectionRows('en', {})).toEqual([]);
+    expect(buildWishlistRows('en', {})).toEqual([]);
+  });
+
+  it('leaves card undefined and pricing null when the cardId has no cache entry', () => {
+    const owned: Record<number, OwnedRecord> = {
+      25: { dexNumber: 25, cardId: 'missing-card-id', condition: 'Mint', addedAt: '' },
+    };
+    const rows = buildCollectionRows('en', owned);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].card).toBeUndefined();
+    expect(rows[0].cardmarketEurAvg).toBeNull();
+    expect(rows[0].tcgplayerUsdMarket).toBeNull();
+  });
 });
 
 describe('buildWishlistRows', () => {
@@ -81,5 +97,13 @@ describe('sortRows', () => {
     const prices: Record<number, number> = { 25: 50, 6: 500 };
     const sorted = sortRows(rows, 'price', 'desc', (row) => prices[row.dexNumber]);
     expect(sorted.map((r) => r.dexNumber)).toEqual([6, 25]);
+  });
+
+  it('sorts a missing price (-Infinity fallback) to the top for asc and the bottom for desc', () => {
+    const prices: Record<number, number | null> = { 6: 500, 25: null };
+    const asc = sortRows(rows, 'price', 'asc', (row) => prices[row.dexNumber]);
+    expect(asc.map((r) => r.dexNumber)).toEqual([25, 6]);
+    const desc = sortRows(rows, 'price', 'desc', (row) => prices[row.dexNumber]);
+    expect(desc.map((r) => r.dexNumber)).toEqual([6, 25]);
   });
 });
