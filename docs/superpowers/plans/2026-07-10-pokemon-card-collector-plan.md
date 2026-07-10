@@ -2347,7 +2347,15 @@ export interface LoadAllCardDataOptions {
   dexEntries?: DexEntry[];
   rarities?: string[];
   onProgress?: (progress: LoadProgress) => void;
-  fetchImpl?: typeof fetch;
+  // Declared with method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under
+  // this project's `strict: true`, a property typed as a plain function type is
+  // checked contravariantly, and the test above's mock (`vi.fn(async (url: string)
+  // => {...})`, which needs to branch on the URL, so it can't use the untyped
+  // `vi.fn().mockResolvedValue(...)` pattern other tests use) has a narrower `url:
+  // string` parameter than `typeof fetch`'s `input: RequestInfo | URL`, which fails
+  // that check. Method-shorthand members use TypeScript's bivariant method check
+  // instead, which accepts it, with no change to runtime behavior.
+  fetchImpl?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
 export async function loadAllCardData(
