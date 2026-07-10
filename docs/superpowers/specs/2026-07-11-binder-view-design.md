@@ -62,7 +62,7 @@ Pages display as a two-page spread, mimicking a physical opened binder:
 - Page 1 opens alone (nothing to its left — like the first inside page after a front cover).
 - From page 2 onward, pages display in pairs: (2, 3), (4, 5), (6, 7), and so on.
 - Left and right arrow buttons turn the page (or page-pair) with a page-flip animation. Reduced-motion users get the animation collapsed the same way the rest of the app already handles `prefers-reduced-motion` (see `global.css`'s existing reduced-motion block and Tile/Picker's Framer Motion `useReducedMotion` usage) — no slide/flip transform, an instant or near-instant cut instead.
-- If the last page is odd-numbered with nothing to pair it with (an odd total page count), it displays alone on its own spread, mirroring how page 1 does.
+- If the final page has no partner to pair with (this happens whenever the total page count is even, since pairing starts at page 2: pages 2+3, 4+5, and so on), it displays alone on its own spread, mirroring how page 1 does.
 
 ### Slot appearance
 
