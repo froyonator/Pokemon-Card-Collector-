@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
@@ -54,6 +54,7 @@ const TABS: { id: Tab; label: string }[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('grid');
   const [needsOnboarding, setNeedsOnboarding] = useState(readInitialOnboardingNeeded);
+  const shouldReduceMotion = useReducedMotion();
 
   useUnsavedChangesWarning();
 
@@ -133,10 +134,10 @@ export default function App() {
         {activeTab !== 'grid' && (
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 6 }}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.15 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
           >
             {activeTab === 'collection' && <CollectionTable />}
             {activeTab === 'wishlist' && <WishlistTable />}

@@ -142,7 +142,16 @@ export function DexGrid() {
           })}
         </div>
       )}
-      <AnimatePresence>
+      {/* mode="wait": a keyboard user can Tab past the visually-covered grid
+          (tiles stay focusable under the overlay) and activate a different
+          tile while a Picker is open, jumping openDexNumber straight from
+          one Pokemon to another without passing through null. Without
+          "wait", AnimatePresence's default "sync" mode would let the
+          outgoing Picker's exit animation and the incoming Picker's enter
+          animation run concurrently — two stacked role="dialog" overlays
+          on screen at once. "wait" forces the outgoing one to fully exit
+          first. */}
+      <AnimatePresence mode="wait">
         {openEntry && (
           <Picker
             key={openEntry.number}

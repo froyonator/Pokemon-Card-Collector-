@@ -6,9 +6,13 @@
    A soft four-colour holo gradient is reserved for small decorative
    flourishes (panel edges, focus rings on favourites) so it reads as a
    deliberate accent, not a background wash.
-   ========================================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,450;9..144,560;9..144,650;9..144,750&family=Karla:wght@400;500;600;700;800&display=swap');
+   Fraunces (display) and Karla (body) are loaded via <link rel="stylesheet">
+   in index.html's <head> instead of an @import here, so the browser's
+   preload scanner can discover and fetch them without waiting on this
+   stylesheet to parse. The --font-display/--font-body stacks below still
+   list system fallbacks in case that link is ever removed or fails to load.
+   ========================================================================= */
 
 :root {
   color-scheme: light dark;
@@ -72,10 +76,7 @@
   --color-gold: #b8790f;
   --color-gold-strong: #8f5c0a;
   --color-gold-soft: rgba(184, 121, 15, 0.16);
-  --color-gold-contrast: #2a1a04;
 
-  --color-success: #2f8f5b;
-  --color-success-soft: rgba(47, 143, 91, 0.14);
   --color-danger: #c62839;
   --color-danger-soft: rgba(198, 40, 57, 0.1);
 
@@ -116,10 +117,7 @@
     --color-gold: #f0b429;
     --color-gold-strong: #f7c65a;
     --color-gold-soft: rgba(240, 180, 41, 0.16);
-    --color-gold-contrast: #2a1a04;
 
-    --color-success: #4fd18f;
-    --color-success-soft: rgba(79, 209, 143, 0.16);
     --color-danger: #e2495b;
     --color-danger-soft: rgba(226, 73, 91, 0.16);
 
@@ -301,4 +299,19 @@ label {
   border-radius: var(--radius-full);
   border: 2px solid transparent;
   background-clip: content-box;
+}
+
+/* Collapses the plain CSS transitions used on buttons/inputs/tiles/table
+   rows to effectively instant. This is independent of the Framer Motion
+   animations in Tile.tsx/Picker.tsx/App.tsx, which read useReducedMotion()
+   themselves and skip their scale/spring/slide transforms directly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

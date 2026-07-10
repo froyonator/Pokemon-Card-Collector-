@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
 import { useAppStore } from '../state/store';
@@ -14,6 +14,30 @@ export interface PickerProps {
 }
 
 export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) {
+  const shouldReduceMotion = useReducedMotion();
+  // The overlay only ever fades, so it needs no reduced-motion variant of
+  // its own. The panel normally scales/slides in with a spring; under
+  // reduced motion it falls back to a quick opacity-only fade instead so a
+  // dialog opening doesn't move or resize on screen.
+  const overlayMotion = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+  };
+  const panelMotion = shouldReduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.1 },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.95, y: 10 },
+        animate: { opacity: 1, scale: 1, y: 0 },
+        exit: { opacity: 0, scale: 0.95, y: 10 },
+        transition: { type: 'spring' as const, stiffness: 300, damping: 30 },
+      };
+
   const owned = useAppStore((s) => s.owned[dexNumber]);
   const wishlist = useAppStore((s) => s.wishlist[dexNumber]);
   const markOwned = useAppStore((s) => s.markOwned);
@@ -42,17 +66,9 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
         className={styles.overlay}
         role="dialog"
         aria-label={`Choose condition for ${pendingCard.name}`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        {...overlayMotion}
       >
-        <motion.div
-          className={styles.panel}
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        >
+        <motion.div className={styles.panel} {...panelMotion}>
           <ConditionPicker
             cardName={pendingCard.name}
             onConfirm={handleConditionConfirm}
@@ -68,17 +84,9 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
       className={styles.overlay}
       role="dialog"
       aria-label={`Card options for ${pokemonName}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      {...overlayMotion}
     >
-      <motion.div
-        className={styles.panel}
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      >
+      <motion.div className={styles.panel} {...panelMotion}>
         <div className={styles.header}>
           <h2>{pokemonName}</h2>
           <button type="button" onClick={onClose} aria-label="Close">
