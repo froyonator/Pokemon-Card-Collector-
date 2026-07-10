@@ -1,22 +1,29 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 10, 8, 0.6);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 200;
+  padding: var(--space-4);
 }
 
 .panel {
-  background: var(--panel-bg, #fff);
-  color: var(--panel-fg, #111);
-  border-radius: 16px;
-  padding: 20px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  padding: var(--space-6);
   max-width: 480px;
   width: 90vw;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .header {
@@ -25,13 +32,18 @@
   align-items: center;
 }
 
+.header h2 {
+  font-size: var(--text-lg);
+}
+
 .groupList,
 .rarityList {
   list-style: none;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
+  margin: 0;
 }
 
 .groupList li,
@@ -39,5 +51,19 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.rarityList {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.rarityList li span {
+  font-size: var(--text-sm);
+  font-weight: 600;
 }

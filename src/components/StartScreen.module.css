@@ -4,16 +4,55 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: var(--space-6);
   text-align: center;
-  padding: 24px;
+  padding: var(--space-6);
+  position: relative;
+  overflow: hidden;
+}
+
+.screen::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(60vw, 620px);
+  height: min(60vw, 620px);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background:
+    linear-gradient(to bottom, var(--color-surface) 0 48%, var(--color-border) 48% 52%, var(--color-surface) 52% 100%);
+  opacity: 0.35;
+  z-index: -1;
+}
+
+.screen h1 {
+  max-width: 20ch;
 }
 
 .choices {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.choices button {
+  padding: 0.8rem 1.6rem;
+  font-size: var(--text-base);
+  border-radius: var(--radius-md);
+}
+
+.choices button:first-child {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.choices button:first-child:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
 }
 
 .hiddenInput {

@@ -1,34 +1,67 @@
 .app {
-  max-width: 1100px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--space-8) var(--space-6) var(--space-12);
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-6);
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-3);
+}
+
+.header h1 {
+  position: relative;
+  padding-left: var(--space-5);
+  letter-spacing: -0.01em;
+}
+
+.header h1::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.35em;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
 }
 
 .tabs button {
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(127, 127, 127, 0.4);
-  background: none;
+  padding: 0.55rem 1.2rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   cursor: pointer;
   font: inherit;
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.tabs button:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
 .tabs button[aria-pressed='true'] {
-  background: #4a9eff;
-  color: white;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  box-shadow: var(--shadow-sm);
+}
+
+.tabs button[aria-pressed='true']:hover {
+  transform: none;
 }

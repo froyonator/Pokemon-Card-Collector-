@@ -1,8 +1,304 @@
+/* =========================================================================
+   Card Collector — design tokens & base styles
+   Aesthetic: "collector's ledger" — a moody card-shop catalog. Deep ink
+   surfaces with a warm parchment counterpoint, a Poke Ball crimson as the
+   primary accent, and a foil-gold secondary for anything "owned" or rare.
+   A soft four-colour holo gradient is reserved for small decorative
+   flourishes (panel edges, focus rings on favourites) so it reads as a
+   deliberate accent, not a background wash.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,450;9..144,560;9..144,650;9..144,750&family=Karla:wght@400;500;600;700;800&display=swap');
+
 :root {
   color-scheme: light dark;
+
+  /* ---- type ---- */
+  --font-display: 'Fraunces', ui-serif, Georgia, 'Iowan Old Style', serif;
+  --font-body:
+    'Karla', -apple-system, 'Segoe UI', system-ui, sans-serif;
+
+  --text-xs: 0.6875rem; /* 11px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-md: 1.0625rem; /* 17px */
+  --text-lg: 1.25rem; /* 20px */
+  --text-xl: 1.625rem; /* 26px */
+  --text-2xl: 2.125rem; /* 34px */
+  --text-3xl: 2.75rem; /* 44px */
+
+  /* ---- spacing (4px base) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ---- radii ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 999px;
+
+  /* ---- motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 140ms var(--ease-out);
+  --transition-base: 220ms var(--ease-out);
+
+  /* ---- palette: light ---- */
+  --color-bg: #f8f3e9;
+  --color-bg-wash-a: rgba(198, 40, 57, 0.07);
+  --color-bg-wash-b: rgba(201, 138, 31, 0.08);
+  --color-surface: #fffdf8;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: rgba(30, 24, 18, 0.04);
+  --color-border: rgba(36, 26, 20, 0.12);
+  --color-border-strong: rgba(36, 26, 20, 0.22);
+
+  --color-text: #241a14;
+  --color-text-muted: #6b5f56;
+  --color-text-faint: #948779;
+
+  --color-accent: #c62839;
+  --color-accent-strong: #a11f2d;
+  --color-accent-soft: rgba(198, 40, 57, 0.12);
+  --color-accent-contrast: #fff8f2;
+
+  --color-gold: #b8790f;
+  --color-gold-strong: #8f5c0a;
+  --color-gold-soft: rgba(184, 121, 15, 0.16);
+  --color-gold-contrast: #2a1a04;
+
+  --color-success: #2f8f5b;
+  --color-success-soft: rgba(47, 143, 91, 0.14);
+  --color-danger: #c62839;
+  --color-danger-soft: rgba(198, 40, 57, 0.1);
+
+  --holo-gradient: linear-gradient(
+    115deg,
+    #e8b23d 0%,
+    #c62839 32%,
+    #7a5fc7 64%,
+    #2f8f5b 100%
+  );
+
+  --shadow-sm: 0 1px 2px rgba(36, 26, 20, 0.08);
+  --shadow-md: 0 8px 24px -8px rgba(36, 26, 20, 0.22);
+  --shadow-lg: 0 24px 64px -16px rgba(36, 26, 20, 0.32);
+  --shadow-focus: 0 0 0 3px var(--color-accent-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #15131a;
+    --color-bg-wash-a: rgba(226, 71, 87, 0.1);
+    --color-bg-wash-b: rgba(240, 180, 41, 0.07);
+    --color-surface: #1f1c26;
+    --color-surface-raised: #262230;
+    --color-surface-sunken: rgba(0, 0, 0, 0.22);
+    --color-border: rgba(255, 255, 255, 0.09);
+    --color-border-strong: rgba(255, 255, 255, 0.18);
+
+    --color-text: #f3ede2;
+    --color-text-muted: #b3a9bb;
+    --color-text-faint: #837a8f;
+
+    --color-accent: #e2495b;
+    --color-accent-strong: #ef6274;
+    --color-accent-soft: rgba(226, 73, 91, 0.18);
+    --color-accent-contrast: #1a1014;
+
+    --color-gold: #f0b429;
+    --color-gold-strong: #f7c65a;
+    --color-gold-soft: rgba(240, 180, 41, 0.16);
+    --color-gold-contrast: #2a1a04;
+
+    --color-success: #4fd18f;
+    --color-success-soft: rgba(79, 209, 143, 0.16);
+    --color-danger: #e2495b;
+    --color-danger-soft: rgba(226, 73, 91, 0.16);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.65);
+    --shadow-focus: 0 0 0 3px var(--color-accent-soft);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(1100px 560px at 12% -8%, var(--color-bg-wash-a), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, var(--color-bg-wash-b), transparent 55%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 650;
+  line-height: 1.15;
+  margin: 0;
+  color: var(--color-text);
+}
+
+h1 {
+  font-size: var(--text-3xl);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+p {
+  margin: 0;
+  color: var(--color-text);
+}
+
+small {
+  font-size: var(--text-xs);
+}
+
+ul,
+ol {
+  margin: 0;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+button:hover {
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-accent);
+  width: auto;
+  padding: 0;
+}
+
+fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+legend {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--color-text-muted);
+  padding: 0 0 var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+/* Themed scrollbars for the app's scrollable panels (Firefox + WebKit). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }

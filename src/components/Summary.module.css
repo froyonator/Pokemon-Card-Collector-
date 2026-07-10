@@ -1,22 +1,32 @@
 .summary {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-6);
 }
 
 .stat {
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .value {
-  font-size: 28px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  color: var(--color-accent);
 }
 
 .label {
-  font-size: 12px;
-  opacity: 0.7;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
 }
 
 .progress {
@@ -25,19 +35,22 @@
 }
 
 .progressBarTrack {
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(127, 127, 127, 0.2);
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 
 .progressBarFill {
   height: 100%;
-  background: #4a9eff;
+  background: var(--holo-gradient);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
 }
 
 .progressLabel {
-  font-size: 12px;
-  margin-bottom: 4px;
-  opacity: 0.8;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
 }

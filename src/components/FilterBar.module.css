@@ -1,19 +1,53 @@
 .bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: var(--space-6);
   align-items: flex-start;
-  margin-bottom: 16px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(127, 127, 127, 0.06);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .groupFilters,
 .generationFilters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-3);
   align-items: center;
   border: none;
+}
+
+.groupFilters label,
+.generationFilters label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.groupFilters button {
+  font-size: var(--text-xs);
+  padding: 0.35rem 0.7rem;
+}
+
+.bar > label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.bar > label select {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  min-width: 7rem;
 }
