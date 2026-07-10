@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A picker showing every special art and full art card for a Pokemon, filtered by editable rarity groups and by card language.
 - Ownership tracking with a recorded condition for each card, and a wishlist limited to one card per Pokemon.
 - My Collection, Wishlist, and Summary tabs with sorting and market value totals in USD, EUR, AUD, GBP, or CAD.
-- Manual "Refresh Data" and "Refresh Market Prices" actions, backed by card, image, and pricing caches so the app keeps working from cache when the network is unavailable.
+- Manual "Refresh Data" and "Refresh Market Prices" actions, backed by card and pricing caches so the app keeps working from cache when the network is unavailable.
 - Export and import of your collection, wishlist, groups, and settings as a JSON backup file.
 - A guided onboarding tutorial covering every major feature.
 - A close and reload warning when you have unsaved collection changes since your last export.
