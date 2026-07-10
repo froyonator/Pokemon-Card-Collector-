@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
 import styles from './Tile.module.css';
 
@@ -21,6 +21,7 @@ export function Tile({
   ownedCardImageUrl,
   onClick,
 }: TileProps) {
+  const shouldReduceMotion = useReducedMotion();
   const title =
     state === 'unavailable'
       ? `No special or full art cards have been released yet for ${name}.`
@@ -36,10 +37,12 @@ export function Tile({
       className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
       onClick={onClick}
       title={title}
-      layout
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.96 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      layout={!shouldReduceMotion}
+      whileHover={shouldReduceMotion ? undefined : { scale: 1.05 }}
+      whileTap={shouldReduceMotion ? undefined : { scale: 0.96 }}
+      transition={
+        shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 25 }
+      }
     >
       <span className={styles.number}>#{String(dexNumber).padStart(3, '0')}</span>
       {showCardImage ? (
