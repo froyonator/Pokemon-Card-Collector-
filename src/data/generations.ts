@@ -12,8 +12,8 @@ export interface Generation {
 // When adding a new generation here, also update README.md's "Gen 1 (Kanto,
 // #001-151)" / "All 151 Gen 1 Pokemon" language (that file was written when
 // this app only ever covered Gen 1). Nothing in src/App.tsx needs touching
-// for a new generation: its header is generation-neutral ("Pokemon Card
-// Collector"), not "Gen 1 Card Collector".
+// for a new generation: its header is generation-neutral ("Collector's
+// Ledger"), not "Gen 1 Card Collector".
 export const GENERATIONS: Generation[] = [
   { id: 1, label: 'Generation 1 (Kanto)', entries: GEN1_DEX },
 ];

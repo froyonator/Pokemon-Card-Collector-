@@ -91,7 +91,7 @@ export default function App() {
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <h1>Pokemon Card Collector</h1>
+        <h1>Collector's Ledger</h1>
         <div data-tutorial="export-import">
           <ExportImportControls />
         </div>

@@ -31,7 +31,7 @@ beforeEach(() => {
 describe('App', () => {
   it('renders the app title and the four tabs', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: /pokemon card collector/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /collector's ledger/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dex Grid' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'My Collection' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Wishlist' })).toBeInTheDocument();
@@ -71,7 +71,7 @@ describe('App onboarding gate', () => {
   it('shows StartScreen on a fresh visit with no prior data', () => {
     localStorage.clear();
     render(<App />);
-    expect(screen.getByRole('heading', { name: /welcome to card collector/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /welcome to collector's ledger/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Dex Grid' })).not.toBeInTheDocument();
   });
 

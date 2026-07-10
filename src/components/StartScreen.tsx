@@ -38,7 +38,7 @@ export function StartScreen({ onComplete }: StartScreenProps) {
 
   return (
     <div className={styles.screen}>
-      <h1>Welcome to Card Collector</h1>
+      <h1>Welcome to Collector's Ledger</h1>
       <div className={styles.choices}>
         <button type="button" onClick={onComplete}>
           Start a New Collection
