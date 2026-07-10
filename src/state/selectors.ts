@@ -27,10 +27,20 @@ export function availableCardsForDex(
   });
 }
 
-export type TileState = 'available' | 'owned' | 'unavailable';
+export type TileState = 'available' | 'owned' | 'unavailable' | 'loading';
 
-export function computeTileState(hasOwned: boolean, availableCount: number): TileState {
+export function computeTileState(
+  hasOwned: boolean,
+  availableCount: number,
+  isLoading: boolean
+): TileState {
+  // hasOwned is checked before isLoading deliberately: whether the user owns
+  // a card for this Pokemon comes from the app's own `owned` store record,
+  // available synchronously regardless of whether this dex number's TCGdex
+  // card-print data has finished loading, so an owned Pokemon should never
+  // show a loading spinner over its gold "owned" tile.
   if (hasOwned) return 'owned';
+  if (isLoading) return 'loading';
   if (availableCount === 0) return 'unavailable';
   return 'available';
 }

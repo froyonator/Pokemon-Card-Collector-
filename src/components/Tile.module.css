@@ -61,6 +61,36 @@
   opacity: 0.55;
 }
 
+/* Distinct from .tile--unavailable's dashed-border/desaturated "confirmed
+   empty" look: this needs to read as "busy," not "confirmed empty," so it
+   uses a pulsing opacity animation instead of a static muted state. */
+.tile--loading {
+  background: var(--color-surface);
+  opacity: 0.6;
+  animation: tile-pulse 1.4s ease-in-out infinite;
+}
+
+.tile--loading img {
+  filter: saturate(0.4);
+}
+
+@keyframes tile-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile--loading {
+    animation: none;
+    opacity: 0.65;
+  }
+}
+
 .number {
   font-family: var(--font-body);
   font-size: var(--text-xs);

@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'framer-motion';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
 import { entriesForGenerations } from '../data/generations';
-import { getAllCachedCardsForDex, loadAllCardData } from '../state/loadCardData';
+import { loadAllCardData } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
@@ -33,6 +33,22 @@ export function DexGrid() {
     [selectedGenerations]
   );
 
+  // Coalesces the up-to-151 individual onDexLoaded callbacks fired during a
+  // cold-start load into at most one dataVersion bump per animation frame,
+  // so tiles update incrementally as data streams in without triggering a
+  // full re-render (and full localStorage cache re-read across every dex
+  // number, which cardsByDexNumber's memo below does) on every single
+  // dex-number completion.
+  const dataVersionBumpScheduled = useRef(false);
+  function scheduleDataVersionBump() {
+    if (dataVersionBumpScheduled.current) return;
+    dataVersionBumpScheduled.current = true;
+    requestAnimationFrame(() => {
+      dataVersionBumpScheduled.current = false;
+      setDataVersion((v) => v + 1);
+    });
+  }
+
   useEffect(() => {
     if (dexEntries.length === 0) return;
     // Per-dex-number check, not a per-language one: this is what makes a
@@ -43,15 +59,25 @@ export function DexGrid() {
     );
     if (missingEntries.length === 0) return;
     setIsLoading(true);
-    loadAllCardData(language, { dexEntries: missingEntries }).finally(() => {
+    loadAllCardData(language, {
+      dexEntries: missingEntries,
+      onDexLoaded: () => scheduleDataVersionBump(),
+    }).finally(() => {
       setIsLoading(false);
+      // A final catch-all flush: cheap no-op if nothing changed since the
+      // last onDexLoaded-triggered bump, but guarantees the last dex
+      // number's data is reflected even if its onDexLoaded fired in the
+      // same frame as unmount or some other edge case.
       setDataVersion((v) => v + 1);
     });
   }, [language, dexEntries]);
 
   async function handleRefreshData() {
     setIsLoading(true);
-    await loadAllCardData(language, { dexEntries });
+    await loadAllCardData(language, {
+      dexEntries,
+      onDexLoaded: () => scheduleDataVersionBump(),
+    });
     setIsLoading(false);
     setDataVersion((v) => v + 1);
   }
@@ -67,6 +93,13 @@ export function DexGrid() {
   // triggered by unrelated state like `owned` changing after
   // markOwned/unmarkOwned. Deliberately NOT keyed on `owned`: the cached
   // cards for a dex number don't change when ownership changes.
+  //
+  // Stores the raw getCachedCards result (CardRecord[] | undefined), not the
+  // []-defaulted getAllCachedCardsForDex, so "never fetched yet" (undefined)
+  // stays distinguishable from "fetched, genuinely zero cards" ([]) — that
+  // distinction is exactly what the loading tile state below needs. Callers
+  // that just want the cards array default to [] downstream, at the point
+  // of use.
   const cardsByDexNumber = useMemo(() => {
     // dataVersion itself is never read below — it's a pure cache-busting
     // signal. The underlying data lives in localStorage (outside React's
@@ -75,9 +108,9 @@ export function DexGrid() {
     // reference is only here so react-hooks/exhaustive-deps sees dataVersion
     // as used and doesn't flag it as an unnecessary dependency.
     void dataVersion;
-    const map = new Map<number, CardRecord[]>();
+    const map = new Map<number, CardRecord[] | undefined>();
     for (const entry of dexEntries) {
-      map.set(entry.number, getAllCachedCardsForDex(language, entry.number));
+      map.set(entry.number, getCachedCards(language, entry.number));
     }
     return map;
   }, [language, dexEntries, dataVersion]);
@@ -124,10 +157,19 @@ export function DexGrid() {
       ) : (
         <div className={styles.grid} data-version={dataVersion}>
           {dexEntries.map((entry) => {
+            const hasLoaded = cardsByDexNumber.get(entry.number) !== undefined;
             const allCards = cardsByDexNumber.get(entry.number) ?? [];
             const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
             const ownedRecord = owned[entry.number];
-            const state = computeTileState(Boolean(ownedRecord), cards.length);
+            // Self-heals if a fetch fails outright for some dex number: once
+            // isLoading flips back to false in loadAllCardData's .finally(),
+            // any dex number that never got a cache entry (its request
+            // errored) falls through to hasLoaded=false, isLoading=false ->
+            // not 'loading' -> the availableCount === 0 branch ->
+            // 'unavailable', a reasonable fallback instead of a spinner
+            // stuck forever.
+            const isLoadingDex = isLoading && !hasLoaded;
+            const state = computeTileState(Boolean(ownedRecord), cards.length, isLoadingDex);
             const ownedCard = ownedRecord
               ? allCards.find((c) => c.id === ownedRecord.cardId)
               : undefined;

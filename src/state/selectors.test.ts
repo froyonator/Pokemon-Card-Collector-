@@ -73,15 +73,24 @@ describe('availableCardsForDex', () => {
 
 describe('computeTileState', () => {
   it('returns owned when the Pokemon has an owned record, regardless of availability', () => {
-    expect(computeTileState(true, 0)).toBe('owned');
-    expect(computeTileState(true, 3)).toBe('owned');
+    expect(computeTileState(true, 0, false)).toBe('owned');
+    expect(computeTileState(true, 3, false)).toBe('owned');
   });
 
-  it('returns unavailable when not owned and there are zero available cards', () => {
-    expect(computeTileState(false, 0)).toBe('unavailable');
+  it('returns owned even while still loading, since ownership is known synchronously from the owned store, not from the async card-data fetch', () => {
+    expect(computeTileState(true, 0, true)).toBe('owned');
   });
 
-  it('returns available when not owned and there is at least one available card', () => {
-    expect(computeTileState(false, 1)).toBe('available');
+  it('returns loading when not owned and the dex number is still loading, regardless of availableCount', () => {
+    expect(computeTileState(false, 0, true)).toBe('loading');
+    expect(computeTileState(false, 5, true)).toBe('loading');
+  });
+
+  it('returns unavailable when not owned, not loading, and there are zero available cards', () => {
+    expect(computeTileState(false, 0, false)).toBe('unavailable');
+  });
+
+  it('returns available when not owned, not loading, and there is at least one available card', () => {
+    expect(computeTileState(false, 1, false)).toBe('available');
   });
 });

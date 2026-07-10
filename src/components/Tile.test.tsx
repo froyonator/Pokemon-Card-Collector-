@@ -109,4 +109,35 @@ describe('Tile', () => {
     );
     expect(screen.getByRole('button')).toHaveClass('tile--available');
   });
+
+  it('applies the loading state class name, aria-busy, and a distinct title when still loading', () => {
+    render(
+      <Tile
+        dexNumber={11}
+        name="Metapod"
+        spriteUrl="https://example.com/11.png"
+        state="loading"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    const button = screen.getByRole('button');
+    expect(button).toHaveClass('tile--loading');
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('title', 'Loading card data for Metapod...');
+  });
+
+  it('sets aria-busy to false for non-loading states', () => {
+    render(
+      <Tile
+        dexNumber={1}
+        name="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        state="available"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'false');
+  });
 });

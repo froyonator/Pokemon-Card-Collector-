@@ -1,6 +1,7 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
 import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
+import { mapWithConcurrency } from './concurrency';
 import {
   clearFullPrintHistory,
   getCachedCards,
@@ -9,6 +10,12 @@ import {
   setCachedCards,
 } from '../storage/cardCache';
 import type { CardRecord } from '../types';
+
+// Shared by loadAllCardData's dex x rarity fan-out and loadAllPrintingsForDex's
+// per-card detail fan-out. Not caller-configurable: there's no current need
+// to tune it, and a single constant keeps both call sites' network pressure
+// consistent.
+const CONCURRENCY = 6;
 
 export interface LoadProgress {
   completed: number;
@@ -19,6 +26,12 @@ export interface LoadAllCardDataOptions {
   dexEntries?: DexEntry[];
   rarities?: string[];
   onProgress?: (progress: LoadProgress) => void;
+  // Fired exactly once per dex number, as soon as that dex number's own
+  // rarity queries are all done -- not once at the very end of the whole
+  // batch. Lets a caller (DexGrid) update the screen incrementally as data
+  // streams in under concurrency, instead of only after all ~151 dex numbers
+  // finish.
+  onDexLoaded?: (dexNumber: number) => void;
   // Method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under this
   // project's strict mode, a plain function-typed property is checked
   // contravariantly, and this test file's mock needs an explicitly
@@ -26,6 +39,17 @@ export interface LoadAllCardDataOptions {
   // fails that check. Method-shorthand members use bivariant checking
   // instead and compile cleanly, with no change to runtime behavior.
   fetchImpl?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+interface DexAccumulator {
+  entry: DexEntry;
+  remaining: number;
+  cards: CardRecord[];
+}
+
+interface Job {
+  entry: DexEntry;
+  rarity: string;
 }
 
 export async function loadAllCardData(
@@ -36,6 +60,7 @@ export async function loadAllCardData(
     dexEntries = GEN1_DEX,
     rarities = fetchRarityList(DEFAULT_RARITY_GROUPS),
     onProgress,
+    onDexLoaded,
     fetchImpl = fetch,
   } = options;
 
@@ -45,35 +70,66 @@ export async function loadAllCardData(
   const total = dexEntries.length;
   let completed = 0;
 
-  for (const entry of dexEntries) {
-    const perDex: CardRecord[] = [];
-    for (const rarity of rarities) {
-      const briefs = await fetchCardsForDexAndRarity(entry.number, rarity, language, fetchImpl);
-      for (const brief of briefs) {
-        const setId = deriveSetId(brief.id, brief.localId);
-        perDex.push({
-          id: brief.id,
-          name: brief.name,
-          dexNumber: entry.number,
-          setId,
-          setName: setNameById.get(setId) ?? setId,
-          localId: brief.localId,
-          rarity,
-          imageBase: brief.image ?? '',
-          language,
-        });
-      }
+  // Guard: if `rarities` is empty (e.g. every rarity group has been emptied
+  // via Manage Groups), there are zero jobs below and the remaining-counter
+  // completion branch would never fire for any dex number, silently skipping
+  // setCachedCards/onProgress/onDexLoaded entirely. Handle it directly
+  // instead, so every dex number still gets cached (as empty) and reported.
+  if (rarities.length === 0) {
+    for (const entry of dexEntries) {
+      setCachedCards(language, entry.number, []);
+      clearFullPrintHistory(language, entry.number);
+      completed += 1;
+      onProgress?.({ completed, total });
+      onDexLoaded?.(entry.number);
     }
-    setCachedCards(language, entry.number, perDex);
-    // A curated-only fetch just overwrote this dex number's cache slot with
-    // the narrower rarity-filtered subset, so any earlier "Show all cards"
-    // full-print-history flag for it no longer describes what's actually
-    // cached. Clear it so the next "Show all cards" toggle re-fetches
-    // properly instead of trusting stale curated data as if it were complete.
-    clearFullPrintHistory(language, entry.number);
-    completed += 1;
-    onProgress?.({ completed, total });
+    return;
   }
+
+  const accumulators = new Map<number, DexAccumulator>(
+    dexEntries.map((entry) => [entry.number, { entry, remaining: rarities.length, cards: [] }])
+  );
+
+  const jobs: Job[] = [];
+  for (const entry of dexEntries) {
+    for (const rarity of rarities) {
+      jobs.push({ entry, rarity });
+    }
+  }
+
+  await mapWithConcurrency(jobs, CONCURRENCY, async ({ entry, rarity }) => {
+    const briefs = await fetchCardsForDexAndRarity(entry.number, rarity, language, fetchImpl);
+    const accumulator = accumulators.get(entry.number);
+    if (!accumulator) return;
+    for (const brief of briefs) {
+      const setId = deriveSetId(brief.id, brief.localId);
+      accumulator.cards.push({
+        id: brief.id,
+        name: brief.name,
+        dexNumber: entry.number,
+        setId,
+        setName: setNameById.get(setId) ?? setId,
+        localId: brief.localId,
+        rarity,
+        imageBase: brief.image ?? '',
+        language,
+      });
+    }
+    accumulator.remaining -= 1;
+    if (accumulator.remaining === 0) {
+      setCachedCards(language, entry.number, accumulator.cards);
+      // A curated-only fetch just overwrote this dex number's cache slot
+      // with the narrower rarity-filtered subset, so any earlier "Show all
+      // cards" full-print-history flag for it no longer describes what's
+      // actually cached. Clear it so the next "Show all cards" toggle
+      // re-fetches properly instead of trusting stale curated data as if it
+      // were complete.
+      clearFullPrintHistory(language, entry.number);
+      completed += 1;
+      onProgress?.({ completed, total });
+      onDexLoaded?.(entry.number);
+    }
+  });
 }
 
 export function getAllCachedCardsForDex(language: string, dexNumber: number): CardRecord[] {
@@ -106,8 +162,10 @@ export async function loadAllPrintingsForDex(
     if (cached) return cached;
   }
   const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl);
-  const cards: CardRecord[] = [];
-  for (const brief of briefs) {
+  // mapWithConcurrency preserves input order in its results array regardless
+  // of which detail fetch resolves first, so `cards` still lines up with
+  // `briefs` exactly as the old sequential loop did.
+  const cards = await mapWithConcurrency(briefs, CONCURRENCY, async (brief) => {
     // Unlike loadAllCardData above, this doesn't need a separate fetchSets
     // call for a name lookup: the per-card detail response already carries
     // the correct set name directly (detail.set.name), since a full detail
@@ -115,7 +173,7 @@ export async function loadAllPrintingsForDex(
     // endpoint queried by fetchAllCardsForDex omits rarity entirely).
     const detail = await fetchCardDetail(brief.id, language, fetchImpl);
     const setId = deriveSetId(brief.id, brief.localId);
-    cards.push({
+    const card: CardRecord = {
       id: brief.id,
       name: brief.name,
       dexNumber,
@@ -125,8 +183,9 @@ export async function loadAllPrintingsForDex(
       rarity: detail.rarity ?? 'Unknown',
       imageBase: brief.image ?? '',
       language,
-    });
-  }
+    };
+    return card;
+  });
   setCachedCards(language, dexNumber, cards);
   markFullPrintHistoryFetched(language, dexNumber);
   return cards;

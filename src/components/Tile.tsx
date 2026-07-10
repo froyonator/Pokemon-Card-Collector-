@@ -24,11 +24,13 @@ export function Tile({
 }: TileProps) {
   const shouldReduceMotion = useReducedMotion();
   const title =
-    state === 'unavailable'
-      ? `No special or full art cards have been released yet for ${name}.`
-      : state === 'owned'
-        ? `You own a card for ${name}. Click to change or remove it.`
-        : `Click to see the special art card options for ${name}.`;
+    state === 'loading'
+      ? `Loading card data for ${name}...`
+      : state === 'unavailable'
+        ? `No special or full art cards have been released yet for ${name}.`
+        : state === 'owned'
+          ? `You own a card for ${name}. Click to change or remove it.`
+          : `Click to see the special art card options for ${name}.`;
 
   return (
     <motion.button
@@ -36,6 +38,7 @@ export function Tile({
       className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
       onClick={onClick}
       title={title}
+      aria-busy={state === 'loading'}
       layout={!shouldReduceMotion}
       whileHover={shouldReduceMotion ? undefined : { scale: 1.05 }}
       whileTap={shouldReduceMotion ? undefined : { scale: 0.96 }}

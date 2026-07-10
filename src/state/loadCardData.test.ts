@@ -46,6 +46,12 @@ describe('loadAllCardData', () => {
   });
 
   it('reports progress as each dex number completes', async () => {
+    // Under real concurrency, which dex number's queries resolve first
+    // depends on network/timing, not array position, so which dex number
+    // triggers a given progress call is no longer deterministic. What *is*
+    // still guaranteed: exactly one progress call per dex number, a strictly
+    // increasing `completed` counter, and a final call reporting everything
+    // done.
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
     const progressCalls: { completed: number; total: number }[] = [];
     await loadAllCardData('en', {
@@ -57,10 +63,51 @@ describe('loadAllCardData', () => {
       onProgress: (p) => progressCalls.push(p),
       fetchImpl,
     });
+    expect(progressCalls).toHaveLength(2);
+    expect(progressCalls.map((p) => p.completed)).toEqual([1, 2]);
+    expect(progressCalls.every((p) => p.total === 2)).toBe(true);
+    expect(progressCalls[progressCalls.length - 1]).toEqual({ completed: 2, total: 2 });
+  });
+
+  it('calls onDexLoaded exactly once per dex number, only once that dex number\'s own rarity queries are all done', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const loadedDexNumbers: number[] = [];
+    await loadAllCardData('en', {
+      dexEntries: [
+        { number: 1, name: 'Bulbasaur' },
+        { number: 2, name: 'Ivysaur' },
+        { number: 3, name: 'Venusaur' },
+      ],
+      rarities: ['Ultra Rare', 'Secret Rare'],
+      onDexLoaded: (dexNumber) => loadedDexNumbers.push(dexNumber),
+      fetchImpl,
+    });
+    expect(loadedDexNumbers.sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('caches every dex number, reports progress, and fires onDexLoaded when the rarities list is empty (e.g. every rarity group emptied via Manage Groups)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const progressCalls: { completed: number; total: number }[] = [];
+    const loadedDexNumbers: number[] = [];
+    await loadAllCardData('en', {
+      dexEntries: [
+        { number: 1, name: 'Bulbasaur' },
+        { number: 2, name: 'Ivysaur' },
+      ],
+      rarities: [],
+      onProgress: (p) => progressCalls.push(p),
+      onDexLoaded: (dexNumber) => loadedDexNumbers.push(dexNumber),
+      fetchImpl,
+    });
+    // No rarity means no jobs, so the fetch mock should never even be hit
+    // for cards (fetchSets is still called once, unconditionally).
+    expect(getAllCachedCardsForDex('en', 1)).toEqual([]);
+    expect(getAllCachedCardsForDex('en', 2)).toEqual([]);
     expect(progressCalls).toEqual([
       { completed: 1, total: 2 },
       { completed: 2, total: 2 },
     ]);
+    expect(loadedDexNumbers.sort((a, b) => a - b)).toEqual([1, 2]);
   });
 
   it('caches an empty array for a dex number with no matching cards', async () => {

@@ -57,6 +57,40 @@ describe('DexGrid', () => {
     });
   });
 
+  it('shows the loading tile state, not "unavailable", for a Pokemon whose dex number has not been cached yet, before the initial fetch resolves', async () => {
+    render(<DexGrid />);
+    // Right after the initial render, the auto-load effect has set isLoading
+    // true synchronously, but the mocked fetch chain resolves via
+    // microtasks, which haven't had a chance to run yet -- so nothing is
+    // cached for any dex number in this still-fresh render. Every non-owned
+    // tile should read as "loading", never the "confirmed empty"
+    // unavailable state, until data actually lands.
+    const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
+    expect(bulbasaurTile).toHaveClass('tile--loading');
+    expect(bulbasaurTile).not.toHaveClass('tile--unavailable');
+    expect(bulbasaurTile).toHaveAttribute('aria-busy', 'true');
+
+    // Let the fetch chain and effect resolve so no dangling act() warnings
+    // leak into subsequent tests.
+    await waitFor(() => {
+      expect(bulbasaurTile).not.toHaveClass('tile--loading');
+    });
+    expect(bulbasaurTile).toHaveClass('tile--unavailable');
+  });
+
+  it('never shows the loading tile state for an already-owned Pokemon, even while its initial fetch is still in flight', () => {
+    useAppStore.setState({
+      owned: {
+        1: { dexNumber: 1, cardId: 'some-card-id', condition: 'Near Mint', addedAt: '2024-01-01' },
+      },
+    });
+    render(<DexGrid />);
+    const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
+    expect(bulbasaurTile).toHaveClass('tile--owned');
+    expect(bulbasaurTile).not.toHaveClass('tile--loading');
+    expect(bulbasaurTile).toHaveAttribute('aria-busy', 'false');
+  });
+
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
     render(<DexGrid />);
     await waitFor(() => {
