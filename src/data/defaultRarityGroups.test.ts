@@ -12,6 +12,25 @@ describe('DEFAULT_RARITY_GROUPS', () => {
     const all = DEFAULT_RARITY_GROUPS.flatMap((g) => g.rarities);
     expect(new Set(all).size).toBe(all.length);
   });
+
+  it('seeds vintage-special with an empty rarities list', () => {
+    const group = DEFAULT_RARITY_GROUPS.find((g) => g.id === 'vintage-special');
+    expect(group?.rarities).toEqual([]);
+  });
+
+  it('never treats Shiny Vault rarities as full/special art by default', () => {
+    const list = fetchRarityList(DEFAULT_RARITY_GROUPS);
+    expect(list).not.toContain('Shiny rare');
+    expect(list).not.toContain('Shiny rare V');
+    expect(list).not.toContain('Shiny rare VMAX');
+    expect(list).not.toContain('Shiny Ultra Rare');
+  });
+
+  it('does not treat Classic Collection reprints as alt art', () => {
+    const altArt = DEFAULT_RARITY_GROUPS.find((g) => g.id === 'alt-art');
+    expect(altArt?.rarities).not.toContain('Classic Collection');
+    expect(fetchRarityList(DEFAULT_RARITY_GROUPS)).not.toContain('Classic Collection');
+  });
 });
 
 describe('fetchRarityList', () => {
