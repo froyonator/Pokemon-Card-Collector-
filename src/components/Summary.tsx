@@ -142,7 +142,7 @@ export function Summary() {
         <span className={styles.value}>
           {totalOwned} / {dexEntries.length}
         </span>
-        <span className={styles.label}>Pokemon with a card owned</span>
+        <span className={styles.label}>Pokémon with a card owned</span>
       </div>
       <div className={styles.stat}>
         <span className={styles.value}>
@@ -155,7 +155,7 @@ export function Summary() {
       </button>
       <div className={styles.progress}>
         <div className={styles.progressLabel}>
-          {totalOwned} of {availableCount} Pokemon with an available card under current filters
+          {totalOwned} of {availableCount} Pokémon with an available card under current filters
         </div>
         {/* Decorative: the progressLabel text above already states the same
             information in words, so the bar itself is redundant for screen

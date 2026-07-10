@@ -206,7 +206,7 @@ export function DexGrid() {
       </div>
       {dexEntries.length === 0 ? (
         <p className={styles.emptyState}>
-          Select at least one generation in the filter bar to see Pokemon here.
+          Select at least one generation in the filter bar to see Pokémon here.
         </p>
       ) : (
         <div className={styles.grid} data-version={dataVersion}>

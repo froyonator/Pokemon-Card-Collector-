@@ -21,12 +21,12 @@ const STEPS: Step[] = [
   {
     target: '[data-tutorial="first-tile"]',
     content:
-      'Click any Pokemon to see its special art card options. A dulled tile means you own a card for it, and a red tile means no special art card has been released for it yet.',
+      'Click any Pokémon to see its special art card options. A dulled tile means you own a card for it, and a red tile means no special art card has been released for it yet.',
   },
   {
     target: '[data-tutorial="refresh-data"]',
     content:
-      'Refresh Data rescans every Pokemon for newly released cards. Use it after a new set comes out.',
+      'Refresh Data rescans every Pokémon for newly released cards. Use it after a new set comes out.',
   },
   {
     target: '[data-tutorial="export-import"]',

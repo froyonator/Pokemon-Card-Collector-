@@ -1,13 +1,13 @@
 # Gen 1 Card Collector
 
-A web app for tracking a personal collection of Gen 1 (Kanto, #001-151) Pokemon TCG special art and full art cards. Mark which cards you own, keep a wishlist, and see the current market value of your collection.
+A web app for tracking a personal collection of Gen 1 (Kanto, #001-151) Pokémon TCG special art and full art cards. Mark which cards you own, keep a wishlist, and see the current market value of your collection.
 
 ## Features
 
-- All 151 Gen 1 Pokemon shown in dex order, with sprite and card view modes.
-- Click any Pokemon to see every special art or full art card ever printed for it, sourced live from the TCGdex database.
+- All 151 Gen 1 Pokémon shown in dex order, with sprite and card view modes.
+- Click any Pokémon to see every special art or full art card ever printed for it, sourced live from the TCGdex database.
 - Mark a card as owned and record its condition for your own reference.
-- Star a card to add it to your wishlist. Only one wishlist pick per Pokemon at a time.
+- Star a card to add it to your wishlist. Only one wishlist pick per Pokémon at a time.
 - Filter which rarity tiers count as "special art" using editable groups, and choose which card language you collect.
 - See market prices in USD, EUR, AUD, GBP, or CAD, with totals for your collection and your wishlist.
 - Export your collection to a file and import it back later, so your data is never tied to one browser.
