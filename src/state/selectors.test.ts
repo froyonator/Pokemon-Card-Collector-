@@ -47,6 +47,28 @@ describe('availableCardsForDex', () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('1');
   });
+
+  it('includes a card via a manual override into an active group, even when its raw rarity would not match', () => {
+    const set = activeRarities(groups, ['a']);
+    const promoCard: CardRecord = { ...cards[1], id: '3', rarity: 'Promo' };
+    const result = availableCardsForDex([...cards, promoCard], set, { '3': 'a' }, ['a']);
+    expect(result.map((c) => c.id).sort()).toEqual(['1', '3']);
+  });
+
+  it('excludes a card via a manual override into a group that is not active, even when its raw rarity would match', () => {
+    const set = activeRarities(groups, ['a']);
+    // cards[0] has rarity 'Ultra Rare', which matches group 'a' (active).
+    // The override reassigns it to group 'b', which is NOT active here.
+    const result = availableCardsForDex(cards, set, { [cards[0].id]: 'b' }, ['a']);
+    expect(result).toHaveLength(0);
+  });
+
+  it('falls back to raw rarity matching when no override is given', () => {
+    const set = activeRarities(groups, ['a']);
+    const result = availableCardsForDex(cards, set, {}, []);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('1');
+  });
 });
 
 describe('computeTileState', () => {

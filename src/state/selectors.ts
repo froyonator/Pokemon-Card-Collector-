@@ -12,8 +12,19 @@ export function activeRarities(groups: RarityGroup[], activeGroupIds: string[]):
   return set;
 }
 
-export function availableCardsForDex(allCards: CardRecord[], activeSet: Set<string>): CardRecord[] {
-  return allCards.filter((card) => activeSet.has(card.rarity));
+export function availableCardsForDex(
+  allCards: CardRecord[],
+  activeSet: Set<string>,
+  overrides: Record<string, string> = {},
+  activeGroupIds: string[] = []
+): CardRecord[] {
+  return allCards.filter((card) => {
+    const overrideGroupId = overrides[card.id];
+    if (overrideGroupId !== undefined) {
+      return activeGroupIds.includes(overrideGroupId);
+    }
+    return activeSet.has(card.rarity);
+  });
 }
 
 export type TileState = 'available' | 'owned' | 'unavailable';
