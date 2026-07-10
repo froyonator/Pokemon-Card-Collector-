@@ -13,6 +13,7 @@ export interface ExportableState {
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
+  uploadedImages: Record<string, string>;
 }
 
 export function buildExportPayload(state: ExportableState): ExportedUserData {
@@ -26,6 +27,7 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     wishlist: state.wishlist,
     selectedGenerations: state.selectedGenerations,
     cardOverrides: state.cardOverrides,
+    uploadedImages: state.uploadedImages,
   };
 }
 
@@ -107,6 +109,17 @@ export function parseImportPayload(raw: string): ExportedUserData {
   if (data.cardOverrides === undefined) {
     data.cardOverrides = DEFAULT_CARD_OVERRIDES;
   } else if (!isStringRecord(data.cardOverrides)) {
+    throw new Error('This file does not look like a valid export.');
+  }
+  // Backups exported before this feature existed predate this field
+  // entirely. Unlike cardOverrides, there is no seed data to fall back to
+  // here, so default to an empty map rather than any pre-populated set.
+  // If the field IS present, it must actually be a card id -> data URI
+  // string map, not some other shape, same reasoning as the other shape
+  // checks above.
+  if (data.uploadedImages === undefined) {
+    data.uploadedImages = {};
+  } else if (!isStringRecord(data.uploadedImages)) {
     throw new Error('This file does not look like a valid export.');
   }
   return data as ExportedUserData;

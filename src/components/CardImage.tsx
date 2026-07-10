@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
 import styles from './CardImage.module.css';
 
@@ -11,6 +11,19 @@ export interface CardImageProps {
   className?: string;
   width?: number;
   loading?: 'lazy' | 'eager';
+  /** A user-uploaded replacement image for this specific card, as a
+   *  `data:` URI (see src/state/imageResize.ts, which produces these).
+   *  Unlike imageBase, this is not a TCGdex CDN base path, so it's rendered
+   *  directly rather than run through cardImageUrl's variant/retry logic --
+   *  and it takes priority over both imageBase and the "no image"
+   *  placeholder whenever it's present, even if imageBase is also empty. */
+  uploadedImageUri?: string;
+  // When provided, the "no image available" placeholder also renders a
+  // "Search" button (calling this) and an "Upload image" file control. When
+  // omitted, the placeholder renders exactly as it does today -- callers
+  // that don't have search/upload context aren't forced to provide it.
+  onSearchImage?: () => void;
+  onUploadImage?: (file: File) => void;
 }
 
 interface Variant {
@@ -26,9 +39,19 @@ const VARIANTS: Variant[] = [
   { quality: 'high', ext: 'png' },
 ];
 
-export function CardImage({ imageBase, alt, className, width, loading }: CardImageProps) {
+export function CardImage({
+  imageBase,
+  alt,
+  className,
+  width,
+  loading,
+  uploadedImageUri,
+  onSearchImage,
+  onUploadImage,
+}: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // A mounted CardImage instance can be handed a different imageBase later
   // (e.g. DexGrid keeps its Tile components mounted across tab switches, and
@@ -42,10 +65,30 @@ export function CardImage({ imageBase, alt, className, width, loading }: CardIma
     setExhausted(false);
   }, [imageBase]);
 
+  // A user-uploaded image takes priority over everything else -- that's the
+  // entire point of uploading one for a card TCGdex has no image for.
+  if (uploadedImageUri) {
+    return (
+      <img src={uploadedImageUri} alt={alt} className={className} width={width} loading={loading} />
+    );
+  }
+
   const hasNoImage = !imageBase || exhausted;
 
+  function handleUploadButtonClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) {
+      onUploadImage?.(file);
+    }
+  }
+
   if (hasNoImage) {
-    return (
+    const placeholder = (
       <div
         className={[styles.placeholder, className].filter(Boolean).join(' ')}
         style={width ? { width, height: width } : undefined}
@@ -53,6 +96,51 @@ export function CardImage({ imageBase, alt, className, width, loading }: CardIma
         aria-label={alt}
       >
         No image available
+      </div>
+    );
+
+    if (!onSearchImage && !onUploadImage) {
+      return placeholder;
+    }
+
+    return (
+      <div className={styles.placeholderWithActions}>
+        {placeholder}
+        <div
+          className={styles.actions}
+          // Stops any click inside here -- the Search/Upload buttons
+          // themselves, and the hidden file input's own click event
+          // (whether from a real user click or the programmatic
+          // fileInputRef.current.click() below) -- from bubbling up into a
+          // caller's own click handler on an ancestor of this component
+          // (e.g. Picker's card-select button), which would otherwise fire
+          // alongside these actions.
+          onClick={(event) => event.stopPropagation()}
+        >
+          {onSearchImage && (
+            <button type="button" className={styles.actionButton} onClick={onSearchImage}>
+              Search
+            </button>
+          )}
+          {onUploadImage && (
+            <>
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={handleUploadButtonClick}
+              >
+                Upload image
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className={styles.hiddenInput}
+                onChange={handleFileChange}
+              />
+            </>
+          )}
+        </div>
       </div>
     );
   }

@@ -12,6 +12,7 @@ function resetStore() {
     wishlist: {},
     selectedGenerations: [1],
     cardOverrides: {},
+    uploadedImages: {},
     hasUnsavedChanges: false,
   });
 }
@@ -187,6 +188,29 @@ describe('setCardOverride', () => {
   });
 });
 
+describe('setUploadedImage', () => {
+  it('assigns an uploaded image data URI to a card', () => {
+    useAppStore.getState().setUploadedImage('svp-044', 'data:image/jpeg;base64,ABC');
+    expect(useAppStore.getState().uploadedImages['svp-044']).toBe('data:image/jpeg;base64,ABC');
+  });
+
+  it('clears an uploaded image when passed null', () => {
+    useAppStore.getState().setUploadedImage('svp-044', 'data:image/jpeg;base64,ABC');
+    useAppStore.getState().setUploadedImage('svp-044', null);
+    expect(useAppStore.getState().uploadedImages['svp-044']).toBeUndefined();
+  });
+
+  it('sets hasUnsavedChanges', () => {
+    useAppStore.getState().setUploadedImage('svp-044', 'data:image/jpeg;base64,ABC');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+
+  it('does not set hasUnsavedChanges for a no-op clear of a card with no uploaded image', () => {
+    useAppStore.getState().setUploadedImage('svp-044', null);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+});
+
 describe('markChangesSaved', () => {
   it('resets hasUnsavedChanges to false', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
@@ -197,9 +221,10 @@ describe('markChangesSaved', () => {
 });
 
 describe('replaceUserData', () => {
-  it('overwrites the full user data slice, including selectedGenerations and cardOverrides', () => {
+  it('overwrites the full user data slice, including selectedGenerations, cardOverrides, and uploadedImages', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
     useAppStore.getState().setCardOverride('svp-044', 'full-art');
+    useAppStore.getState().setUploadedImage('svp-044', 'data:image/jpeg;base64,OLD');
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'ja',
@@ -210,12 +235,14 @@ describe('replaceUserData', () => {
       wishlist: {},
       selectedGenerations: [1],
       cardOverrides: { 'other-card': 'rainbow-gold' },
+      uploadedImages: { 'other-card': 'data:image/jpeg;base64,NEW' },
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
     expect(state.currency).toBe('EUR');
     expect(state.owned[6]).toBeUndefined();
     expect(state.cardOverrides).toEqual({ 'other-card': 'rainbow-gold' });
+    expect(state.uploadedImages).toEqual({ 'other-card': 'data:image/jpeg;base64,NEW' });
   });
 
   it('resets hasUnsavedChanges to false, regardless of what was pending before', () => {
@@ -231,6 +258,7 @@ describe('replaceUserData', () => {
       wishlist: {},
       selectedGenerations: [1],
       cardOverrides: {},
+      uploadedImages: {},
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
@@ -246,6 +274,7 @@ describe('replaceUserData', () => {
       wishlist: {},
       selectedGenerations: [1],
       cardOverrides: {},
+      uploadedImages: {},
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');

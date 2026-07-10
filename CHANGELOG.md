@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A "Search" button and an "Upload image" control on the "no image available" placeholder for cards TCGdex has no image for. Search opens a TCGplayer site search for the card in a new tab; an uploaded image is resized and saved into your export/backup file, so it survives across devices.
+
 ### Changed
 
 - Renamed the app from "Pokemon Card Collector" to "Collector's Ledger".

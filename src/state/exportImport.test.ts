@@ -12,6 +12,7 @@ const baseState = {
   wishlist: {},
   selectedGenerations: [1],
   cardOverrides: { 'svp-044': 'full-art' },
+  uploadedImages: { 'svp-044': 'data:image/jpeg;base64,ABC' },
 };
 
 describe('buildExportPayload', () => {
@@ -22,6 +23,7 @@ describe('buildExportPayload', () => {
     expect(payload.groups).toEqual(DEFAULT_RARITY_GROUPS);
     expect(payload.selectedGenerations).toEqual([1]);
     expect(payload.cardOverrides).toEqual({ 'svp-044': 'full-art' });
+    expect(payload.uploadedImages).toEqual({ 'svp-044': 'data:image/jpeg;base64,ABC' });
   });
 });
 
@@ -137,6 +139,30 @@ describe('parseImportPayload', () => {
 
   it('throws when cardOverrides is present but not a plain object of strings', () => {
     const badPayload = { ...baseState, version: 1, cardOverrides: { 'svp-044': 42 } };
+    expect(() => parseImportPayload(JSON.stringify(badPayload))).toThrow(
+      'This file does not look like a valid export.'
+    );
+  });
+
+  it('defaults uploadedImages to an empty map for a backup exported before this feature existed', () => {
+    const preFeaturePayload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      // no uploadedImages key at all, matching a real pre-feature export file
+    };
+    const parsed = parseImportPayload(JSON.stringify(preFeaturePayload));
+    expect(parsed.uploadedImages).toEqual({});
+  });
+
+  it('throws when uploadedImages is present but not a plain object of strings', () => {
+    const badPayload = { ...baseState, version: 1, uploadedImages: { 'svp-044': 42 } };
     expect(() => parseImportPayload(JSON.stringify(badPayload))).toThrow(
       'This file does not look like a valid export.'
     );

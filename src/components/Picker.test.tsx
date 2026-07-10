@@ -4,7 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Picker } from './Picker';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { resizeImageForUpload } from '../state/imageResize';
+import { buildTcgplayerSearchUrl } from '../state/tcgplayerSearch';
 import type { CardRecord } from '../types';
+
+// Wraps the real resizeImageForUpload in a vi.fn so most tests below never
+// touch it (Picker only calls it from onUploadImage, which most tests here
+// never trigger), while the upload-specific test further down swaps in a
+// resolved value directly -- avoiding driving the real canvas-based resize,
+// which jsdom cannot exercise (see src/state/imageResize.ts).
+vi.mock('../state/imageResize', () => ({
+  resizeImageForUpload: vi.fn(),
+}));
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -39,6 +50,7 @@ function resetStore() {
     owned: {},
     wishlist: {},
     selectedGenerations: [1],
+    uploadedImages: {},
     hasUnsavedChanges: false,
   });
 }
@@ -56,6 +68,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(resizeImageForUpload).mockReset();
 });
 
 describe('Picker', () => {
@@ -275,5 +288,44 @@ describe('Picker', () => {
       ''
     );
     expect(useAppStore.getState().cardOverrides[cardA.id]).toBeUndefined();
+  });
+
+  it('opens a TCGplayer search built from the card\'s name, local id, and set name (not the dex number) when Search is clicked on a card with no image', async () => {
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(openSpy).toHaveBeenCalledWith(
+      buildTcgplayerSearchUrl(noImageCard),
+      '_blank',
+      'noopener,noreferrer'
+    );
+    openSpy.mockRestore();
+  });
+
+  it('uploading an image for a card with no TCGdex image resizes it and stores the result via setUploadedImage', async () => {
+    vi.mocked(resizeImageForUpload).mockResolvedValue('data:image/jpeg;base64,RESIZED');
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    const file = new File(['fake-bytes'], 'photo.jpg', { type: 'image/jpeg' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    expect(resizeImageForUpload).toHaveBeenCalledWith(file);
+    await waitFor(() => {
+      expect(useAppStore.getState().uploadedImages['no-image-card']).toBe(
+        'data:image/jpeg;base64,RESIZED'
+      );
+    });
+  });
+
+  it('renders a previously uploaded image directly instead of the "no image" placeholder', () => {
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    useAppStore.setState({
+      uploadedImages: { 'no-image-card': 'data:image/jpeg;base64,EXISTING' },
+    });
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    const img = screen.getByAltText(`${noImageCard.name} from ${noImageCard.setName}`);
+    expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,EXISTING');
+    expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
   });
 });

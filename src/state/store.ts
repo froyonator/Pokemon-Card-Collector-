@@ -14,6 +14,7 @@ export interface ExportedUserData {
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
+  uploadedImages: Record<string, string>;
 }
 
 export type ToggleWishlistResult = { ok: true } | { ok: false; reason: string };
@@ -33,6 +34,7 @@ export interface AppState {
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
+  uploadedImages: Record<string, string>;
   hasUnsavedChanges: boolean;
 
   setLanguage: (language: string) => void;
@@ -41,6 +43,7 @@ export interface AppState {
   setGroups: (groups: RarityGroup[]) => void;
   toggleGeneration: (id: number) => void;
   setCardOverride: (cardId: string, groupId: string | null) => void;
+  setUploadedImage: (cardId: string, dataUri: string | null) => void;
 
   markOwned: (dexNumber: number, cardId: string, condition: Condition) => void;
   unmarkOwned: (dexNumber: number) => void;
@@ -78,6 +81,9 @@ export const useAppStore = create<AppState>()(
       // product choice, not an oversight.
       selectedGenerations: [1],
       cardOverrides: DEFAULT_CARD_OVERRIDES,
+      // Unlike cardOverrides, there is no seed data for user-uploaded
+      // images -- this always starts empty.
+      uploadedImages: {},
       priceVersion: 0,
       hasUnsavedChanges: false,
 
@@ -106,6 +112,20 @@ export const useAppStore = create<AppState>()(
           }
           return {
             cardOverrides: { ...state.cardOverrides, [cardId]: groupId },
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      setUploadedImage: (cardId, dataUri) =>
+        set((state) => {
+          if (dataUri === null) {
+            if (!(cardId in state.uploadedImages)) return {};
+            const uploadedImages = { ...state.uploadedImages };
+            delete uploadedImages[cardId];
+            return { uploadedImages, hasUnsavedChanges: true };
+          }
+          return {
+            uploadedImages: { ...state.uploadedImages, [cardId]: dataUri },
             hasUnsavedChanges: true,
           };
         }),
@@ -144,7 +164,7 @@ export const useAppStore = create<AppState>()(
         if (existing && existing.cardId !== cardId) {
           return {
             ok: false,
-            reason: 'Only one wishlist card is allowed per Pokemon. Remove the current pick first.',
+            reason: 'Only one wishlist card is allowed per Pokémon. Remove the current pick first.',
           };
         }
         set({
@@ -179,6 +199,7 @@ export const useAppStore = create<AppState>()(
           wishlist: data.wishlist,
           selectedGenerations: data.selectedGenerations,
           cardOverrides: data.cardOverrides,
+          uploadedImages: data.uploadedImages,
           hasUnsavedChanges: false,
         }),
     }),
@@ -193,6 +214,7 @@ export const useAppStore = create<AppState>()(
         wishlist: state.wishlist,
         selectedGenerations: state.selectedGenerations,
         cardOverrides: state.cardOverrides,
+        uploadedImages: state.uploadedImages,
         hasUnsavedChanges: state.hasUnsavedChanges,
       }),
     }

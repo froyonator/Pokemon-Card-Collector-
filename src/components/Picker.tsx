@@ -1,6 +1,8 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 import { loadAllPrintingsForDex } from '../state/loadCardData';
+import { resizeImageForUpload } from '../state/imageResize';
+import { buildTcgplayerSearchUrl } from '../state/tcgplayerSearch';
 import { useAppStore } from '../state/store';
 import type { CardRecord, Condition } from '../types';
 import { CardImage } from './CardImage';
@@ -70,6 +72,8 @@ export function Picker({
   const groups = useAppStore((s) => s.groups);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const setCardOverride = useAppStore((s) => s.setCardOverride);
+  const uploadedImages = useAppStore((s) => s.uploadedImages);
+  const setUploadedImage = useAppStore((s) => s.setUploadedImage);
 
   const [pendingCard, setPendingCard] = useState<CardRecord | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -200,21 +204,44 @@ export function Picker({
                   >
                     {isWishlisted ? '★' : '☆'}
                   </button>
-                  <button
-                    type="button"
+                  {/* A plain <button> here would nest the placeholder's own
+                      Search/Upload <button>s (rendered by CardImage below)
+                      inside this outer button, which is invalid HTML and
+                      trips React's validateDOMNesting warning. A div with an
+                      explicit button role, tabIndex, and matching keyboard
+                      handling preserves the same click/keyboard-activation
+                      behavior without that nesting. */}
+                  <div
+                    role="button"
+                    tabIndex={0}
                     className={isOwned ? styles.cardBodySelected : styles.cardBody}
                     onClick={() => setPendingCard(card)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPendingCard(card);
+                      }
+                    }}
                   >
                     <CardImage
                       imageBase={card.imageBase}
+                      uploadedImageUri={uploadedImages[card.id]}
                       alt={`${card.name} from ${card.setName}`}
                       className={styles.cardImage}
+                      onSearchImage={() =>
+                        window.open(buildTcgplayerSearchUrl(card), '_blank', 'noopener,noreferrer')
+                      }
+                      onUploadImage={(file) => {
+                        resizeImageForUpload(file).then((dataUri) =>
+                          setUploadedImage(card.id, dataUri)
+                        );
+                      }}
                     />
                     <span>
                       {card.setName} #{card.localId}
                     </span>
                     <span className={styles.rarity}>{card.rarity}</span>
-                  </button>
+                  </div>
                   <select
                     className={styles.classify}
                     aria-label={`Classify ${card.name} (${card.setName} #${card.localId}) as`}

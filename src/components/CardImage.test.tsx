@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { CardImage } from './CardImage';
 
 describe('CardImage', () => {
@@ -67,5 +68,47 @@ describe('CardImage', () => {
     const img = screen.getByAltText('Pikachu VMAX');
     expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/swsh/swsh35/74/low.webp');
     expect(container.querySelectorAll('img')).toHaveLength(1);
+  });
+
+  it('renders the placeholder with no Search/Upload controls when onSearchImage/onUploadImage are not provided, unchanged from today', () => {
+    render(<CardImage imageBase="" alt="Mystery card" />);
+    expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /upload image/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a Search button on the placeholder when onSearchImage is provided, and clicking it calls onSearchImage', async () => {
+    const onSearchImage = vi.fn();
+    render(<CardImage imageBase="" alt="Mystery card" onSearchImage={onSearchImage} />);
+    const searchButton = screen.getByRole('button', { name: 'Search' });
+    await userEvent.click(searchButton);
+    expect(onSearchImage).toHaveBeenCalledTimes(1);
+    // The placeholder itself is still shown alongside the new controls.
+    expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+  });
+
+  it('shows an upload control on the placeholder when onUploadImage is provided, and selecting a file calls it with that file', async () => {
+    const onUploadImage = vi.fn();
+    const { container } = render(
+      <CardImage imageBase="" alt="Mystery card" onUploadImage={onUploadImage} />
+    );
+    const file = new File(['fake-bytes'], 'photo.jpg', { type: 'image/jpeg' });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    expect(onUploadImage).toHaveBeenCalledTimes(1);
+    expect(onUploadImage).toHaveBeenCalledWith(file);
+  });
+
+  it('renders an uploadedImageUri directly via <img>, bypassing cardImageUrl variant logic, even when imageBase is empty', () => {
+    render(
+      <CardImage
+        imageBase=""
+        alt="Charizard ex"
+        uploadedImageUri="data:image/jpeg;base64,ABC123"
+      />
+    );
+    const img = screen.getByAltText('Charizard ex');
+    expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,ABC123');
+    expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
   });
 });
