@@ -9,12 +9,10 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
   {
     id: 'alt-art',
     name: 'Alt Art / Illustration Rare',
-    rarities: [
-      'Special illustration rare',
-      'Illustration rare',
-      'Classic Collection',
-      'Full Art Trainer',
-    ],
+    // 'Classic Collection' (Celebrations-set reprints of original Base Set artwork) intentionally
+    // excluded: these use the classic small-artwork-window frame, not full-bleed/special art, and
+    // TCGdex frequently has no `image` field at all for these cards, so they'd render broken anyway.
+    rarities: ['Special illustration rare', 'Illustration rare', 'Full Art Trainer'],
   },
   {
     id: 'rainbow-gold',
@@ -24,7 +22,16 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
   {
     id: 'vintage-special',
     name: 'Vintage Specials',
-    rarities: ['Shiny rare', 'Shiny rare V', 'Shiny rare VMAX', 'Shiny Ultra Rare'],
+    // Seeded empty on purpose: genuine vintage specials (e.g. Neo Destiny's "Shining Charizard",
+    // EX-era "Charizard ☆" Star cards) are NOT reliably distinguishable from ordinary common/
+    // uncommon cards via TCGdex's `rarity` field alone — both of those cards report
+    // `"rarity":"Rare"`, identical to thousands of completely ordinary non-special cards, so
+    // matching on "Rare" would flood the picker with false positives. The 'Shiny rare' family
+    // ('Shiny rare', 'Shiny rare V', 'Shiny rare VMAX', 'Shiny Ultra Rare') was also removed from
+    // here: it maps to "Shiny Vault" cards (Hidden Fates Shiny Vault, Paldean Fates), which use
+    // the standard card frame with just an inverted color palette, not full-bleed/special art.
+    // Users can still add rarities to this group manually via the Manage Groups panel.
+    rarities: [],
   },
 ];
 
