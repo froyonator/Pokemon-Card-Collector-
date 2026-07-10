@@ -1299,7 +1299,7 @@ describe('fetchRates', () => {
 
 describe('convertAmount', () => {
   it('multiplies and rounds to 2 decimal places', () => {
-    expect(convertAmount(699.99, 1.441)).toBe(1008.79);
+    expect(convertAmount(699.99, 1.441)).toBe(1008.69);
   });
 
   it('returns the same amount for a rate of 1', () => {
