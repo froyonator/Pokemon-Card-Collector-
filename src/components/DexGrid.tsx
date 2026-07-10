@@ -89,7 +89,12 @@ export function DexGrid() {
   return (
     <div>
       <div className={styles.toolbar}>
-        <div className={styles.viewToggle} role="radiogroup" aria-label="View">
+        <div
+          className={styles.viewToggle}
+          role="radiogroup"
+          aria-label="View"
+          data-tutorial="view-toggle"
+        >
           <button type="button" aria-pressed={view === 'sprite'} onClick={() => setView('sprite')}>
             Sprite view
           </button>
@@ -97,7 +102,12 @@ export function DexGrid() {
             Card view
           </button>
         </div>
-        <button type="button" onClick={handleRefreshData} disabled={isLoading}>
+        <button
+          type="button"
+          onClick={handleRefreshData}
+          disabled={isLoading}
+          data-tutorial="refresh-data"
+        >
           {isLoading ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
@@ -116,16 +126,17 @@ export function DexGrid() {
               ? allCards.find((c) => c.id === ownedRecord.cardId)
               : undefined;
             return (
-              <Tile
-                key={entry.number}
-                dexNumber={entry.number}
-                name={entry.name}
-                spriteUrl={spriteUrl(entry.number)}
-                state={state}
-                view={view}
-                ownedCardImageUrl={ownedCard ? cardImageUrl(ownedCard.imageBase) : undefined}
-                onClick={() => setOpenDexNumber(entry.number)}
-              />
+              <div key={entry.number} data-tutorial={entry.number === 1 ? 'first-tile' : undefined}>
+                <Tile
+                  dexNumber={entry.number}
+                  name={entry.name}
+                  spriteUrl={spriteUrl(entry.number)}
+                  state={state}
+                  view={view}
+                  ownedCardImageUrl={ownedCard ? cardImageUrl(ownedCard.imageBase) : undefined}
+                  onClick={() => setOpenDexNumber(entry.number)}
+                />
+              </div>
             );
           })}
         </div>
