@@ -22,7 +22,7 @@ describe('convertViaUsdPivot', () => {
 
   it('converts EUR by pivoting through USD', () => {
     const result = convertViaUsdPivot(100, 'EUR', 'AUD', usdRates);
-    expect(result).toBeCloseTo(164.79, 1);
+    expect(result).toBe(164.78);
   });
 
   it('returns null when the target rate is missing', () => {
@@ -50,6 +50,11 @@ describe('priceInCurrency', () => {
   it('returns a null amount when there is no pricing for that source', () => {
     const result = priceInCurrency(undefined, 'cardmarket', 'EUR', usdRates);
     expect(result.amount).toBeNull();
+  });
+
+  it('returns a null amount when usdRates has not loaded yet and conversion is required', () => {
+    const result = priceInCurrency(pricing, 'tcgplayer', 'AUD', undefined);
+    expect(result).toEqual({ amount: null, currency: 'AUD', isConverted: false });
   });
 });
 
