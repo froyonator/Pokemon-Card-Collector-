@@ -5,6 +5,27 @@ function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
 
+// Drains the microtask queue via a macrotask boundary, more robust than
+// chaining a guessed number of `await Promise.resolve()` calls -- useful
+// here since some tests below need several chained awaits (fetchSets's own
+// res.json() call, mapWithConcurrency's worker ramp-up, etc.) to settle
+// before the next step.
+async function flushMicrotasks(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// This project has no @types/node dependency, so the global `process`
+// symbol (used below purely to assert loadAllCardData's abort handling
+// doesn't produce an unhandledRejection) isn't typed. Vitest genuinely runs
+// on Node under the hood even with a jsdom environment, so `process` exists
+// at runtime; this narrowly-typed accessor covers just the two methods
+// needed instead of pulling in a whole new dependency for it.
+interface MinimalNodeProcess {
+  on(event: 'unhandledRejection', listener: (reason: unknown) => void): void;
+  off(event: 'unhandledRejection', listener: (reason: unknown) => void): void;
+}
+const nodeProcess = (globalThis as unknown as { process: MinimalNodeProcess }).process;
+
 beforeEach(() => {
   localStorage.clear();
 });
@@ -331,5 +352,345 @@ describe('loadAllPrintingsForDex', () => {
     await loadAllPrintingsForDex('en', 4, secondShowAllFetch);
 
     expect(secondShowAllFetch.mock.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe('cross-load-path write-generation guard (loadAllCardData vs. loadAllPrintingsForDex racing on the same dex number)', () => {
+  it('does not let a slow curated loadAllCardData write clobber a faster, later-started loadAllPrintingsForDex ("Show all cards") result for the same dex number', async () => {
+    let releaseCurated: ((response: Response) => void) | undefined;
+    const curatedFetch = vi.fn((url: string) => {
+      if (url.includes('/sets')) {
+        return Promise.resolve(jsonResponse([{ id: 'sv03.5', name: '151' }]));
+      }
+      // The curated card-list request for dex 4 hangs until manually
+      // released, simulating a slow curated fetch that started first.
+      return new Promise<Response>((resolve) => {
+        releaseCurated = resolve;
+      });
+    });
+
+    const curatedPromise = loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      fetchImpl: curatedFetch,
+    });
+
+    // Let the curated call reach (and hang on) its one card-list request.
+    // Its write generation for dex 4 is reserved synchronously right after
+    // fetchSets resolves, before this request is even issued, so by this
+    // point it has already reserved its (soon-to-be-stale) generation.
+    await flushMicrotasks();
+    expect(releaseCurated).toBeDefined();
+
+    // Show-All starts LATER (reserving a newer generation for the same key)
+    // and completes FULLY before the curated fetch resolves.
+    const showAllFetch = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ]);
+    });
+    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
+
+    // Now let the stale curated fetch finally resolve.
+    releaseCurated!(
+      jsonResponse([
+        {
+          id: 'sv03.5-199',
+          localId: '199',
+          name: 'Charizard ex',
+          image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        },
+      ])
+    );
+    await curatedPromise;
+
+    // The curated write must have been skipped: the cache should still
+    // reflect Show-All's fuller/fresher result, not get clobbered back to
+    // the narrower curated one just because it happened to resolve last.
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
+  });
+
+  it('does not skip a legitimately newer curated write just because a Show-All fetch already wrote to the same dex number earlier', async () => {
+    const showAllFetch = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ]);
+    });
+    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
+
+    // The user deliberately hits "Refresh Data" some time later: a fresh
+    // curated load for the same dex number, started well after Show-All
+    // already finished. This is a legitimate newer action, not a stale
+    // straggler racing against it, so its write must NOT be skipped --
+    // proving the guard doesn't overreach and break ordinary sequential
+    // refreshes.
+    const curatedFetch = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      return jsonResponse([
+        {
+          id: 'sv03.5-199',
+          localId: '199',
+          name: 'Charizard ex',
+          image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        },
+      ]);
+    });
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      fetchImpl: curatedFetch,
+    });
+
+    const cached = getAllCachedCardsForDex('en', 4);
+    expect(cached).toHaveLength(1);
+    expect(cached[0]).toMatchObject({ id: 'sv03.5-199' });
+  });
+});
+
+describe('loadAllCardData AbortSignal cancellation', () => {
+  it('stops issuing further fetch calls once aborted, not just ignoring their eventual results', async () => {
+    const controller = new AbortController();
+    const releasers: Array<() => void> = [];
+    const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/sets')) {
+        return Promise.resolve(jsonResponse([{ id: 'sv03.5', name: '151' }]));
+      }
+      return new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          reject(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        let settled = false;
+        releasers.push(() => {
+          if (settled) return;
+          settled = true;
+          resolve(jsonResponse([]));
+        });
+        signal?.addEventListener('abort', () => {
+          if (settled) return;
+          settled = true;
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+
+    const dexEntries = Array.from({ length: 10 }, (_, i) => ({ number: i + 1, name: `Mon${i + 1}` }));
+    const promise = loadAllCardData('en', {
+      dexEntries,
+      rarities: ['Ultra Rare'], // 10 jobs, concurrency 6 -> 6 start immediately, 4 queued
+      fetchImpl,
+      signal: controller.signal,
+    });
+
+    await flushMicrotasks();
+    expect(releasers).toHaveLength(6);
+    const callsAfterRampUp = fetchImpl.mock.calls.length; // 1 (/sets) + 6 card-list calls
+
+    // Release exactly one in-flight job normally, then abort immediately
+    // (synchronously, before that release's continuation runs) -- this lets
+    // that job's worker loop back to pick up a fresh job from the queue,
+    // proving it's the PROACTIVE check (not merely in-flight requests
+    // rejecting) that stops it from issuing an 11th fetch call.
+    releasers[0]();
+    controller.abort();
+    await promise;
+    await flushMicrotasks();
+
+    expect(fetchImpl.mock.calls.length).toBe(callsAfterRampUp);
+  });
+
+  it('does not produce an unhandled promise rejection when aborted mid-flight', async () => {
+    const unhandled: unknown[] = [];
+    const handler = (reason: unknown) => unhandled.push(reason);
+    nodeProcess.on('unhandledRejection', handler);
+    try {
+      const controller = new AbortController();
+      const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+        if (url.includes('/sets')) {
+          return Promise.resolve(jsonResponse([{ id: 'sv03.5', name: '151' }]));
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+          }
+          signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        });
+      });
+
+      const promise = loadAllCardData('en', {
+        dexEntries: [
+          { number: 1, name: 'Bulbasaur' },
+          { number: 2, name: 'Ivysaur' },
+          { number: 3, name: 'Venusaur' },
+        ],
+        rarities: ['Ultra Rare', 'Secret Rare', 'Special illustration rare'],
+        fetchImpl,
+        signal: controller.signal,
+      });
+
+      await flushMicrotasks();
+      controller.abort();
+      // Must resolve, not reject.
+      await expect(promise).resolves.toBeUndefined();
+      // Give any straggling microtask-queued rejections (from other
+      // in-flight jobs settling around the same time) a chance to surface
+      // as unhandledRejection events, which Node fires a tick after the
+      // relevant microtask queue drains.
+      await flushMicrotasks();
+    } finally {
+      nodeProcess.off('unhandledRejection', handler);
+    }
+    expect(unhandled).toEqual([]);
+  });
+
+  it('still rejects for a genuine (non-abort) fetch failure, not silently swallowed by the abort-handling path', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      return { ok: false, status: 500, json: async () => ({}) } as Response;
+    });
+
+    await expect(
+      loadAllCardData('en', {
+        dexEntries: [{ number: 1, name: 'Bulbasaur' }],
+        rarities: ['Ultra Rare'],
+        fetchImpl,
+      })
+    ).rejects.toThrow('TCGdex request failed with status 500');
+  });
+
+  it('still rejects for a genuine fetch failure even when an AbortSignal is provided but never aborted', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      return { ok: false, status: 500, json: async () => ({}) } as Response;
+    });
+
+    await expect(
+      loadAllCardData('en', {
+        dexEntries: [{ number: 1, name: 'Bulbasaur' }],
+        rarities: ['Ultra Rare'],
+        fetchImpl,
+        signal: controller.signal,
+      })
+    ).rejects.toThrow('TCGdex request failed with status 500');
+  });
+});
+
+describe('3-way interleaving: curated load + Show-All + a mid-flight abort, all targeting the same dex number', () => {
+  it('an aborted curated load never clobbers a concurrently-completed Show-All result, and resolves cleanly instead of rejecting', async () => {
+    // Models the exact scenario from the bug report: a curated
+    // loadAllCardData fetch for dex 4 starts and hangs; a "Show all cards"
+    // fetch for the same dex number starts later and runs to completion
+    // while the curated one is still in flight; then the user switches
+    // language, so DexGrid aborts the curated load's controller (Show-All
+    // isn't wired to any controller and is unaffected).
+    const controller = new AbortController();
+    let releaseCurated: ((response: Response) => void) | undefined;
+    const curatedFetch = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/sets')) {
+        return Promise.resolve(jsonResponse([{ id: 'sv03.5', name: '151' }]));
+      }
+      return new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          reject(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        releaseCurated = resolve;
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+
+    const curatedPromise = loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      fetchImpl: curatedFetch,
+      signal: controller.signal,
+    });
+
+    // Let the curated call reserve its generation for dex 4 and hang on its
+    // one card-list request.
+    await flushMicrotasks();
+    expect(releaseCurated).toBeDefined();
+
+    // Show-All starts (reserving a newer generation for the same key) and
+    // runs to completion, entirely independent of the curated call's
+    // AbortController.
+    const showAllFetch = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ]);
+    });
+    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
+
+    // The user switches language: DexGrid aborts the curated load instead
+    // of letting it run to completion in the background.
+    controller.abort();
+    // Must resolve (not reject) despite being aborted mid-flight.
+    await expect(curatedPromise).resolves.toBeUndefined();
+
+    // Show-All's result must still be intact: the aborted curated load must
+    // not have written anything at all for dex 4 -- neither because it lost
+    // the write-generation race (it never got that far) nor because
+    // aborting somehow bypassed the guard.
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
   });
 });

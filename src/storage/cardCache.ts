@@ -79,6 +79,45 @@ export function cardCacheKey(language: string, dexNumber: number): string {
   return `${language}:${dexNumber}`;
 }
 
+// Coordinates the two independent fetch-and-write paths that can both target
+// the same language:dexNumber cache key with zero awareness of each other:
+// loadAllCardData (curated "Refresh Data" / auto-load) and
+// loadAllPrintingsForDex ("Show all cards"). Without this, whichever call's
+// write happens to land LAST always wins, even if it started EARLIER and is
+// therefore describing older, already-superseded data -- e.g. a curated
+// fetch that's slow and a Show-All fetch for the same dex number that
+// starts later but finishes first; when the stale curated fetch eventually
+// resolves, it would otherwise clobber the newer, fuller Show-All result
+// right back to the narrower curated one. This is a plain JS-event-loop
+// interleaving hazard, independent of language or any other generation
+// tracking elsewhere in the app (e.g. DexGrid's own loadGeneration ref,
+// which only coordinates its own React state, not the underlying cache).
+//
+// reserveWriteGeneration must be called exactly once, at the very start of
+// a fetch for a given key -- before any network calls -- not right before
+// the eventual write. isLatestWriteGeneration must then be checked
+// immediately before every cache-mutating write for that key
+// (setCachedCards, clearFullPrintHistory, markFullPrintHistoryFetched): if
+// some OTHER fetch for the same key started later (and therefore reserved a
+// higher generation number), this call's write should be skipped entirely
+// -- the fresher attempt's own write, whenever it lands, is what should win.
+const writeGenerations = new Map<string, number>();
+
+export function reserveWriteGeneration(language: string, dexNumber: number): number {
+  const key = cardCacheKey(language, dexNumber);
+  const next = (writeGenerations.get(key) ?? 0) + 1;
+  writeGenerations.set(key, next);
+  return next;
+}
+
+export function isLatestWriteGeneration(
+  language: string,
+  dexNumber: number,
+  generation: number
+): boolean {
+  return writeGenerations.get(cardCacheKey(language, dexNumber)) === generation;
+}
+
 export function getCachedCards(language: string, dexNumber: number): CardRecord[] | undefined {
   const cache = readJson<CardCacheShape>(CARD_CACHE_KEY, {});
   return cache[cardCacheKey(language, dexNumber)];

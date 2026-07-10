@@ -37,12 +37,13 @@ export async function fetchCardsForDexAndRarity(
   dexNumber: number,
   rarity: string,
   language: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<TcgdexCardBrief[]> {
   const url = new URL(`${TCGDEX_BASE}/${language}/cards`);
   url.searchParams.set('dexId', `eq:${dexNumber}`);
   url.searchParams.set('rarity', `eq:${rarity}`);
-  const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' } });
+  const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' }, signal });
   if (!res.ok) {
     throw new Error(`TCGdex request failed with status ${res.status}`);
   }
@@ -53,11 +54,12 @@ export async function fetchCardsForDexAndRarity(
 export async function fetchAllCardsForDex(
   dexNumber: number,
   language: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<TcgdexCardBrief[]> {
   const url = new URL(`${TCGDEX_BASE}/${language}/cards`);
   url.searchParams.set('dexId', `eq:${dexNumber}`);
-  const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' } });
+  const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' }, signal });
   if (!res.ok) {
     throw new Error(`TCGdex request failed with status ${res.status}`);
   }
@@ -68,10 +70,12 @@ export async function fetchAllCardsForDex(
 export async function fetchCardDetail(
   cardId: string,
   language: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<TcgdexCardDetail> {
   const res = await fetchImpl(`${TCGDEX_BASE}/${language}/cards/${cardId}`, {
     headers: { Accept: 'application/json' },
+    signal,
   });
   if (!res.ok) {
     throw new Error(`TCGdex request failed with status ${res.status}`);
@@ -109,10 +113,12 @@ export interface TcgdexSetBrief {
 
 export async function fetchSets(
   language: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<TcgdexSetBrief[]> {
   const res = await fetchImpl(`${TCGDEX_BASE}/${language}/sets`, {
     headers: { Accept: 'application/json' },
+    signal,
   });
   if (!res.ok) {
     throw new Error(`TCGdex request failed with status ${res.status}`);

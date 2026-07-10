@@ -6,7 +6,9 @@ import {
   clearFullPrintHistory,
   getCachedCards,
   hasFullPrintHistory,
+  isLatestWriteGeneration,
   markFullPrintHistoryFetched,
+  reserveWriteGeneration,
   setCachedCards,
 } from '../storage/cardCache';
 import type { CardRecord } from '../types';
@@ -16,6 +18,24 @@ import type { CardRecord } from '../types';
 // to tune it, and a single constant keeps both call sites' network pressure
 // consistent.
 const CONCURRENCY = 6;
+
+// An aborted fetch (via AbortController.abort()) rejects with a DOMException
+// (or, in some environments, a plain Error) named 'AbortError'. This is an
+// EXPECTED, frequent outcome once a caller (DexGrid) cancels a superseded
+// load on every language switch / generation toggle / manual refresh -- not
+// a real failure -- so callers below check this before deciding whether to
+// re-throw. Duck-typed on `.name` rather than `instanceof DOMException`
+// since DOMException isn't guaranteed to be the exact thrown type across
+// every fetch implementation a caller might pass in (e.g. a hand-rolled
+// test mock).
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error) return err.name === 'AbortError';
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: unknown }).name === 'AbortError'
+  );
+}
 
 export interface LoadProgress {
   completed: number;
@@ -32,6 +52,14 @@ export interface LoadAllCardDataOptions {
   // streams in under concurrency, instead of only after all ~151 dex numbers
   // finish.
   onDexLoaded?: (dexNumber: number) => void;
+  // Lets a caller (DexGrid) cancel this call outright when a newer one
+  // supersedes it (language switch, generation toggle, manual refresh),
+  // instead of merely ignoring its eventual results. Checked both
+  // proactively (skipping jobs not yet started once aborted, so an aborted
+  // load doesn't keep consuming real network/API request budget for
+  // abandoned work) and passed through to every fetch call (so genuinely
+  // in-flight requests are cancelled too, not just future ones).
+  signal?: AbortSignal;
   // Method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under this
   // project's strict mode, a plain function-typed property is checked
   // contravariantly, and this test file's mock needs an explicitly
@@ -45,6 +73,11 @@ interface DexAccumulator {
   entry: DexEntry;
   remaining: number;
   cards: CardRecord[];
+  // Reserved once, right before this dex number's jobs start (i.e. at the
+  // start of this "fetch attempt" for this key, not right before the
+  // eventual write) -- see reserveWriteGeneration/isLatestWriteGeneration in
+  // storage/cardCache.ts for the full race this guards against.
+  generation: number;
 }
 
 interface Job {
@@ -62,96 +95,139 @@ export async function loadAllCardData(
     onProgress,
     onDexLoaded,
     fetchImpl = fetch,
+    signal,
   } = options;
 
-  const sets = await fetchSets(language, fetchImpl);
-  const setNameById = new Map(sets.map((s) => [s.id, s.name]));
+  try {
+    const sets = await fetchSets(language, fetchImpl, signal);
+    const setNameById = new Map(sets.map((s) => [s.id, s.name]));
 
-  // Defensive check, not currently reachable in production: GEN1_DEX has no
-  // duplicates and entriesForGenerations doesn't produce any either. Worth
-  // guarding anyway, since the accumulator below is keyed strictly by dex
-  // number with `remaining` initialized to exactly `rarities.length` -- a
-  // duplicate entry would still only get ONE accumulator, so its `remaining`
-  // counter would hit zero after only half the actual job count, firing
-  // setCachedCards/onProgress/onDexLoaded prematurely and silently dropping
-  // the other copy's cards.
-  const seenDexNumbers = new Set<number>();
-  for (const entry of dexEntries) {
-    if (seenDexNumbers.has(entry.number)) {
-      console.warn(
-        `loadAllCardData: dexEntries contains a duplicate dex number (${entry.number}). ` +
-          "Each dex number's card data may be incomplete: the accumulator design keys " +
-          'strictly by dex number, so only one copy\'s worth of rarity jobs gets counted ' +
-          "toward completion. Deduplicate dexEntries before calling loadAllCardData."
-      );
-      break;
-    }
-    seenDexNumbers.add(entry.number);
-  }
-
-  const total = dexEntries.length;
-  let completed = 0;
-
-  // Guard: if `rarities` is empty (e.g. every rarity group has been emptied
-  // via Manage Groups), there are zero jobs below and the remaining-counter
-  // completion branch would never fire for any dex number, silently skipping
-  // setCachedCards/onProgress/onDexLoaded entirely. Handle it directly
-  // instead, so every dex number still gets cached (as empty) and reported.
-  if (rarities.length === 0) {
+    // Defensive check, not currently reachable in production: GEN1_DEX has no
+    // duplicates and entriesForGenerations doesn't produce any either. Worth
+    // guarding anyway, since the accumulator below is keyed strictly by dex
+    // number with `remaining` initialized to exactly `rarities.length` -- a
+    // duplicate entry would still only get ONE accumulator, so its `remaining`
+    // counter would hit zero after only half the actual job count, firing
+    // setCachedCards/onProgress/onDexLoaded prematurely and silently dropping
+    // the other copy's cards.
+    const seenDexNumbers = new Set<number>();
     for (const entry of dexEntries) {
-      setCachedCards(language, entry.number, []);
-      clearFullPrintHistory(language, entry.number);
-      completed += 1;
-      onProgress?.({ completed, total });
-      onDexLoaded?.(entry.number);
+      if (seenDexNumbers.has(entry.number)) {
+        console.warn(
+          `loadAllCardData: dexEntries contains a duplicate dex number (${entry.number}). ` +
+            "Each dex number's card data may be incomplete: the accumulator design keys " +
+            'strictly by dex number, so only one copy\'s worth of rarity jobs gets counted ' +
+            "toward completion. Deduplicate dexEntries before calling loadAllCardData."
+        );
+        break;
+      }
+      seenDexNumbers.add(entry.number);
     }
-    return;
+
+    const total = dexEntries.length;
+    let completed = 0;
+
+    // Guard: if `rarities` is empty (e.g. every rarity group has been emptied
+    // via Manage Groups), there are zero jobs below and the remaining-counter
+    // completion branch would never fire for any dex number, silently skipping
+    // setCachedCards/onProgress/onDexLoaded entirely. Handle it directly
+    // instead, so every dex number still gets cached (as empty) and reported.
+    if (rarities.length === 0) {
+      for (const entry of dexEntries) {
+        if (signal?.aborted) return;
+        // Reserved and checked back-to-back with no `await` in between, so
+        // this always wins against itself -- it's here for defensive
+        // consistency with the concurrent path below (and to protect a
+        // dex number this loop is about to write that some OTHER, already-
+        // in-flight loadAllPrintingsForDex call for the same key might be
+        // mid-fetch on right now).
+        const generation = reserveWriteGeneration(language, entry.number);
+        if (isLatestWriteGeneration(language, entry.number, generation)) {
+          setCachedCards(language, entry.number, []);
+          clearFullPrintHistory(language, entry.number);
+        }
+        completed += 1;
+        onProgress?.({ completed, total });
+        onDexLoaded?.(entry.number);
+      }
+      return;
+    }
+
+    const accumulators = new Map<number, DexAccumulator>(
+      dexEntries.map((entry) => [
+        entry.number,
+        {
+          entry,
+          remaining: rarities.length,
+          cards: [],
+          // Reserved up front, at the start of this dex number's fetch
+          // attempt, before any of its jobs run -- not right before the
+          // eventual write -- so a later-started attempt for the same key
+          // (e.g. a "Show all cards" fetch kicked off after this one) is
+          // correctly recognized as fresher when both eventually try to
+          // write.
+          generation: reserveWriteGeneration(language, entry.number),
+        },
+      ])
+    );
+
+    const jobs: Job[] = [];
+    for (const entry of dexEntries) {
+      for (const rarity of rarities) {
+        jobs.push({ entry, rarity });
+      }
+    }
+
+    await mapWithConcurrency(jobs, CONCURRENCY, async ({ entry, rarity }) => {
+      // Proactively skip issuing a fetch for a job that hasn't started yet
+      // once aborted -- this is what stops an abandoned load from
+      // continuing to consume real network/API request budget, beyond just
+      // having its eventual results ignored.
+      if (signal?.aborted) return;
+      const briefs = await fetchCardsForDexAndRarity(entry.number, rarity, language, fetchImpl, signal);
+      const accumulator = accumulators.get(entry.number);
+      if (!accumulator) return;
+      for (const brief of briefs) {
+        const setId = deriveSetId(brief.id, brief.localId);
+        accumulator.cards.push({
+          id: brief.id,
+          name: brief.name,
+          dexNumber: entry.number,
+          setId,
+          setName: setNameById.get(setId) ?? setId,
+          localId: brief.localId,
+          rarity,
+          imageBase: brief.image ?? '',
+          language,
+        });
+      }
+      accumulator.remaining -= 1;
+      if (accumulator.remaining === 0) {
+        if (isLatestWriteGeneration(language, entry.number, accumulator.generation)) {
+          setCachedCards(language, entry.number, accumulator.cards);
+          // A curated-only fetch just overwrote this dex number's cache slot
+          // with the narrower rarity-filtered subset, so any earlier "Show all
+          // cards" full-print-history flag for it no longer describes what's
+          // actually cached. Clear it so the next "Show all cards" toggle
+          // re-fetches properly instead of trusting stale curated data as if it
+          // were complete.
+          clearFullPrintHistory(language, entry.number);
+        }
+        completed += 1;
+        onProgress?.({ completed, total });
+        onDexLoaded?.(entry.number);
+      }
+    });
+  } catch (err) {
+    // An abort is an expected, frequent outcome once a caller (DexGrid)
+    // cancels a superseded load -- not a real failure -- so it resolves
+    // normally instead of rejecting (which would otherwise surface as an
+    // unhandled promise rejection, since callers today only .finally()
+    // this call without a .catch()). A genuine fetch failure (bad status,
+    // network error, etc.) still propagates exactly as before.
+    if (isAbortError(err)) return;
+    throw err;
   }
-
-  const accumulators = new Map<number, DexAccumulator>(
-    dexEntries.map((entry) => [entry.number, { entry, remaining: rarities.length, cards: [] }])
-  );
-
-  const jobs: Job[] = [];
-  for (const entry of dexEntries) {
-    for (const rarity of rarities) {
-      jobs.push({ entry, rarity });
-    }
-  }
-
-  await mapWithConcurrency(jobs, CONCURRENCY, async ({ entry, rarity }) => {
-    const briefs = await fetchCardsForDexAndRarity(entry.number, rarity, language, fetchImpl);
-    const accumulator = accumulators.get(entry.number);
-    if (!accumulator) return;
-    for (const brief of briefs) {
-      const setId = deriveSetId(brief.id, brief.localId);
-      accumulator.cards.push({
-        id: brief.id,
-        name: brief.name,
-        dexNumber: entry.number,
-        setId,
-        setName: setNameById.get(setId) ?? setId,
-        localId: brief.localId,
-        rarity,
-        imageBase: brief.image ?? '',
-        language,
-      });
-    }
-    accumulator.remaining -= 1;
-    if (accumulator.remaining === 0) {
-      setCachedCards(language, entry.number, accumulator.cards);
-      // A curated-only fetch just overwrote this dex number's cache slot
-      // with the narrower rarity-filtered subset, so any earlier "Show all
-      // cards" full-print-history flag for it no longer describes what's
-      // actually cached. Clear it so the next "Show all cards" toggle
-      // re-fetches properly instead of trusting stale curated data as if it
-      // were complete.
-      clearFullPrintHistory(language, entry.number);
-      completed += 1;
-      onProgress?.({ completed, total });
-      onDexLoaded?.(entry.number);
-    }
-  });
 }
 
 export function getAllCachedCardsForDex(language: string, dexNumber: number): CardRecord[] {
@@ -171,7 +247,8 @@ interface FetchImplParam {
 export async function loadAllPrintingsForDex(
   language: string,
   dexNumber: number,
-  fetchImpl: FetchImplParam['fetchImpl'] = fetch
+  fetchImpl: FetchImplParam['fetchImpl'] = fetch,
+  signal?: AbortSignal
 ): Promise<CardRecord[]> {
   // Per the design spec, "Show all cards" fetches on first use only and does
   // not refetch on every open once cached. A Picker mount only remembers
@@ -183,32 +260,52 @@ export async function loadAllPrintingsForDex(
     const cached = getCachedCards(language, dexNumber);
     if (cached) return cached;
   }
-  const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl);
-  // mapWithConcurrency preserves input order in its results array regardless
-  // of which detail fetch resolves first, so `cards` still lines up with
-  // `briefs` exactly as the old sequential loop did.
-  const cards = await mapWithConcurrency(briefs, CONCURRENCY, async (brief) => {
-    // Unlike loadAllCardData above, this doesn't need a separate fetchSets
-    // call for a name lookup: the per-card detail response already carries
-    // the correct set name directly (detail.set.name), since a full detail
-    // fetch is already required here to get each card's rarity (the list
-    // endpoint queried by fetchAllCardsForDex omits rarity entirely).
-    const detail = await fetchCardDetail(brief.id, language, fetchImpl);
-    const setId = deriveSetId(brief.id, brief.localId);
-    const card: CardRecord = {
-      id: brief.id,
-      name: brief.name,
-      dexNumber,
-      setId,
-      setName: detail.set.name,
-      localId: brief.localId,
-      rarity: detail.rarity ?? 'Unknown',
-      imageBase: brief.image ?? '',
-      language,
-    };
-    return card;
-  });
-  setCachedCards(language, dexNumber, cards);
-  markFullPrintHistoryFetched(language, dexNumber);
-  return cards;
+  // Reserved up front, at the start of this fetch attempt, before any
+  // network calls -- see reserveWriteGeneration/isLatestWriteGeneration in
+  // storage/cardCache.ts. Coordinates against a loadAllCardData (curated)
+  // call racing on the same language:dexNumber key: if a curated fetch for
+  // this same dex number starts AFTER this one (reserving a higher
+  // generation) and finishes first, this call's own write below is skipped
+  // so it doesn't clobber the fresher curated result.
+  const generation = reserveWriteGeneration(language, dexNumber);
+  try {
+    const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl, signal);
+    // mapWithConcurrency preserves input order in its results array regardless
+    // of which detail fetch resolves first, so `cards` still lines up with
+    // `briefs` exactly as the old sequential loop did.
+    const cards = await mapWithConcurrency(briefs, CONCURRENCY, async (brief) => {
+      // Unlike loadAllCardData above, this doesn't need a separate fetchSets
+      // call for a name lookup: the per-card detail response already carries
+      // the correct set name directly (detail.set.name), since a full detail
+      // fetch is already required here to get each card's rarity (the list
+      // endpoint queried by fetchAllCardsForDex omits rarity entirely).
+      const detail = await fetchCardDetail(brief.id, language, fetchImpl, signal);
+      const setId = deriveSetId(brief.id, brief.localId);
+      const card: CardRecord = {
+        id: brief.id,
+        name: brief.name,
+        dexNumber,
+        setId,
+        setName: detail.set.name,
+        localId: brief.localId,
+        rarity: detail.rarity ?? 'Unknown',
+        imageBase: brief.image ?? '',
+        language,
+      };
+      return card;
+    });
+    if (isLatestWriteGeneration(language, dexNumber, generation)) {
+      setCachedCards(language, dexNumber, cards);
+      markFullPrintHistoryFetched(language, dexNumber);
+    }
+    return cards;
+  } catch (err) {
+    // Same rationale as loadAllCardData: an abort is expected, not a real
+    // failure, and must resolve rather than reject. Not currently wired up
+    // from any caller (Picker.tsx doesn't pass a signal today), but this
+    // keeps the function safe to call with one, consistent with
+    // loadAllCardData, without a separate follow-up pass.
+    if (isAbortError(err)) return [];
+    throw err;
+  }
 }

@@ -5,6 +5,8 @@ import {
   getCachedCards,
   getCachedPricing,
   hasCachedDataForLanguage,
+  isLatestWriteGeneration,
+  reserveWriteGeneration,
   setCachedCards,
   setCachedPricing,
 } from './cardCache';
@@ -174,6 +176,40 @@ describe('in-memory parse caching (perf: avoid re-parsing the whole blob on ever
     localStorage.clear();
 
     expect(getCachedCards('en', 6)).toBeUndefined();
+  });
+});
+
+describe('write-generation guard (coordinates loadAllCardData vs. loadAllPrintingsForDex racing on the same cache key)', () => {
+  it('reserveWriteGeneration returns strictly increasing numbers for the same key', () => {
+    const first = reserveWriteGeneration('en', 6);
+    const second = reserveWriteGeneration('en', 6);
+    const third = reserveWriteGeneration('en', 6);
+    expect(second).toBeGreaterThan(first);
+    expect(third).toBeGreaterThan(second);
+  });
+
+  it('isLatestWriteGeneration is true for the most recently reserved generation and false for an older one', () => {
+    const stale = reserveWriteGeneration('en', 6);
+    const fresh = reserveWriteGeneration('en', 6);
+    expect(isLatestWriteGeneration('en', 6, fresh)).toBe(true);
+    expect(isLatestWriteGeneration('en', 6, stale)).toBe(false);
+  });
+
+  it('tracks generations independently per language+dexNumber key', () => {
+    const dex6Gen = reserveWriteGeneration('en', 6);
+    const dex4Gen = reserveWriteGeneration('en', 4);
+    const jaDex6Gen = reserveWriteGeneration('ja', 6);
+    expect(isLatestWriteGeneration('en', 6, dex6Gen)).toBe(true);
+    expect(isLatestWriteGeneration('en', 4, dex4Gen)).toBe(true);
+    expect(isLatestWriteGeneration('ja', 6, jaDex6Gen)).toBe(true);
+    // A generation number reserved for one key must not be mistaken for the
+    // latest on a different key just because the raw numbers coincide.
+    expect(isLatestWriteGeneration('en', 4, dex6Gen)).toBe(false);
+  });
+
+  it('a key that has never reserved a generation is never considered the latest for any generation number, including 0', () => {
+    expect(isLatestWriteGeneration('en', 999, 0)).toBe(false);
+    expect(isLatestWriteGeneration('en', 999, 1)).toBe(false);
   });
 });
 

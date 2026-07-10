@@ -46,6 +46,13 @@ describe('fetchCardsForDexAndRarity', () => {
       'TCGdex request failed with status 500'
     );
   });
+
+  it('passes an AbortSignal through to fetchImpl when given one', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const controller = new AbortController();
+    await fetchCardsForDexAndRarity(6, 'Ultra Rare', 'en', fetchImpl, controller.signal);
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
+  });
 });
 
 describe('fetchAllCardsForDex', () => {
@@ -76,6 +83,13 @@ describe('fetchAllCardsForDex', () => {
       'TCGdex request failed with status 500'
     );
   });
+
+  it('passes an AbortSignal through to fetchImpl when given one', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const controller = new AbortController();
+    await fetchAllCardsForDex(4, 'en', fetchImpl, controller.signal);
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
+  });
 });
 
 describe('fetchCardDetail', () => {
@@ -89,6 +103,15 @@ describe('fetchCardDetail', () => {
       expect.objectContaining({ headers: { Accept: 'application/json' } })
     );
     expect(card.set.name).toBe('151');
+  });
+
+  it('passes an AbortSignal through to fetchImpl when given one', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ id: 'sv03.5-199', localId: '199', name: 'Charizard ex', set: { id: 'sv03.5', name: '151' } })
+    );
+    const controller = new AbortController();
+    await fetchCardDetail('sv03.5-199', 'en', fetchImpl, controller.signal);
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
   });
 });
 
@@ -147,6 +170,13 @@ describe('fetchSets', () => {
       { id: 'sv03.5', name: '151' },
       { id: 'sv03', name: 'Obsidian Flames' },
     ]);
+  });
+
+  it('passes an AbortSignal through to fetchImpl when given one', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const controller = new AbortController();
+    await fetchSets('en', fetchImpl, controller.signal);
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
   });
 });
 

@@ -178,6 +178,42 @@ describe('DexGrid', () => {
     });
   });
 
+  it('aborts the previous load\'s AbortSignal when language changes mid-load, so the abandoned language\'s fetches actually stop instead of merely being ignored', async () => {
+    // Captures the `signal` DexGrid actually passes into loadAllCardData on
+    // each call, via the module mock declared at the top of this file. Each
+    // call's promise never resolves on its own -- this test only cares
+    // about whether DexGrid creates a fresh AbortController per load and
+    // aborts the previous one, not about completion/isLoading bookkeeping
+    // (covered by the test above). Two mockImplementationOnce calls, not a
+    // persistent mockImplementation: exactly two loadAllCardData calls are
+    // expected here, and the mock must revert to its default
+    // (delegate-to-actual) behavior afterward so it doesn't leak into later
+    // tests in this file.
+    const seenSignals: (AbortSignal | undefined)[] = [];
+    const captureSignal = (_language: string, options?: { signal?: AbortSignal }) => {
+      seenSignals.push(options?.signal);
+      return new Promise<void>(() => {});
+    };
+    vi.mocked(loadAllCardData).mockImplementationOnce(captureSignal).mockImplementationOnce(captureSignal);
+
+    render(<DexGrid />);
+    await waitFor(() => expect(seenSignals).toHaveLength(1));
+    const firstSignal = seenSignals[0];
+    expect(firstSignal).toBeInstanceOf(AbortSignal);
+    expect(firstSignal?.aborted).toBe(false);
+
+    useAppStore.setState({ language: 'fr' });
+    await waitFor(() => expect(seenSignals).toHaveLength(2));
+
+    // The 'en' load's signal must now be aborted -- this is what actually
+    // stops its underlying fetches, distinct from the loadGeneration guard
+    // above, which only ignores its eventual results.
+    expect(firstSignal?.aborted).toBe(true);
+    const secondSignal = seenSignals[1];
+    expect(secondSignal).toBeInstanceOf(AbortSignal);
+    expect(secondSignal?.aborted).toBe(false);
+  });
+
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
     render(<DexGrid />);
     await waitFor(() => {

@@ -50,20 +50,33 @@ export function DexGrid() {
   }
 
   // Tracks which auto-load/refresh call is the most recently started one.
-  // Neither the auto-load effect nor handleRefreshData cancels an in-flight
-  // loadAllCardData call when a newer one starts (e.g. the user switches
-  // language, or toggles a generation, before a cold-start load finishes) --
-  // loadAllCardData has no AbortController plumbing. Without this guard, a
-  // straggling STALE call's `.finally()`/onDexLoaded would unconditionally
-  // write isLoading/dataVersion state after a NEWER call has already taken
-  // over, flipping isLoading back to false while the newer load is still
-  // actually in flight. That's harmless on its own, but now that
-  // isLoadingDex feeds straight into computeTileState, it would flip
+  // Both call sites bump this ref and only let their own completion touch
+  // isLoading/dataVersion state if they're still the current generation by
+  // the time they resolve -- otherwise a straggling STALE call's
+  // `.finally()`/onDexLoaded would clobber state a NEWER call already owns.
+  // That alone would be harmless if it just meant a stale re-render, but
+  // since isLoadingDex feeds straight into computeTileState, it would flip
   // still-loading tiles to "unavailable" instead of "loading" for the rest
-  // of the newer load's duration. Both call sites bump this ref and only
-  // let their own completion touch state if they're still the current
-  // generation by the time they resolve.
+  // of the newer load's duration.
   const loadGeneration = useRef(0);
+
+  // The generation ref above only silences a stale call's effect on THIS
+  // component's own state -- it does nothing to stop the stale call's
+  // underlying fetches from continuing to run in the background, consuming
+  // real network/API request budget alongside the newer load's own fetches.
+  // This controller is aborted and replaced every time a new generation
+  // starts (in both the auto-load effect and handleRefreshData), so
+  // switching language/generation, or clicking Refresh, actually cancels
+  // whatever was still in flight instead of just racing it.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Aborts any still-in-flight load if the component unmounts entirely,
+  // so navigating away doesn't leave an abandoned fetch running.
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (dexEntries.length === 0) return;
@@ -75,12 +88,17 @@ export function DexGrid() {
     );
     if (missingEntries.length === 0) return;
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     loadGeneration.current += 1;
     const thisGeneration = loadGeneration.current;
 
     setIsLoading(true);
     loadAllCardData(language, {
       dexEntries: missingEntries,
+      signal: controller.signal,
       onDexLoaded: () => {
         if (loadGeneration.current !== thisGeneration) return;
         scheduleDataVersionBump();
@@ -97,12 +115,17 @@ export function DexGrid() {
   }, [language, dexEntries]);
 
   async function handleRefreshData() {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     loadGeneration.current += 1;
     const thisGeneration = loadGeneration.current;
 
     setIsLoading(true);
     await loadAllCardData(language, {
       dexEntries,
+      signal: controller.signal,
       onDexLoaded: () => {
         if (loadGeneration.current !== thisGeneration) return;
         scheduleDataVersionBump();
