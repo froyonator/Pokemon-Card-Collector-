@@ -67,6 +67,9 @@ export function Picker({
   const unmarkOwned = useAppStore((s) => s.unmarkOwned);
   const toggleWishlist = useAppStore((s) => s.toggleWishlist);
   const language = useAppStore((s) => s.language);
+  const groups = useAppStore((s) => s.groups);
+  const cardOverrides = useAppStore((s) => s.cardOverrides);
+  const setCardOverride = useAppStore((s) => s.setCardOverride);
 
   const [pendingCard, setPendingCard] = useState<CardRecord | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -201,6 +204,21 @@ export function Picker({
                     </span>
                     <span className={styles.rarity}>{card.rarity}</span>
                   </button>
+                  <select
+                    className={styles.classify}
+                    aria-label={`Classify ${card.name} (${card.setName} #${card.localId}) as`}
+                    value={cardOverrides[card.id] ?? ''}
+                    onChange={(event) =>
+                      setCardOverride(card.id, event.target.value === '' ? null : event.target.value)
+                    }
+                  >
+                    <option value="">Use this card&apos;s own rarity</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               );
             })}

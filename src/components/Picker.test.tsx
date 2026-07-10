@@ -218,4 +218,37 @@ describe('Picker', () => {
     });
     expect(screen.getByText('Ultra Rare')).toBeInTheDocument();
   });
+
+  // cardA and cardB share the same `name` ("Charizard ex"), so the classify
+  // control's aria-label includes each card's set name and local id too
+  // (not just its name) to stay unambiguous when both are rendered together.
+  it('classifying a card assigns it to the chosen group, persisted in the store', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.selectOptions(
+      screen.getByLabelText(`Classify ${cardA.name} (${cardA.setName} #${cardA.localId}) as`),
+      'rainbow-gold'
+    );
+    expect(useAppStore.getState().cardOverrides[cardA.id]).toBe('rainbow-gold');
+  });
+
+  it("defaults a card's classification select to its existing override, or to using its own rarity if none", () => {
+    useAppStore.setState({ cardOverrides: { [cardA.id]: 'vintage-special' } });
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA, cardB]} onClose={() => {}} />);
+    expect(
+      screen.getByLabelText(`Classify ${cardA.name} (${cardA.setName} #${cardA.localId}) as`)
+    ).toHaveValue('vintage-special');
+    expect(
+      screen.getByLabelText(`Classify ${cardB.name} (${cardB.setName} #${cardB.localId}) as`)
+    ).toHaveValue('');
+  });
+
+  it('choosing "Use this card\'s own rarity" clears an existing override', async () => {
+    useAppStore.setState({ cardOverrides: { [cardA.id]: 'vintage-special' } });
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.selectOptions(
+      screen.getByLabelText(`Classify ${cardA.name} (${cardA.setName} #${cardA.localId}) as`),
+      ''
+    );
+    expect(useAppStore.getState().cardOverrides[cardA.id]).toBeUndefined();
+  });
 });
