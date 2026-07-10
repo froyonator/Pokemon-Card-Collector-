@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
 import { useAppStore } from '../state/store';
@@ -37,25 +38,47 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
 
   if (pendingCard) {
     return (
-      <div
+      <motion.div
         className={styles.overlay}
         role="dialog"
         aria-label={`Choose condition for ${pendingCard.name}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
       >
-        <div className={styles.panel}>
+        <motion.div
+          className={styles.panel}
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        >
           <ConditionPicker
             cardName={pendingCard.name}
             onConfirm={handleConditionConfirm}
             onCancel={() => setPendingCard(null)}
           />
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     );
   }
 
   return (
-    <div className={styles.overlay} role="dialog" aria-label={`Card options for ${pokemonName}`}>
-      <div className={styles.panel}>
+    <motion.div
+      className={styles.overlay}
+      role="dialog"
+      aria-label={`Card options for ${pokemonName}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className={styles.panel}
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      >
         <div className={styles.header}>
           <h2>{pokemonName}</h2>
           <button type="button" onClick={onClose} aria-label="Close">
@@ -112,7 +135,7 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
             })}
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

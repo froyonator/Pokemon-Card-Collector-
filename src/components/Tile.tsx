@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
 import styles from './Tile.module.css';
 
@@ -30,11 +31,15 @@ export function Tile({
   const showCardImage = view === 'card' && ownedCardImageUrl;
 
   return (
-    <button
+    <motion.button
       type="button"
       className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
       onClick={onClick}
       title={title}
+      layout
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.96 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
     >
       <span className={styles.number}>#{String(dexNumber).padStart(3, '0')}</span>
       {showCardImage ? (
@@ -43,6 +48,6 @@ export function Tile({
         <img src={spriteUrl} alt={name} loading="lazy" />
       )}
       <span className={styles.name}>{name}</span>
-    </button>
+    </motion.button>
   );
 }

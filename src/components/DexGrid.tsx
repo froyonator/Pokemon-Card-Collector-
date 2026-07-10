@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
 import { cardImageUrl } from '../api/tcgdex';
@@ -141,14 +142,17 @@ export function DexGrid() {
           })}
         </div>
       )}
-      {openEntry && (
-        <Picker
-          dexNumber={openEntry.number}
-          pokemonName={openEntry.name}
-          cards={openCards}
-          onClose={() => setOpenDexNumber(null)}
-        />
-      )}
+      <AnimatePresence>
+        {openEntry && (
+          <Picker
+            key={openEntry.number}
+            dexNumber={openEntry.number}
+            pokemonName={openEntry.name}
+            cards={openCards}
+            onClose={() => setOpenDexNumber(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

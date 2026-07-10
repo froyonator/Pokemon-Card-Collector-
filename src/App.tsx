@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
@@ -128,9 +129,21 @@ export default function App() {
         </div>
         <DexGrid />
       </div>
-      {activeTab === 'collection' && <CollectionTable />}
-      {activeTab === 'wishlist' && <WishlistTable />}
-      {activeTab === 'summary' && <Summary />}
+      <AnimatePresence mode="wait">
+        {activeTab !== 'grid' && (
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+          >
+            {activeTab === 'collection' && <CollectionTable />}
+            {activeTab === 'wishlist' && <WishlistTable />}
+            {activeTab === 'summary' && <Summary />}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Tutorial onStart={() => setActiveTab('grid')} />
     </main>

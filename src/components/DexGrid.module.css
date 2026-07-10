@@ -2,39 +2,53 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
   flex-wrap: wrap;
 }
 
 .viewToggle {
   display: inline-flex;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
-  border: 1px solid rgba(127, 127, 127, 0.4);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .viewToggle button {
-  padding: 6px 14px;
+  padding: 0.45rem 1rem;
   border: none;
+  border-radius: 0;
   background: none;
+  color: var(--color-text-muted);
   cursor: pointer;
   font: inherit;
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.viewToggle button:hover {
+  color: var(--color-text);
+  transform: none;
 }
 
 .viewToggle button[aria-pressed='true'] {
-  background: #4a9eff;
-  color: white;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: var(--space-3);
 }
 
 .emptyState {
-  opacity: 0.7;
-  padding: 24px 0;
+  color: var(--color-text-muted);
+  padding: var(--space-10) var(--space-4);
   text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-md);
 }
