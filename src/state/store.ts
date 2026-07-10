@@ -98,13 +98,16 @@ export const useAppStore = create<AppState>()(
         })),
       setCardOverride: (cardId, groupId) =>
         set((state) => {
-          const cardOverrides = { ...state.cardOverrides };
           if (groupId === null) {
+            if (!(cardId in state.cardOverrides)) return {};
+            const cardOverrides = { ...state.cardOverrides };
             delete cardOverrides[cardId];
-          } else {
-            cardOverrides[cardId] = groupId;
+            return { cardOverrides, hasUnsavedChanges: true };
           }
-          return { cardOverrides, hasUnsavedChanges: true };
+          return {
+            cardOverrides: { ...state.cardOverrides, [cardId]: groupId },
+            hasUnsavedChanges: true,
+          };
         }),
 
       markOwned: (dexNumber, cardId, condition) =>
