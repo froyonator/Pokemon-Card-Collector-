@@ -1686,6 +1686,8 @@ git commit -m "Add IndexedDB image blob cache"
 
 ## Task 11: App state store (Zustand)
 
+> **Amended** after Tasks 1-10 shipped, to add: a `hasUnsavedChanges` flag (feeds a browser close/reload warning, Task 22a) and `selectedGenerations`/`toggleGeneration` (feeds a multi-select generation filter, Task 17). Both additions were adversarially reviewed against the rest of the plan before being written in here. See the reasoning inline in the code comments below, particularly why `selectedGenerations` defaults to a literal `[1]` rather than deriving from a canonical list the way `activeGroupIds` does, and why `hasUnsavedChanges` must be added to `partialize`.
+
 **Files:**
 - Create: `src/state/store.ts`
 - Test: `src/state/store.test.ts`
@@ -1705,6 +1707,8 @@ function resetStore() {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
 }
 
@@ -1720,6 +1724,11 @@ describe('markOwned', () => {
     expect(state.owned[6]).toMatchObject({ dexNumber: 6, cardId: 'sv03-223', condition: 'Near Mint' });
     expect(state.wishlist[6]).toBeUndefined();
   });
+
+  it('sets hasUnsavedChanges', () => {
+    useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
 });
 
 describe('unmarkOwned', () => {
@@ -1727,6 +1736,18 @@ describe('unmarkOwned', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
     useAppStore.getState().unmarkOwned(6);
     expect(useAppStore.getState().owned[6]).toBeUndefined();
+  });
+
+  it('sets hasUnsavedChanges when it removes a real entry', () => {
+    useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    useAppStore.setState({ hasUnsavedChanges: false });
+    useAppStore.getState().unmarkOwned(6);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+
+  it('does not set hasUnsavedChanges for a no-op unmark of a nonexistent entry', () => {
+    useAppStore.getState().unmarkOwned(999);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
 });
 
@@ -1751,6 +1772,26 @@ describe('toggleWishlist', () => {
     expect(result.reason).toBeTruthy();
     expect(useAppStore.getState().wishlist[6]).toMatchObject({ cardId: 'sv03.5-199' });
   });
+
+  it('sets hasUnsavedChanges on add and on remove, but not when blocked', () => {
+    useAppStore.getState().toggleWishlist(6, 'sv03.5-199');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+    useAppStore.setState({ hasUnsavedChanges: false });
+    useAppStore.getState().toggleWishlist(6, 'sv03.5-199');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+
+    useAppStore.getState().toggleWishlist(6, 'sv03.5-199');
+    useAppStore.setState({ hasUnsavedChanges: false });
+    useAppStore.getState().toggleWishlist(6, 'sv03-223');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+});
+
+describe('removeWishlist', () => {
+  it('does not set hasUnsavedChanges for a no-op removal of a nonexistent entry', () => {
+    useAppStore.getState().removeWishlist(999);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
 });
 
 describe('toggleActiveGroup', () => {
@@ -1763,6 +1804,27 @@ describe('toggleActiveGroup', () => {
   });
 });
 
+describe('setGroups', () => {
+  it('sets hasUnsavedChanges', () => {
+    useAppStore.getState().setGroups([]);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
+describe('toggleGeneration', () => {
+  it('adds a generation id when toggled on, and removes it when toggled off', () => {
+    useAppStore.getState().toggleGeneration(2);
+    expect(useAppStore.getState().selectedGenerations).toContain(2);
+    useAppStore.getState().toggleGeneration(2);
+    expect(useAppStore.getState().selectedGenerations).not.toContain(2);
+  });
+
+  it('does not set hasUnsavedChanges (it is a view filter, not collection data)', () => {
+    useAppStore.getState().toggleGeneration(2);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+});
+
 describe('bumpPriceVersion', () => {
   it('increments the price version counter', () => {
     const before = useAppStore.getState().priceVersion;
@@ -1771,8 +1833,17 @@ describe('bumpPriceVersion', () => {
   });
 });
 
+describe('markChangesSaved', () => {
+  it('resets hasUnsavedChanges to false', () => {
+    useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+    useAppStore.getState().markChangesSaved();
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+});
+
 describe('replaceUserData', () => {
-  it('overwrites the full user data slice', () => {
+  it('overwrites the full user data slice, including selectedGenerations', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
     useAppStore.getState().replaceUserData({
       version: 1,
@@ -1782,11 +1853,44 @@ describe('replaceUserData', () => {
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
       wishlist: {},
+      selectedGenerations: [1],
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
     expect(state.currency).toBe('EUR');
     expect(state.owned[6]).toBeUndefined();
+  });
+
+  it('resets hasUnsavedChanges to false, regardless of what was pending before', () => {
+    useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+    useAppStore.getState().replaceUserData({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+    });
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+
+  it('running a mutator right after replaceUserData correctly flips hasUnsavedChanges back on', () => {
+    useAppStore.getState().replaceUserData({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+    });
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+    useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
   });
 });
 ```
@@ -1815,6 +1919,7 @@ export interface ExportedUserData {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
+  selectedGenerations: number[];
 }
 
 export interface ToggleWishlistResult {
@@ -1829,11 +1934,14 @@ export interface AppState {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
+  selectedGenerations: number[];
+  hasUnsavedChanges: boolean;
 
   setLanguage: (language: string) => void;
   setCurrency: (currency: Currency) => void;
   toggleActiveGroup: (groupId: string) => void;
   setGroups: (groups: RarityGroup[]) => void;
+  toggleGeneration: (id: number) => void;
 
   markOwned: (dexNumber: number, cardId: string, condition: Condition) => void;
   unmarkOwned: (dexNumber: number) => void;
@@ -1844,6 +1952,7 @@ export interface AppState {
   priceVersion: number;
   bumpPriceVersion: () => void;
 
+  markChangesSaved: () => void;
   replaceUserData: (data: ExportedUserData) => void;
 }
 
@@ -1856,7 +1965,21 @@ export const useAppStore = create<AppState>()(
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
       wishlist: {},
+      // Deliberately a literal, NOT GENERATIONS.map((g) => g.id). New generations
+      // added to src/data/generations.ts later are opt-in, not auto-selected: a
+      // brand-new user today gets Gen 1 only, and an existing user who updates
+      // their app after Gen 2 data ships keeps seeing exactly what they had
+      // yesterday, rather than being silently opted into a large new data fetch
+      // and a changed grid. Unlike activeGroupIds (a filter over data that's
+      // always fully loaded already, so toggling one on/off costs nothing extra),
+      // selecting a generation triggers fetching and caching a large new batch of
+      // card data, so auto-including newly-added generations would mean a routine
+      // data update silently changes what an existing user sees and silently
+      // triggers a big background fetch on their next visit. This is a deliberate
+      // product choice, not an oversight.
+      selectedGenerations: [1],
       priceVersion: 0,
+      hasUnsavedChanges: false,
 
       setLanguage: (language) => set({ language }),
       setCurrency: (currency) => set({ currency }),
@@ -1866,7 +1989,13 @@ export const useAppStore = create<AppState>()(
             ? state.activeGroupIds.filter((id) => id !== groupId)
             : [...state.activeGroupIds, groupId],
         })),
-      setGroups: (groups) => set({ groups }),
+      setGroups: (groups) => set({ groups, hasUnsavedChanges: true }),
+      toggleGeneration: (id) =>
+        set((state) => ({
+          selectedGenerations: state.selectedGenerations.includes(id)
+            ? state.selectedGenerations.filter((gid) => gid !== id)
+            : [...state.selectedGenerations, id],
+        })),
 
       markOwned: (dexNumber, cardId, condition) =>
         set((state) => {
@@ -1878,14 +2007,16 @@ export const useAppStore = create<AppState>()(
               [dexNumber]: { dexNumber, cardId, condition, addedAt: new Date().toISOString() },
             },
             wishlist,
+            hasUnsavedChanges: true,
           };
         }),
 
       unmarkOwned: (dexNumber) =>
         set((state) => {
+          if (!(dexNumber in state.owned)) return {};
           const owned = { ...state.owned };
           delete owned[dexNumber];
-          return { owned };
+          return { owned, hasUnsavedChanges: true };
         }),
 
       toggleWishlist: (dexNumber, cardId) => {
@@ -1894,7 +2025,7 @@ export const useAppStore = create<AppState>()(
         if (existing && existing.cardId === cardId) {
           const wishlist = { ...state.wishlist };
           delete wishlist[dexNumber];
-          set({ wishlist });
+          set({ wishlist, hasUnsavedChanges: true });
           return { ok: true };
         }
         if (existing && existing.cardId !== cardId) {
@@ -1908,18 +2039,22 @@ export const useAppStore = create<AppState>()(
             ...state.wishlist,
             [dexNumber]: { dexNumber, cardId, addedAt: new Date().toISOString() },
           },
+          hasUnsavedChanges: true,
         });
         return { ok: true };
       },
 
       removeWishlist: (dexNumber) =>
         set((state) => {
+          if (!(dexNumber in state.wishlist)) return {};
           const wishlist = { ...state.wishlist };
           delete wishlist[dexNumber];
-          return { wishlist };
+          return { wishlist, hasUnsavedChanges: true };
         }),
 
       bumpPriceVersion: () => set((state) => ({ priceVersion: state.priceVersion + 1 })),
+
+      markChangesSaved: () => set({ hasUnsavedChanges: false }),
 
       replaceUserData: (data) =>
         set({
@@ -1929,6 +2064,8 @@ export const useAppStore = create<AppState>()(
           groups: data.groups,
           owned: data.owned,
           wishlist: data.wishlist,
+          selectedGenerations: data.selectedGenerations,
+          hasUnsavedChanges: false,
         }),
     }),
     {
@@ -1940,11 +2077,15 @@ export const useAppStore = create<AppState>()(
         groups: state.groups,
         owned: state.owned,
         wishlist: state.wishlist,
+        selectedGenerations: state.selectedGenerations,
+        hasUnsavedChanges: state.hasUnsavedChanges,
       }),
     }
   )
 );
 ```
+
+`hasUnsavedChanges` is included in `partialize` deliberately: without this, the flag would silently reset to `false` on every reload or background-tab discard/restore (Chrome reloads discarded tabs without firing `beforeunload`), defeating the whole point of Task 22a's close-warning feature. It is NOT included in `ExportedUserData`/the JSON export shape (Task 22), since it's ephemeral UI state describing the relationship between the store and the filesystem, not collection data, so it has no business round-tripping through a backup file. `replaceUserData` always sets it to `false` explicitly regardless of what's in the imported file.
 
 - [ ] **Step 4: Run the test to see it pass**
 
@@ -1952,7 +2093,7 @@ Run:
 ```bash
 npm run test -- state/store
 ```
-Expected: 9 passed.
+Expected: 19 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -2684,6 +2825,8 @@ function resetStore() {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
 }
 
@@ -2875,7 +3018,119 @@ git commit -m "Add card picker with wishlist star and condition selection"
 
 ---
 
+## Task 15.5: Generation registry
+
+> **New task**, inserted after Tasks 1-10 shipped, to support a multi-select "which generations do you collect" filter (Task 17) while keeping the codebase easy to extend to Gen 2+ later. This task is purely additive: it does not modify the already-built and already-tested `src/data/gen1Dex.ts` (Task 4) at all, it wraps it. `Array.prototype.flatMap` returns a brand-new array, and the subsequent `.sort()` runs on that new array, so `GEN1_DEX` itself and its element order are never mutated. Task 4's existing tests remain valid and untouched.
+>
+> Only Generation 1 is populated with real data here. Adding Generation 2 or later, once someone has hand-verified that generation's dex list the way Task 4 did for Gen 1, is meant to be a pure data change to the `GENERATIONS` array below; no other file in this task needs to change for that to work.
+
+**Files:**
+- Create: `src/data/generations.ts`
+- Test: `src/data/generations.test.ts`
+
+- [ ] **Step 1: Write the failing test `src/data/generations.test.ts`**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { GENERATIONS, allDexEntries, entriesForGenerations } from './generations';
+import { GEN1_DEX } from './gen1Dex';
+
+describe('GENERATIONS', () => {
+  it('includes Generation 1 backed by GEN1_DEX, unmodified', () => {
+    const gen1 = GENERATIONS.find((g) => g.id === 1);
+    expect(gen1?.entries).toEqual(GEN1_DEX);
+  });
+
+  it('does not mutate GEN1_DEX when entriesForGenerations sorts its result', () => {
+    const before = [...GEN1_DEX];
+    entriesForGenerations([1]);
+    expect(GEN1_DEX).toEqual(before);
+  });
+});
+
+describe('entriesForGenerations', () => {
+  it('returns entries only for the requested generation ids, sorted by dex number', () => {
+    const entries = entriesForGenerations([1]);
+    expect(entries).toHaveLength(151);
+    expect(entries[0].name).toBe('Bulbasaur');
+    expect(entries[150].name).toBe('Mew');
+  });
+
+  it('returns an empty list when no generation ids are requested', () => {
+    expect(entriesForGenerations([])).toEqual([]);
+  });
+
+  it('ignores unknown generation ids rather than throwing', () => {
+    expect(entriesForGenerations([999])).toEqual([]);
+  });
+});
+
+describe('allDexEntries', () => {
+  it('returns every entry across every known generation, sorted by dex number', () => {
+    const entries = allDexEntries();
+    expect(entries).toHaveLength(151);
+    expect(entries[0].name).toBe('Bulbasaur');
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to see it fail**
+
+Run:
+```bash
+npm run test -- generations
+```
+Expected: FAIL, `Cannot find module './generations'`.
+
+- [ ] **Step 3: Write `src/data/generations.ts`**
+
+```ts
+import { GEN1_DEX, type DexEntry } from './gen1Dex';
+
+export interface Generation {
+  id: number;
+  label: string;
+  entries: DexEntry[];
+}
+
+// When adding a new generation here, also update README.md's "Gen 1 (Kanto,
+// #001-151)" / "All 151 Gen 1 Pokemon" language (that file was written when
+// this app only ever covered Gen 1). Nothing in src/App.tsx needs touching
+// for a new generation: its header is generation-neutral ("Pokemon Card
+// Collector"), not "Gen 1 Card Collector".
+export const GENERATIONS: Generation[] = [{ id: 1, label: 'Generation 1 (Kanto)', entries: GEN1_DEX }];
+
+export function entriesForGenerations(generationIds: number[]): DexEntry[] {
+  return GENERATIONS.filter((g) => generationIds.includes(g.id))
+    .flatMap((g) => g.entries)
+    .sort((a, b) => a.number - b.number);
+}
+
+export function allDexEntries(): DexEntry[] {
+  return GENERATIONS.flatMap((g) => g.entries).sort((a, b) => a.number - b.number);
+}
+```
+
+- [ ] **Step 4: Run the test to see it pass**
+
+Run:
+```bash
+npm run test -- generations
+```
+Expected: 6 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/data/generations.ts src/data/generations.test.ts
+git commit -m "Add multi-generation registry wrapping the Gen 1 dex list"
+```
+
+---
+
 ## Task 16: DexGrid component
+
+> **Amended** after Tasks 1-10 shipped, to read the generation-filtered dex list (Task 15.5) instead of a hardcoded `GEN1_DEX`, and to fix a real bug an adversarial review caught in the original auto-load logic: `hasCachedDataForLanguage(language)` (Task 9, already shipped) only knows "have I cached *anything* for this language," not *which dex numbers*. Once Gen 1 was cached, that one-shot gate would have permanently skipped auto-fetching for any generation added later, even a newly-selected one, so Gen 2+ tiles would silently sit on "unavailable" until a manual "Refresh Data" click. The fix below doesn't touch Task 9's code at all; it just uses the per-dex-number `getCachedCards` (also already in Task 9, sitting unused) instead of the coarser language-level check.
 
 **Files:**
 - Create: `src/components/DexGrid.tsx`
@@ -2919,6 +3174,12 @@ git commit -m "Add card picker with wishlist star and condition selection"
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 10px;
 }
+
+.emptyState {
+  opacity: 0.7;
+  padding: 24px 0;
+  text-align: center;
+}
 ```
 
 - [ ] **Step 2: Write the failing test `src/components/DexGrid.test.tsx`**
@@ -2944,6 +3205,8 @@ beforeEach(() => {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
   vi.stubGlobal(
     'fetch',
@@ -2996,6 +3259,26 @@ describe('DexGrid', () => {
     await userEvent.click(cardViewButton);
     expect(cardViewButton).toHaveAttribute('aria-pressed', 'true');
   });
+
+  it('shows an empty-state message instead of a blank grid when no generation is selected', () => {
+    useAppStore.setState({ selectedGenerations: [] });
+    render(<DexGrid />);
+    expect(screen.getByText(/select at least one generation/i)).toBeInTheDocument();
+    expect(screen.queryByText('Bulbasaur')).not.toBeInTheDocument();
+  });
+
+  it('auto-fetches a newly-selected generation even when this language was already cached for a different one', async () => {
+    render(<DexGrid />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    const fetchCallsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    // Re-selecting the same generation should not trigger another fetch, since
+    // every dex number in it is already cached for this language.
+    useAppStore.setState({ selectedGenerations: [1] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsBefore);
+  });
 });
 ```
 
@@ -3013,11 +3296,11 @@ Expected: FAIL, `Cannot find module './DexGrid'`.
 import { useEffect, useMemo, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
 import { cardImageUrl } from '../api/tcgdex';
-import { GEN1_DEX } from '../data/gen1Dex';
+import { entriesForGenerations } from '../data/generations';
 import { getAllCachedCardsForDex, loadAllCardData } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
-import { hasCachedDataForLanguage } from '../storage/cardCache';
+import { getCachedCards } from '../storage/cardCache';
 import { Picker } from './Picker';
 import { Tile } from './Tile';
 import styles from './DexGrid.module.css';
@@ -3027,24 +3310,41 @@ export function DexGrid() {
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
   const owned = useAppStore((s) => s.owned);
+  const selectedGenerations = useAppStore((s) => s.selectedGenerations);
 
   const [view, setView] = useState<'sprite' | 'card'>('sprite');
   const [openDexNumber, setOpenDexNumber] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
 
+  // Memoized so the array reference is stable across renders that don't
+  // change selectedGenerations, and reused below by the auto-load effect,
+  // the tile map, and the openEntry lookup, instead of recomputing the
+  // filter/flatMap/sort at up to three separate call sites per render.
+  const dexEntries = useMemo(
+    () => entriesForGenerations(selectedGenerations),
+    [selectedGenerations]
+  );
+
   useEffect(() => {
-    if (hasCachedDataForLanguage(language)) return;
+    if (dexEntries.length === 0) return;
+    // Per-dex-number check, not a per-language one: this is what makes a
+    // newly-selected generation get auto-fetched even after this language
+    // was already cached for a previously-selected generation.
+    const missingEntries = dexEntries.filter(
+      (entry) => getCachedCards(language, entry.number) === undefined
+    );
+    if (missingEntries.length === 0) return;
     setIsLoading(true);
-    loadAllCardData(language).finally(() => {
+    loadAllCardData(language, { dexEntries: missingEntries }).finally(() => {
       setIsLoading(false);
       setDataVersion((v) => v + 1);
     });
-  }, [language]);
+  }, [language, dexEntries]);
 
   async function handleRefreshData() {
     setIsLoading(true);
-    await loadAllCardData(language);
+    await loadAllCardData(language, { dexEntries });
     setIsLoading(false);
     setDataVersion((v) => v + 1);
   }
@@ -3054,7 +3354,7 @@ export function DexGrid() {
     [groups, activeGroupIds]
   );
 
-  const openEntry = openDexNumber ? GEN1_DEX.find((e) => e.number === openDexNumber) : undefined;
+  const openEntry = openDexNumber ? dexEntries.find((e) => e.number === openDexNumber) : undefined;
   const openCards = openDexNumber
     ? availableCardsForDex(getAllCachedCardsForDex(language, openDexNumber), activeSet)
     : [];
@@ -3074,29 +3374,35 @@ export function DexGrid() {
           {isLoading ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
-      <div className={styles.grid} data-version={dataVersion}>
-        {GEN1_DEX.map((entry) => {
-          const allCards = getAllCachedCardsForDex(language, entry.number);
-          const cards = availableCardsForDex(allCards, activeSet);
-          const ownedRecord = owned[entry.number];
-          const state = computeTileState(Boolean(ownedRecord), cards.length);
-          const ownedCard = ownedRecord
-            ? allCards.find((c) => c.id === ownedRecord.cardId)
-            : undefined;
-          return (
-            <Tile
-              key={entry.number}
-              dexNumber={entry.number}
-              name={entry.name}
-              spriteUrl={spriteUrl(entry.number)}
-              state={state}
-              view={view}
-              ownedCardImageUrl={ownedCard ? cardImageUrl(ownedCard.imageBase) : undefined}
-              onClick={() => setOpenDexNumber(entry.number)}
-            />
-          );
-        })}
-      </div>
+      {dexEntries.length === 0 ? (
+        <p className={styles.emptyState}>
+          Select at least one generation in the filter bar to see Pokemon here.
+        </p>
+      ) : (
+        <div className={styles.grid} data-version={dataVersion}>
+          {dexEntries.map((entry) => {
+            const allCards = getAllCachedCardsForDex(language, entry.number);
+            const cards = availableCardsForDex(allCards, activeSet);
+            const ownedRecord = owned[entry.number];
+            const state = computeTileState(Boolean(ownedRecord), cards.length);
+            const ownedCard = ownedRecord
+              ? allCards.find((c) => c.id === ownedRecord.cardId)
+              : undefined;
+            return (
+              <Tile
+                key={entry.number}
+                dexNumber={entry.number}
+                name={entry.name}
+                spriteUrl={spriteUrl(entry.number)}
+                state={state}
+                view={view}
+                ownedCardImageUrl={ownedCard ? cardImageUrl(ownedCard.imageBase) : undefined}
+                onClick={() => setOpenDexNumber(entry.number)}
+              />
+            );
+          })}
+        </div>
+      )}
       {openEntry && (
         <Picker
           dexNumber={openEntry.number}
@@ -3110,13 +3416,15 @@ export function DexGrid() {
 }
 ```
 
+`handleRefreshData` intentionally still refetches the entire current selection, not just missing entries: a manual "Refresh Data" click should re-pull everything currently shown (e.g. to pick up newly-released cards for Pokemon that were already cached), unlike the passive auto-load effect above, which only needs to fill genuine gaps.
+
 - [ ] **Step 5: Run the test to see it pass**
 
 Run:
 ```bash
 npm run test -- DexGrid.test
 ```
-Expected: 3 passed. (This test makes roughly 2,000 mocked fetch calls per run since it loads all 151 dex numbers across 13 rarity tiers; it still completes in a few seconds because no real network I/O happens.)
+Expected: 5 passed. (The first test still makes roughly 2,000 mocked fetch calls per run, since Gen 1 alone is 151 dex numbers across 13 rarity tiers; it still completes in a few seconds because no real network I/O happens.)
 
 - [ ] **Step 6: Commit**
 
@@ -3128,6 +3436,8 @@ git commit -m "Add DexGrid wiring tiles, data loading, and the picker"
 ---
 
 ## Task 17: Filter bar and Manage Groups panel
+
+> **Amended** after Tasks 1-10 shipped, to add a "Generations" multi-select control to the filter bar (Step 9/10 below), sourced from the Task 15.5 generation registry. `ManageGroupsPanel` itself is unaffected by this change (its own resetStore below just gets the two new store fields added for fixture-consistency with the rest of the plan).
 
 **Files:**
 - Create: `src/components/ManageGroupsPanel.tsx`
@@ -3203,6 +3513,8 @@ function resetStore() {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
 }
 
@@ -3387,7 +3699,8 @@ Expected: 4 passed.
   background: rgba(127, 127, 127, 0.06);
 }
 
-.groupFilters {
+.groupFilters,
+.generationFilters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -3414,6 +3727,8 @@ function resetStore() {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
 }
 
@@ -3448,6 +3763,16 @@ describe('FilterBar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Manage groups' }));
     expect(screen.getByRole('dialog', { name: 'Manage rarity groups' })).toBeInTheDocument();
   });
+
+  it('toggles a generation off and on', async () => {
+    render(<FilterBar />);
+    const checkbox = screen.getByLabelText('Generation 1 (Kanto)');
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().selectedGenerations).not.toContain(1);
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().selectedGenerations).toContain(1);
+  });
 });
 ```
 
@@ -3463,6 +3788,7 @@ Expected: FAIL, `Cannot find module './FilterBar'`.
 
 ```tsx
 import { useState } from 'react';
+import { GENERATIONS } from '../data/generations';
 import { CURRENCIES, SUPPORTED_LANGUAGES, type Currency } from '../types';
 import { useAppStore } from '../state/store';
 import { ManageGroupsPanel } from './ManageGroupsPanel';
@@ -3476,11 +3802,27 @@ export function FilterBar() {
   const setLanguage = useAppStore((s) => s.setLanguage);
   const currency = useAppStore((s) => s.currency);
   const setCurrency = useAppStore((s) => s.setCurrency);
+  const selectedGenerations = useAppStore((s) => s.selectedGenerations);
+  const toggleGeneration = useAppStore((s) => s.toggleGeneration);
 
   const [showManageGroups, setShowManageGroups] = useState(false);
 
   return (
     <div className={styles.bar}>
+      <fieldset className={styles.generationFilters}>
+        <legend>Generations</legend>
+        {GENERATIONS.map((generation) => (
+          <label key={generation.id}>
+            <input
+              type="checkbox"
+              checked={selectedGenerations.includes(generation.id)}
+              onChange={() => toggleGeneration(generation.id)}
+            />
+            {generation.label}
+          </label>
+        ))}
+      </fieldset>
+
       <fieldset className={styles.groupFilters}>
         <legend>Card rarity groups</legend>
         {groups.map((group) => (
@@ -3535,7 +3877,7 @@ Run:
 ```bash
 npm run test -- FilterBar.test
 ```
-Expected: 4 passed.
+Expected: 5 passed.
 
 - [ ] **Step 11: Commit**
 
@@ -3800,6 +4142,8 @@ git commit -m "Add market price fetching and currency conversion for display"
 
 ## Task 19: Collection/wishlist row selectors and a shared USD rates hook
 
+> **Amended** after Tasks 1-10 shipped: `pokemonName` now looks up names across every known generation (Task 15.5's `allDexEntries()`), not just Gen 1, so an owned or wishlisted Pokemon's name keeps resolving correctly even if the user later deselects its generation in the filter bar.
+
 **Files:**
 - Create: `src/state/collectionSelectors.ts`
 - Create: `src/state/useUsdRates.ts`
@@ -3906,10 +4250,14 @@ Expected: FAIL, `Cannot find module './collectionSelectors'`.
 - [ ] **Step 3: Write `src/state/collectionSelectors.ts`**
 
 ```ts
-import { GEN1_DEX } from '../data/gen1Dex';
+import { allDexEntries } from '../data/generations';
 import { getAllCachedCardsForDex } from './loadCardData';
 import { getCachedPricing } from '../storage/cardCache';
 import type { CardRecord, Condition, OwnedRecord, WishlistRecord } from '../types';
+
+// Computed once at module load: GENERATIONS is a static registry, not runtime
+// state, so this doesn't need to be recomputed per call or memoized in a hook.
+const ALL_DEX_ENTRIES = allDexEntries();
 
 export interface CollectionRow {
   dexNumber: number;
@@ -3929,7 +4277,7 @@ export interface WishlistRow {
 }
 
 function pokemonName(dexNumber: number): string {
-  return GEN1_DEX.find((entry) => entry.number === dexNumber)?.name ?? `#${dexNumber}`;
+  return ALL_DEX_ENTRIES.find((entry) => entry.number === dexNumber)?.name ?? `#${dexNumber}`;
 }
 
 function findCard(language: string, dexNumber: number, cardId: string): CardRecord | undefined {
@@ -4132,6 +4480,8 @@ beforeEach(() => {
       25: { dexNumber: 25, cardId: 'swsh35-74', condition: 'Mint', addedAt: '' },
     },
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
   vi.stubGlobal(
     'fetch',
@@ -4346,6 +4696,8 @@ beforeEach(() => {
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
     wishlist: { 6: { dexNumber: 6, cardId: 'sv03.5-199', addedAt: '' } },
   });
   vi.stubGlobal(
@@ -4524,6 +4876,8 @@ git commit -m "Add Collection and Wishlist tables with sorting and totals"
 
 ## Task 21: Summary tab
 
+> **Amended** after Tasks 1-10 shipped: the "X / 151" stat and the owned-vs-available progress calculation now derive their totals from the current generation selection (Task 15.5) instead of a hardcoded `GEN1_DEX`/`151`. With the default `selectedGenerations: [1]`, this still evaluates to 151 today, so the existing test assertions are unchanged other than the fixture gaining the two new store fields.
+
 **Files:**
 - Create: `src/components/Summary.tsx`
 - Create: `src/components/Summary.module.css`
@@ -4628,6 +4982,8 @@ beforeEach(() => {
     groups: DEFAULT_RARITY_GROUPS,
     owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
   vi.stubGlobal(
     'fetch',
@@ -4696,8 +5052,8 @@ Expected: FAIL, `Cannot find module './Summary'`.
 - [ ] **Step 4: Write `src/components/Summary.tsx`**
 
 ```tsx
-import { useState } from 'react';
-import { GEN1_DEX } from '../data/gen1Dex';
+import { useMemo, useState } from 'react';
+import { entriesForGenerations } from '../data/generations';
 import { buildCollectionRows } from '../state/collectionSelectors';
 import { getAllCachedCardsForDex } from '../state/loadCardData';
 import { refreshMarketPrices } from '../state/loadPricing';
@@ -4714,11 +5070,17 @@ export function Summary() {
   const wishlist = useAppStore((s) => s.wishlist);
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
+  const selectedGenerations = useAppStore((s) => s.selectedGenerations);
   const priceVersion = useAppStore((s) => s.priceVersion);
   const bumpPriceVersion = useAppStore((s) => s.bumpPriceVersion);
   const usdRates = useUsdRates();
 
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+
+  const dexEntries = useMemo(
+    () => entriesForGenerations(selectedGenerations),
+    [selectedGenerations]
+  );
 
   async function handleRefreshPrices() {
     setIsRefreshingPrices(true);
@@ -4751,7 +5113,7 @@ export function Summary() {
   }, 0);
 
   const activeSet = activeRarities(groups, activeGroupIds);
-  const availableCount = GEN1_DEX.filter(
+  const availableCount = dexEntries.filter(
     (entry) =>
       availableCardsForDex(getAllCachedCardsForDex(language, entry.number), activeSet).length > 0
   ).length;
@@ -4761,7 +5123,9 @@ export function Summary() {
   return (
     <div className={styles.summary}>
       <div className={styles.stat}>
-        <span className={styles.value}>{totalOwned} / 151</span>
+        <span className={styles.value}>
+          {totalOwned} / {dexEntries.length}
+        </span>
         <span className={styles.label}>Pokemon with a card owned</span>
       </div>
       <div className={styles.stat}>
@@ -4805,8 +5169,12 @@ git commit -m "Add Summary tab with totals, progress, and a market price refresh
 
 ## Task 22: Export and import backup
 
+> **Amended** after Tasks 1-10 shipped, for two reasons. First, `selectedGenerations` needs to round-trip through export/import like every other setting. An adversarial review found the original single-sentence plan for this ("add it to the exported shape") actually needed five separate touch points to work correctly (the `ExportedUserData`/`ExportableState` interfaces, this task's `buildExportPayload`, `replaceUserData` and the `persist` middleware's `partialize` allowlist over in Task 11 (already amended above), and a backward-compatibility fallback here for backup files exported before this feature existed). Second, the confirmation dialog that guards `replaceUserData` is extracted into its own shared component, `ImportConfirmDialog`, so Task 22a's `StartScreen` can reuse the exact same reviewed, tested overwrite-confirmation UI instead of growing a second, unguarded import path into the same destructive action.
+
 **Files:**
 - Create: `src/state/exportImport.ts`
+- Create: `src/components/ImportConfirmDialog.tsx`
+- Create: `src/components/ImportConfirmDialog.module.css`
 - Create: `src/components/ExportImportControls.tsx`
 - Create: `src/components/ExportImportControls.module.css`
 - Test: `src/state/exportImport.test.ts`
@@ -4826,6 +5194,7 @@ const baseState = {
   groups: DEFAULT_RARITY_GROUPS,
   owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint' as const, addedAt: '' } },
   wishlist: {},
+  selectedGenerations: [1],
 };
 
 describe('buildExportPayload', () => {
@@ -4834,6 +5203,7 @@ describe('buildExportPayload', () => {
     expect(payload.version).toBe(1);
     expect(payload.owned).toEqual(baseState.owned);
     expect(payload.groups).toEqual(DEFAULT_RARITY_GROUPS);
+    expect(payload.selectedGenerations).toEqual([1]);
   });
 });
 
@@ -4867,6 +5237,21 @@ describe('parseImportPayload', () => {
   it('throws for invalid JSON', () => {
     expect(() => parseImportPayload('not json')).toThrow();
   });
+
+  it('defaults selectedGenerations to [1] for a backup exported before multi-generation support existed', () => {
+    const preFeaturePayload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: {},
+      wishlist: {},
+      // no selectedGenerations key at all, matching a real pre-feature export file
+    };
+    const parsed = parseImportPayload(JSON.stringify(preFeaturePayload));
+    expect(parsed.selectedGenerations).toEqual([1]);
+  });
 });
 ```
 
@@ -4895,6 +5280,7 @@ export interface ExportableState {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
+  selectedGenerations: number[];
 }
 
 export function buildExportPayload(state: ExportableState): ExportedUserData {
@@ -4906,6 +5292,7 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     groups: state.groups,
     owned: state.owned,
     wishlist: state.wishlist,
+    selectedGenerations: state.selectedGenerations,
   };
 }
 
@@ -4922,6 +5309,14 @@ export function parseImportPayload(raw: string): ExportedUserData {
   if (typeof data.language !== 'string' || typeof data.currency !== 'string') {
     throw new Error('This file does not look like a valid export.');
   }
+  // Backups exported before multi-generation support existed predate this
+  // field entirely. Those files only ever covered Gen 1, so default rather
+  // than reject an otherwise-valid older backup, consistent with this
+  // function's existing role as the one validation/normalization boundary
+  // for import data.
+  if (!Array.isArray(data.selectedGenerations)) {
+    data.selectedGenerations = [1];
+  }
   return data as ExportedUserData;
 }
 ```
@@ -4932,9 +5327,52 @@ Run:
 ```bash
 npm run test -- exportImport
 ```
-Expected: 6 passed.
+Expected: 7 passed.
 
-- [ ] **Step 5: Write `src/components/ExportImportControls.module.css`**
+- [ ] **Step 5: Write `src/components/ImportConfirmDialog.module.css`**
+
+```css
+.confirm {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
+- [ ] **Step 6: Write `src/components/ImportConfirmDialog.tsx`**
+
+Extracted so both `ExportImportControls` (below) and Task 22a's `StartScreen` share one confirmation UI, instead of one guarded import path and one unguarded one.
+
+```tsx
+import styles from './ImportConfirmDialog.module.css';
+
+export interface ImportConfirmDialogProps {
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function ImportConfirmDialog({ onConfirm, onCancel }: ImportConfirmDialogProps) {
+  return (
+    <div role="dialog" aria-label="Confirm import" className={styles.confirm}>
+      <p>
+        Importing this file will overwrite your current collection, wishlist, and settings on
+        this device. This cannot be undone. Continue?
+      </p>
+      <button type="button" onClick={onConfirm}>
+        Overwrite and import
+      </button>
+      <button type="button" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 7: Write `src/components/ExportImportControls.module.css`**
 
 ```css
 .controls {
@@ -4946,18 +5384,9 @@ Expected: 6 passed.
 .hiddenInput {
   display: none;
 }
-
-.confirm {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 ```
 
-- [ ] **Step 6: Write the failing test `src/components/ExportImportControls.test.tsx`**
+- [ ] **Step 8: Write the failing test `src/components/ExportImportControls.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react';
@@ -4975,6 +5404,8 @@ beforeEach(() => {
     groups: DEFAULT_RARITY_GROUPS,
     owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
 });
 
@@ -4997,6 +5428,7 @@ describe('ExportImportControls', () => {
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
       wishlist: {},
+      selectedGenerations: [1],
     };
     const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -5017,6 +5449,7 @@ describe('ExportImportControls', () => {
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
       wishlist: {},
+      selectedGenerations: [1],
     };
     const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -5026,10 +5459,17 @@ describe('ExportImportControls', () => {
     expect(useAppStore.getState().language).toBe('en');
     expect(screen.queryByRole('dialog', { name: 'Confirm import' })).not.toBeInTheDocument();
   });
+
+  it('marks changes as saved after exporting', async () => {
+    useAppStore.setState({ hasUnsavedChanges: true });
+    render(<ExportImportControls />);
+    await userEvent.click(screen.getByRole('button', { name: 'Export my collection' }));
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
 });
 ```
 
-- [ ] **Step 7: Run the test to see it fail**
+- [ ] **Step 9: Run the test to see it fail**
 
 Run:
 ```bash
@@ -5037,7 +5477,7 @@ npm run test -- ExportImportControls.test
 ```
 Expected: FAIL, `Cannot find module './ExportImportControls'`.
 
-- [ ] **Step 8: Write `src/components/ExportImportControls.tsx`**
+- [ ] **Step 10: Write `src/components/ExportImportControls.tsx`**
 
 ```tsx
 import { useRef, useState, type ChangeEvent } from 'react';
@@ -5048,6 +5488,7 @@ import {
   type ExportedUserData,
 } from '../state/exportImport';
 import { useAppStore } from '../state/store';
+import { ImportConfirmDialog } from './ImportConfirmDialog';
 import styles from './ExportImportControls.module.css';
 
 export function ExportImportControls() {
@@ -5057,14 +5498,24 @@ export function ExportImportControls() {
   const groups = useAppStore((s) => s.groups);
   const owned = useAppStore((s) => s.owned);
   const wishlist = useAppStore((s) => s.wishlist);
+  const selectedGenerations = useAppStore((s) => s.selectedGenerations);
   const replaceUserData = useAppStore((s) => s.replaceUserData);
+  const markChangesSaved = useAppStore((s) => s.markChangesSaved);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<ExportedUserData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function handleExport() {
-    const payload = buildExportPayload({ language, currency, activeGroupIds, groups, owned, wishlist });
+    const payload = buildExportPayload({
+      language,
+      currency,
+      activeGroupIds,
+      groups,
+      owned,
+      wishlist,
+      selectedGenerations,
+    });
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -5072,6 +5523,12 @@ export function ExportImportControls() {
     link.download = exportFileName(new Date());
     link.click();
     URL.revokeObjectURL(url);
+    // link.click() has no completion callback and never throws even if the
+    // browser's save dialog is cancelled or the download is blocked, so this
+    // marks the export as "attempted," not "confirmed written to disk." That
+    // is an inherent limitation of the <a download> API, not something we
+    // can detect from here.
+    markChangesSaved();
   }
 
   async function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -5111,18 +5568,318 @@ export function ExportImportControls() {
       />
       {error && <p role="alert">{error}</p>}
       {pendingImport && (
-        <div role="dialog" aria-label="Confirm import" className={styles.confirm}>
-          <p>
-            Importing this file will overwrite your current collection, wishlist, and settings on
-            this device. This cannot be undone. Continue?
-          </p>
-          <button type="button" onClick={confirmImport}>
-            Overwrite and import
-          </button>
-          <button type="button" onClick={() => setPendingImport(null)}>
-            Cancel
-          </button>
-        </div>
+        <ImportConfirmDialog onConfirm={confirmImport} onCancel={() => setPendingImport(null)} />
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 11: Run the test to see it pass**
+
+Run:
+```bash
+npm run test -- ExportImportControls.test
+```
+Expected: 4 passed.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add src/state/exportImport.ts src/state/exportImport.test.ts src/components/ImportConfirmDialog.tsx src/components/ImportConfirmDialog.module.css src/components/ExportImportControls.tsx src/components/ExportImportControls.module.css src/components/ExportImportControls.test.tsx
+git commit -m "Add export/import backup with a shared, reusable overwrite confirmation"
+```
+
+---
+
+## Task 22a: Unsaved-changes warning and start screen
+
+> **New task**, inserted after Tasks 1-10 shipped, covering two related additions:
+>
+> 1. A `beforeunload` warning so closing or reloading the tab with collection changes that haven't been exported yet shows the browser's native "leave site?" confirmation. Modern browsers no longer allow custom text in that prompt (`event.returnValue = ''` plus `preventDefault()` is the only cross-browser-supported mechanism today), so this doesn't attempt one.
+> 2. A landing screen shown on a genuinely first-ever visit, offering "Start a New Collection" or "Import a Backup File." Its import path reuses Task 22's `ImportConfirmDialog` and `parseImportPayload` rather than a second bespoke path, and the "have we onboarded" check in Task 23 (next) derives from both a flag and actual data presence, so a selectively-cleared flag can't cause this screen to reappear over a live collection and let an unconfirmed import silently destroy it.
+>
+> Depends on Task 22 (`parseImportPayload`, `replaceUserData`, `ImportConfirmDialog`) and Task 11's `hasUnsavedChanges`/`markChangesSaved`. Task 23 (next) is what actually mounts `StartScreen` and calls the warning hook.
+
+**Files:**
+- Create: `src/state/useUnsavedChangesWarning.ts`
+- Test: `src/state/useUnsavedChangesWarning.test.ts`
+- Create: `src/components/StartScreen.tsx`
+- Create: `src/components/StartScreen.module.css`
+- Test: `src/components/StartScreen.test.tsx`
+
+- [ ] **Step 1: Write the failing test `src/state/useUnsavedChangesWarning.test.ts`**
+
+```ts
+import { renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useUnsavedChangesWarning } from './useUnsavedChangesWarning';
+import { useAppStore } from './store';
+
+beforeEach(() => {
+  useAppStore.setState({ hasUnsavedChanges: false });
+});
+
+describe('useUnsavedChangesWarning', () => {
+  it('does not register a beforeunload listener when there are no unsaved changes', () => {
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    renderHook(() => useUnsavedChangesWarning());
+    expect(addSpy).not.toHaveBeenCalledWith('beforeunload', expect.any(Function));
+    addSpy.mockRestore();
+  });
+
+  it('registers a beforeunload listener that prevents the default close when there are unsaved changes', () => {
+    useAppStore.setState({ hasUnsavedChanges: true });
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    renderHook(() => useUnsavedChangesWarning());
+    expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
+    const handler = addSpy.mock.calls.find(([event]) => event === 'beforeunload')?.[1] as (
+      e: Event
+    ) => void;
+    const event = new Event('beforeunload', { cancelable: true });
+    handler(event);
+    expect(event.defaultPrevented).toBe(true);
+    addSpy.mockRestore();
+  });
+
+  it('removes the listener once hasUnsavedChanges flips back to false', () => {
+    useAppStore.setState({ hasUnsavedChanges: true });
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    const { rerender } = renderHook(() => useUnsavedChangesWarning());
+    useAppStore.setState({ hasUnsavedChanges: false });
+    rerender();
+    expect(removeSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
+    removeSpy.mockRestore();
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to see it fail**
+
+Run:
+```bash
+npm run test -- useUnsavedChangesWarning
+```
+Expected: FAIL, `Cannot find module './useUnsavedChangesWarning'`.
+
+- [ ] **Step 3: Write `src/state/useUnsavedChangesWarning.ts`**
+
+```ts
+import { useEffect } from 'react';
+import { useAppStore } from './store';
+
+export function useUnsavedChangesWarning(): void {
+  const hasUnsavedChanges = useAppStore((s) => s.hasUnsavedChanges);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+}
+```
+
+Putting `hasUnsavedChanges` in the effect's dependency array (rather than an empty `[]`) means the listener is added and removed each time the flag flips, so it can never close over a stale value from the render it was first attached in. This re-registration is cheap and infrequent: once per collection edit, not once per render.
+
+- [ ] **Step 4: Run the test to see it pass**
+
+Run:
+```bash
+npm run test -- useUnsavedChangesWarning
+```
+Expected: 3 passed.
+
+- [ ] **Step 5: Write `src/components/StartScreen.module.css`**
+
+```css
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  text-align: center;
+  padding: 24px;
+}
+
+.choices {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hiddenInput {
+  display: none;
+}
+```
+
+- [ ] **Step 6: Write the failing test `src/components/StartScreen.test.tsx`**
+
+```tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { StartScreen } from './StartScreen';
+import { useAppStore } from '../state/store';
+import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+
+beforeEach(() => {
+  useAppStore.setState({
+    language: 'en',
+    currency: 'USD',
+    activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+    groups: DEFAULT_RARITY_GROUPS,
+    owned: {},
+    wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
+  });
+});
+
+describe('StartScreen', () => {
+  it('calls onComplete without touching the store when starting a new collection', async () => {
+    const onComplete = vi.fn();
+    render(<StartScreen onComplete={onComplete} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Start a New Collection' }));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().owned).toEqual({});
+  });
+
+  it('shows the confirmation dialog for a valid backup file, and only imports on confirm', async () => {
+    const onComplete = vi.fn();
+    render(<StartScreen onComplete={onComplete} />);
+    const payload = {
+      version: 1,
+      language: 'ja',
+      currency: 'EUR',
+      activeGroupIds: ['full-art'],
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
+      wishlist: {},
+      selectedGenerations: [1],
+    };
+    const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    expect(await screen.findByRole('dialog', { name: 'Confirm import' })).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Overwrite and import' }));
+    expect(useAppStore.getState().language).toBe('ja');
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancelling the confirmation leaves the store untouched and stays on the screen', async () => {
+    const onComplete = vi.fn();
+    render(<StartScreen onComplete={onComplete} />);
+    const payload = {
+      version: 1,
+      language: 'ja',
+      currency: 'EUR',
+      activeGroupIds: ['full-art'],
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+    };
+    const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    await screen.findByRole('dialog', { name: 'Confirm import' });
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useAppStore.getState().language).toBe('en');
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Confirm import' })).not.toBeInTheDocument();
+  });
+
+  it('shows an inline error for an invalid file and does not show the dialog', async () => {
+    render(<StartScreen onComplete={() => {}} />);
+    const file = new File(['not json'], 'bad.json', { type: 'application/json' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Confirm import' })).not.toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 7: Run the test to see it fail**
+
+Run:
+```bash
+npm run test -- StartScreen.test
+```
+Expected: FAIL, `Cannot find module './StartScreen'`.
+
+- [ ] **Step 8: Write `src/components/StartScreen.tsx`**
+
+```tsx
+import { useRef, useState, type ChangeEvent } from 'react';
+import { parseImportPayload, type ExportedUserData } from '../state/exportImport';
+import { useAppStore } from '../state/store';
+import { ImportConfirmDialog } from './ImportConfirmDialog';
+import styles from './StartScreen.module.css';
+
+export interface StartScreenProps {
+  onComplete: () => void;
+}
+
+export function StartScreen({ onComplete }: StartScreenProps) {
+  const replaceUserData = useAppStore((s) => s.replaceUserData);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingImport, setPendingImport] = useState<ExportedUserData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setPendingImport(parseImportPayload(text));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read that file.');
+      setPendingImport(null);
+    }
+  }
+
+  function confirmImport() {
+    if (!pendingImport) return;
+    replaceUserData(pendingImport);
+    setPendingImport(null);
+    onComplete();
+  }
+
+  return (
+    <div className={styles.screen}>
+      <h1>Welcome to Card Collector</h1>
+      <div className={styles.choices}>
+        <button type="button" onClick={onComplete}>
+          Start a New Collection
+        </button>
+        <button type="button" onClick={() => fileInputRef.current?.click()}>
+          Import a Backup File
+        </button>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className={styles.hiddenInput}
+        onChange={handleFileSelected}
+      />
+      {error && <p role="alert">{error}</p>}
+      {pendingImport && (
+        <ImportConfirmDialog onConfirm={confirmImport} onCancel={() => setPendingImport(null)} />
       )}
     </div>
   );
@@ -5133,20 +5890,22 @@ export function ExportImportControls() {
 
 Run:
 ```bash
-npm run test -- ExportImportControls.test
+npm run test -- StartScreen.test
 ```
-Expected: 3 passed.
+Expected: 4 passed.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/state/exportImport.ts src/state/exportImport.test.ts src/components/ExportImportControls.tsx src/components/ExportImportControls.module.css src/components/ExportImportControls.test.tsx
-git commit -m "Add export/import backup with confirmation on overwrite"
+git add src/state/useUnsavedChangesWarning.ts src/state/useUnsavedChangesWarning.test.ts src/components/StartScreen.tsx src/components/StartScreen.module.css src/components/StartScreen.test.tsx
+git commit -m "Add unsaved-changes close warning and a new-project/import-backup start screen"
 ```
 
 ---
 
 ## Task 23: App shell wiring tabs and every screen together
+
+> **Amended** after Tasks 1-10 shipped, to also: mount `StartScreen` (Task 22a) as a gate in front of the main app on a genuine first visit; call `useUnsavedChangesWarning()` (Task 22a); and rename the header from "Gen 1 Card Collector" to "Pokemon Card Collector", since a hardcoded "Gen 1" title sitting directly next to the new multi-generation filter (Task 17) would read as self-contradictory. This is a one-line, in-scope change here, and it also means this text never needs touching again as more generations are added later as pure data, matching Task 15.5's own "no further code changes anticipated" goal for that part of the codebase. `README.md` (Task 3, already shipped) intentionally keeps its "Gen 1" language for now, since it's still literally accurate, only Gen 1 is populated, and updating already-shipped docs for a capability that doesn't exist yet would be premature; the reminder to update it lives as a code comment in `src/data/generations.ts` (Task 15.5), right where a future contributor would actually add Gen 2+ data.
 
 **Files:**
 - Modify: `src/App.tsx`
@@ -5156,7 +5915,7 @@ git commit -m "Add export/import backup with confirmation on overwrite"
 
 - [ ] **Step 1: Add tutorial anchor attributes to `src/components/DexGrid.tsx`**
 
-Replace the `viewToggle` div, the Refresh Data button, and the tile-rendering `return` inside the `GEN1_DEX.map` callback with the versions below (the rest of the file is unchanged from Task 16):
+Replace the `viewToggle` div, the Refresh Data button, and the tile-rendering `return` inside the `dexEntries.map` callback (renamed from `GEN1_DEX.map` when Task 16 was amended for multi-generation support) with the versions below (the rest of the file is unchanged from Task 16):
 
 ```tsx
         <div
@@ -5247,10 +6006,34 @@ import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
 import { FilterBar } from './components/FilterBar';
+import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
 import { Tutorial } from './components/Tutorial';
 import { WishlistTable } from './components/WishlistTable';
+import { useUnsavedChangesWarning } from './state/useUnsavedChangesWarning';
 import styles from './App.module.css';
+
+const ONBOARDED_KEY = 'pcc:onboarded:v1';
+const USER_DATA_KEY = 'pcc:userData:v1';
+
+function readInitialOnboardingNeeded(): boolean {
+  try {
+    if (localStorage.getItem(ONBOARDED_KEY) === 'true') return false;
+    if (localStorage.getItem(USER_DATA_KEY) !== null) {
+      // Real collection data already exists but the onboarding flag is
+      // missing (e.g. cleared independently of the data key by a privacy
+      // extension, a manual DevTools edit, or a future migration bug).
+      // Treat this as already onboarded rather than showing StartScreen
+      // over live data, and self-heal the flag so this branch is a no-op
+      // on the next load.
+      localStorage.setItem(ONBOARDED_KEY, 'true');
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type Tab = 'grid' | 'collection' | 'wishlist' | 'summary';
 
@@ -5263,11 +6046,25 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('grid');
+  const [needsOnboarding, setNeedsOnboarding] = useState(readInitialOnboardingNeeded);
+
+  useUnsavedChangesWarning();
+
+  if (needsOnboarding) {
+    return (
+      <StartScreen
+        onComplete={() => {
+          localStorage.setItem(ONBOARDED_KEY, 'true');
+          setNeedsOnboarding(false);
+        }}
+      />
+    );
+  }
 
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <h1>Gen 1 Card Collector</h1>
+        <h1>Pokemon Card Collector</h1>
         <div data-tutorial="export-import">
           <ExportImportControls />
         </div>
@@ -5306,7 +6103,7 @@ export default function App() {
 
 - [ ] **Step 4: Rewrite `src/App.test.tsx`**
 
-The placeholder test from Task 2 rendered a static heading. Now that `App` pulls in the Zustand store and `DexGrid` (which fetches on mount), the test needs to seed the store and mock `fetch` like the other component tests.
+The placeholder test from Task 2 rendered a static heading. Now that `App` pulls in the Zustand store, `DexGrid` (which fetches on mount), and the onboarding gate, the test needs to seed the store, mark onboarding as already complete (so the existing tab-UI tests exercise the main app rather than `StartScreen`), and mock `fetch` like the other component tests. A separate small suite covers the onboarding gate itself.
 
 ```tsx
 import { render, screen } from '@testing-library/react';
@@ -5322,6 +6119,7 @@ function jsonResponse(body: unknown) {
 
 beforeEach(() => {
   localStorage.clear();
+  localStorage.setItem('pcc:onboarded:v1', 'true');
   useAppStore.setState({
     language: 'en',
     currency: 'USD',
@@ -5329,6 +6127,8 @@ beforeEach(() => {
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
     wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
   });
   vi.stubGlobal(
     'fetch',
@@ -5339,7 +6139,7 @@ beforeEach(() => {
 describe('App', () => {
   it('renders the app title and the four tabs', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: /gen 1 card collector/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /pokemon card collector/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dex Grid' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'My Collection' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Wishlist' })).toBeInTheDocument();
@@ -5355,6 +6155,23 @@ describe('App', () => {
   it('shows the Dex Grid tab by default', () => {
     render(<App />);
     expect(screen.getByText('Bulbasaur')).toBeInTheDocument();
+  });
+});
+
+describe('App onboarding gate', () => {
+  it('shows StartScreen on a fresh visit with no prior data', () => {
+    localStorage.clear();
+    render(<App />);
+    expect(screen.getByRole('heading', { name: /welcome to card collector/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dex Grid' })).not.toBeInTheDocument();
+  });
+
+  it('skips StartScreen and self-heals the flag when real user data exists but the flag is missing', () => {
+    localStorage.clear();
+    localStorage.setItem('pcc:userData:v1', JSON.stringify({ state: {}, version: 0 }));
+    render(<App />);
+    expect(screen.getByRole('button', { name: 'Dex Grid' })).toBeInTheDocument();
+    expect(localStorage.getItem('pcc:onboarded:v1')).toBe('true');
   });
 });
 ```
@@ -5460,7 +6277,7 @@ const STEPS: Step[] = [
   {
     target: '[data-tutorial="filter-bar"]',
     content:
-      'Use these filters to choose which rarity groups count as special art, which card language you collect, and which currency prices are shown in.',
+      'Use these filters to choose which generations you collect, which rarity groups count as special art, which card language you collect, and which currency prices are shown in.',
   },
   {
     target: '[data-tutorial="view-toggle"]',
@@ -5677,9 +6494,9 @@ Expected: all tests still pass. Framer Motion's `motion.*` components forward st
 This step is a design pass, not a fixed code diff: invoke the `frontend-design` skill and apply its guidance to every `*.module.css` file and `src/styles/global.css` written so far. At minimum, the result must:
 
 - Define a real color palette (not default blue/red/gray placeholders) as CSS custom properties in `src/styles/global.css`, with explicit light and dark mode values (respecting `prefers-color-scheme`).
-- Apply consistent type scale, spacing, and corner radii across `Tile`, `Picker`, `ConditionPicker`, `FilterBar`, `ManageGroupsPanel`, `DataTable` (Collection/Wishlist), `Summary`, and the `App` header/tabs.
+- Apply consistent type scale, spacing, and corner radii across `Tile`, `Picker`, `ConditionPicker`, `FilterBar`, `ManageGroupsPanel`, `DataTable` (Collection/Wishlist), `Summary`, `StartScreen`, `ImportConfirmDialog`, and the `App` header/tabs.
 - Keep every existing `className`, `data-tutorial`, `role`, and `aria-*` attribute intact, since the test suite and the Tutorial's target selectors depend on them. Only the CSS files and class-name *values inside them* should change; do not rename the exported class identifiers used in the `.tsx` files.
-- Avoid a generic, templated look: deliberate color choices, real hover/active states, and considered empty states (the "no cards yet" and "wishlist is empty" messages) rather than default browser styling.
+- Avoid a generic, templated look: deliberate color choices, real hover/active states, and considered empty states (the "no cards yet," "wishlist is empty," and "select at least one generation" messages) rather than default browser styling.
 
 - [ ] **Step 7: Run the test suite again after the design pass**
 
