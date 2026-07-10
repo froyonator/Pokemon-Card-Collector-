@@ -53,4 +53,33 @@ describe('BinderSlot', () => {
     render(<BinderSlot entry={undefined} onClick={() => {}} />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  it('permanently shows the owned card, not the black/hover-sprite placeholder, when ownedCardImageBase is set', () => {
+    render(
+      <BinderSlot
+        entry={{ type: 'pokemon', dexNumber: 1 }}
+        pokemonName="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        onClick={() => {}}
+      />
+    );
+    // Shown immediately, without needing to hover first.
+    expect(screen.getByAltText('Bulbasaur card')).toBeInTheDocument();
+  });
+
+  it('does not reveal the sprite on hover once an owned card is showing', async () => {
+    render(
+      <BinderSlot
+        entry={{ type: 'pokemon', dexNumber: 1 }}
+        pokemonName="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        onClick={() => {}}
+      />
+    );
+    await userEvent.hover(screen.getByRole('button'));
+    expect(screen.queryByAltText('Bulbasaur')).not.toBeInTheDocument();
+    expect(screen.getByAltText('Bulbasaur card')).toBeInTheDocument();
+  });
 });

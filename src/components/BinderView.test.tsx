@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BinderView } from './BinderView';
 import { useAppStore } from '../state/store';
+import { setCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
 
 const dexEntries: DexEntry[] = [
@@ -14,6 +15,11 @@ const dexEntries: DexEntry[] = [
 ];
 
 function resetStore() {
+  // Cleared here (not just Zustand state reset) since setCachedCards writes
+  // straight to localStorage and several tests below seed card data for the
+  // owned-card-display feature -- without this, one test's cached card
+  // could leak into an unrelated test running later in this file.
+  localStorage.clear();
   useAppStore.setState({
     binders: [
       {
@@ -40,28 +46,67 @@ describe('BinderView', () => {
   beforeEach(resetStore);
 
   it('shows page 1 alone on first render', () => {
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
     expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/page 2/i)).not.toBeInTheDocument();
   });
 
   it('advancing to the next spread shows pages 2 and 3 together', async () => {
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
     await userEvent.click(screen.getByRole('button', { name: /next page/i }));
     expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/page 3/i)).toBeInTheDocument();
   });
 
   it('the previous button on the first spread is disabled', () => {
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
     expect(screen.getByRole('button', { name: /previous page/i })).toBeDisabled();
   });
 
   it("clicking a filled slot calls onSlotClick with the dex number and the active binder's language", async () => {
     const onSlotClick = vi.fn();
-    render(<BinderView dexEntries={dexEntries} onSlotClick={onSlotClick} />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={onSlotClick} />);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     expect(onSlotClick).toHaveBeenCalledWith(1, 'en');
+  });
+
+  it("shows the actual owned card in its slot, resolved from the active binder's own language cache", () => {
+    setCachedCards('en', 1, [
+      {
+        id: 'sv03.5-199',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        language: 'en',
+      },
+    ]);
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{ 1: { dexNumber: 1, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } }}
+        dataVersion={0}
+        onSlotClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur card')).toBeInTheDocument();
+    // The sprite-reveal path is no longer reachable once a card is owned.
+    expect(screen.queryByAltText('Bulbasaur')).not.toBeInTheDocument();
+  });
+
+  it('does not show an owned card art when the owned card id is not present in the cache for any reason', () => {
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{ 1: { dexNumber: 1, cardId: 'not-cached', condition: 'Near Mint', addedAt: '' } }}
+        dataVersion={0}
+        onSlotClick={() => {}}
+      />
+    );
+    expect(screen.queryByAltText('Bulbasaur card')).not.toBeInTheDocument();
   });
 });
 
@@ -69,7 +114,7 @@ describe('BinderView manual arrange', () => {
   beforeEach(resetStore);
 
   it('dragging one slot onto another snapshots the default order and moves the entry', () => {
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     const bulbasaur = screen.getByRole('button', { name: /bulbasaur/i });
     const venusaur = screen.getByRole('button', { name: /venusaur/i });
 
@@ -101,7 +146,7 @@ describe('BinderView manual arrange', () => {
       ],
       activeBinderId: 'a',
     });
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     const charmeleon = screen.getByRole('button', { name: /charmeleon/i }); // now first
     const charmander = screen.getByRole('button', { name: /charmander/i }); // now second
 
@@ -114,7 +159,7 @@ describe('BinderView manual arrange', () => {
   });
 
   it('selecting a slot and choosing Keep empty inserts a blank and shifts the rest forward', async () => {
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     await userEvent.click(screen.getByRole('button', { name: /select ivysaur/i }));
     await userEvent.click(screen.getByRole('button', { name: /keep empty/i }));
 
@@ -147,7 +192,7 @@ describe('BinderView manual arrange', () => {
       ],
       activeBinderId: 'a',
     });
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     const bulbasaur = screen.getByRole('button', { name: /bulbasaur/i });
     const ivysaur = screen.getByRole('button', { name: /ivysaur/i });
 
@@ -184,13 +229,15 @@ describe('BinderView manual arrange', () => {
       activeBinderId: 'a',
     });
     const { rerender } = render(
-      <BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />
     );
     await userEvent.click(screen.getByRole('button', { name: /select ivysaur/i }));
     expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
 
-    useAppStore.getState().setActiveBinder('b');
-    rerender(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    act(() => {
+      useAppStore.getState().setActiveBinder('b');
+    });
+    rerender(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
 
     expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
     expect(useAppStore.getState().binders.find((b) => b.id === 'b')?.customOrder).toBeNull();
@@ -213,7 +260,7 @@ describe('BinderView manual arrange', () => {
       ],
       activeBinderId: 'a',
     });
-    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     await userEvent.click(screen.getByRole('button', { name: /select bulbasaur/i }));
     await userEvent.click(screen.getByRole('button', { name: /keep empty/i }));
 

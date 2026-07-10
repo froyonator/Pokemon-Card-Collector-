@@ -1,0 +1,89 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 280px;
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  position: sticky;
+  top: var(--space-4);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--space-8));
+  overflow-y: auto;
+  transition:
+    width var(--transition-base),
+    padding var(--transition-base);
+}
+
+.sidebar.collapsed {
+  width: 48px;
+  padding: var(--space-4) var(--space-2);
+  overflow: hidden;
+}
+
+.layout {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+}
+
+.collapseToggle {
+  align-self: flex-end;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.section legend {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 0 var(--space-2);
+}
+
+.viewToggle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.viewToggle button {
+  border: none;
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.viewToggle button[aria-pressed='true'] {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 0;
+}

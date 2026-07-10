@@ -1,7 +1,10 @@
 .slot {
-  aspect-ratio: 1;
-  min-width: 72px;
-  min-height: 72px;
+  /* A real trading card is 63mm x 88mm -- roughly a 5:7 width:height ratio.
+     Slots used to be square; now that owned slots show the actual card art,
+     they should be shaped like the card itself. */
+  aspect-ratio: 5 / 7;
+  min-width: 90px;
+  min-height: 126px;
   border-radius: var(--radius-md);
   background: #0c0a08;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -10,6 +13,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-1);
+  overflow: hidden;
   transition: background-color var(--transition-fast);
 }
 
@@ -21,20 +25,31 @@
 .slot img {
   /* Fixed pixel dimensions, not percentage-based: a percentage width/height
      here would depend on the slot's own size, but the slot is a CSS Grid
-     item sized from `repeat(columns, 1fr)` with the default `auto` minimum
-     track size, which resolves from the CONTENT'S intrinsic size when that
-     content has no fixed size of its own. That circular dependency is what
-     made the whole grid balloon to the sprite's native pixel dimensions the
-     moment it mounted on hover. A fixed size sidesteps the cycle entirely. */
+     item sized from `repeat(columns, minmax(0, 1fr))`. minmax(0, ...)
+     already stops the track itself from growing to fit unconstrained
+     content (see BinderView.tsx), but this stays as a second, independent
+     safeguard at the image level for the un-owned hover-sprite case, which
+     isn't card-shaped and shouldn't stretch to fill a card-shaped slot. */
   width: 48px;
   height: 48px;
   object-fit: contain;
 }
 
+.owned {
+  padding: 0;
+}
+
+.cardImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
 .blank {
-  aspect-ratio: 1;
-  min-width: 72px;
-  min-height: 72px;
+  aspect-ratio: 5 / 7;
+  min-width: 90px;
+  min-height: 126px;
   border-radius: var(--radius-md);
   border: 1px dashed rgba(255, 255, 255, 0.12);
   background: transparent;

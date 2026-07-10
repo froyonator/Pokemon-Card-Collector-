@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
-import { FilterBar } from './components/FilterBar';
 import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
 import { Tutorial } from './components/Tutorial';
@@ -125,9 +124,6 @@ export default function App() {
           would only add unnecessary background price-rate fetches for tabs
           the user hasn't opened yet. */}
       <div hidden={activeTab !== 'grid'}>
-        <div data-tutorial="filter-bar">
-          <FilterBar />
-        </div>
         <DexGrid />
       </div>
       <AnimatePresence mode="wait">

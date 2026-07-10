@@ -7,11 +7,12 @@ import { activeRarities, availableCardsForDex, computeTileState } from '../state
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
-import { BinderSettings } from './BinderSettings';
 import { BinderView } from './BinderView';
 import { Picker } from './Picker';
+import { Sidebar, type DexView } from './Sidebar';
 import { Tile } from './Tile';
 import styles from './DexGrid.module.css';
+import sidebarStyles from './Sidebar.module.css';
 
 export function DexGrid() {
   const language = useAppStore((s) => s.language);
@@ -21,7 +22,7 @@ export function DexGrid() {
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
 
-  const [view, setView] = useState<'sprite' | 'card' | 'binder'>('sprite');
+  const [view, setView] = useState<DexView>('sprite');
   const [isManualArrangeActive, setIsManualArrangeActive] = useState(false);
   const [openDexNumber, setOpenDexNumber] = useState<number | null>(null);
   // Set alongside openDexNumber whenever a Picker is opened from a binder
@@ -201,89 +202,79 @@ export function DexGrid() {
 
   return (
     <div>
-      <div className={styles.toolbar}>
-        <div
-          className={styles.viewToggle}
-          role="radiogroup"
-          aria-label="View"
-          data-tutorial="view-toggle"
-        >
-          <button type="button" aria-pressed={view === 'sprite'} onClick={() => setView('sprite')}>
-            Sprite view
-          </button>
-          <button type="button" aria-pressed={view === 'card'} onClick={() => setView('card')}>
-            Card view
-          </button>
-          <button type="button" aria-pressed={view === 'binder'} onClick={() => setView('binder')}>
-            Binder view
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={handleRefreshData}
-          disabled={isLoading}
-          data-tutorial="refresh-data"
-        >
-          {isLoading ? 'Refreshing...' : 'Refresh Data'}
-        </button>
-      </div>
-      {view === 'binder' && (
-        <BinderSettings
+      <div className={sidebarStyles.layout}>
+        <Sidebar
+          view={view}
+          onSetView={setView}
+          isLoading={isLoading}
+          onRefresh={handleRefreshData}
           isManualArrangeActive={isManualArrangeActive}
           onToggleManualArrange={() => setIsManualArrangeActive((active) => !active)}
         />
-      )}
-      {dexEntries.length === 0 ? (
-        <p className={styles.emptyState}>
-          Select at least one generation in the filter bar to see Pokémon here.
-        </p>
-      ) : view === 'binder' ? (
-        <BinderView
-          dexEntries={dexEntries}
-          onSlotClick={(dexNumber, language) => {
-            setOpenDexNumber(dexNumber);
-            setOpenPickerLanguage(language);
-          }}
-          isManualArrangeActive={isManualArrangeActive}
-        />
-      ) : (
-        <div className={styles.grid} data-version={dataVersion}>
-          {dexEntries.map((entry) => {
-            const hasLoaded = cardsByDexNumber.get(entry.number) !== undefined;
-            const allCards = cardsByDexNumber.get(entry.number) ?? [];
-            const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
-            const ownedRecord = owned[entry.number];
-            // Self-heals if a fetch fails outright for some dex number: once
-            // isLoading flips back to false in loadAllCardData's .finally(),
-            // any dex number that never got a cache entry (its request
-            // errored) falls through to hasLoaded=false, isLoading=false ->
-            // not 'loading' -> the availableCount === 0 branch ->
-            // 'unavailable', a reasonable fallback instead of a spinner
-            // stuck forever.
-            const isLoadingDex = isLoading && !hasLoaded;
-            const state = computeTileState(Boolean(ownedRecord), cards.length, isLoadingDex);
-            const ownedCard = ownedRecord
-              ? allCards.find((c) => c.id === ownedRecord.cardId)
-              : undefined;
-            return (
-              <div key={entry.number} data-tutorial={entry.number === 1 ? 'first-tile' : undefined}>
-                <Tile
-                  dexNumber={entry.number}
-                  name={entry.name}
-                  spriteUrl={spriteUrl(entry.number)}
-                  state={state}
-                  view={view}
-                  ownedCardImageBase={ownedCard?.imageBase}
-                  onClick={() => {
-                    setOpenDexNumber(entry.number);
-                    setOpenPickerLanguage(undefined);
-                  }}
-                />
-              </div>
-            );
-          })}
+        <div className={sidebarStyles.main}>
+          {dexEntries.length === 0 ? (
+            <p className={styles.emptyState}>
+              Select at least one generation in the filter bar to see Pokémon here.
+            </p>
+          ) : view === 'binder' ? (
+            <BinderView
+              dexEntries={dexEntries}
+              owned={owned}
+              dataVersion={dataVersion}
+              onSlotClick={(dexNumber, language) => {
+                setOpenDexNumber(dexNumber);
+                setOpenPickerLanguage(language);
+              }}
+              isManualArrangeActive={isManualArrangeActive}
+            />
+          ) : (
+            <div className={styles.grid} data-version={dataVersion}>
+              {dexEntries.map((entry) => {
+                const hasLoaded = cardsByDexNumber.get(entry.number) !== undefined;
+                const allCards = cardsByDexNumber.get(entry.number) ?? [];
+                const cards = availableCardsForDex(
+                  allCards,
+                  activeSet,
+                  cardOverrides,
+                  activeGroupIds
+                );
+                const ownedRecord = owned[entry.number];
+                // Self-heals if a fetch fails outright for some dex number: once
+                // isLoading flips back to false in loadAllCardData's .finally(),
+                // any dex number that never got a cache entry (its request
+                // errored) falls through to hasLoaded=false, isLoading=false ->
+                // not 'loading' -> the availableCount === 0 branch ->
+                // 'unavailable', a reasonable fallback instead of a spinner
+                // stuck forever.
+                const isLoadingDex = isLoading && !hasLoaded;
+                const state = computeTileState(Boolean(ownedRecord), cards.length, isLoadingDex);
+                const ownedCard = ownedRecord
+                  ? allCards.find((c) => c.id === ownedRecord.cardId)
+                  : undefined;
+                return (
+                  <div
+                    key={entry.number}
+                    data-tutorial={entry.number === 1 ? 'first-tile' : undefined}
+                  >
+                    <Tile
+                      dexNumber={entry.number}
+                      name={entry.name}
+                      spriteUrl={spriteUrl(entry.number)}
+                      state={state}
+                      view={view}
+                      ownedCardImageBase={ownedCard?.imageBase}
+                      onClick={() => {
+                        setOpenDexNumber(entry.number);
+                        setOpenPickerLanguage(undefined);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </div>
       {/* mode="wait": a keyboard user can Tab past the visually-covered grid
           (tiles stay focusable under the overlay) and activate a different
           tile while a Picker is open, jumping openDexNumber straight from

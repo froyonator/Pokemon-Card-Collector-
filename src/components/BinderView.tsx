@@ -9,18 +9,28 @@ import {
   moveEntry,
 } from '../state/binderLayout';
 import { useAppStore } from '../state/store';
+import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
+import type { OwnedRecord } from '../types';
 import { BinderSlot } from './BinderSlot';
 import styles from './BinderView.module.css';
 
 export interface BinderViewProps {
   dexEntries: DexEntry[];
+  owned: Record<number, OwnedRecord>;
+  // A pure cache-busting signal from DexGrid, bumped whenever new card data
+  // lands in localStorage -- mirrors DexGrid's own cardsByDexNumber memo,
+  // which this component's ownedCardsByDexNumber memo below is the
+  // binder-language equivalent of.
+  dataVersion: number;
   onSlotClick: (dexNumber: number, language: string) => void;
   isManualArrangeActive?: boolean;
 }
 
 export function BinderView({
   dexEntries,
+  owned,
+  dataVersion,
   onSlotClick,
   isManualArrangeActive = false,
 }: BinderViewProps) {
@@ -51,6 +61,26 @@ export function BinderView({
     for (const entry of dexEntries) map.set(entry.number, entry.name);
     return map;
   }, [dexEntries]);
+
+  // Deliberately keyed on activeBinder.language, not any grid-global
+  // language: a binder set to a different language than the rest of the app
+  // needs its owned-card art resolved from THAT language's cache, exactly
+  // like DexGrid.tsx's openCards does for the language-aware Picker. This
+  // only reflects whatever's already cached for that language -- it doesn't
+  // trigger a fetch itself (see the design spec's documented tradeoff on
+  // not auto-prefetching a binder's own language in the background).
+  const ownedCardImageByDexNumber = useMemo(() => {
+    void dataVersion;
+    const map = new Map<number, string>();
+    for (const entry of dexEntries) {
+      const ownedRecord = owned[entry.number];
+      if (!ownedRecord) continue;
+      const cards = getCachedCards(activeBinder.language, entry.number) ?? [];
+      const card = cards.find((c) => c.id === ownedRecord.cardId);
+      if (card) map.set(entry.number, card.imageBase);
+    }
+    return map;
+  }, [dexEntries, owned, activeBinder.language, dataVersion]);
 
   const sequence = activeBinder.customOrder ?? defaultBinderSequence(dexEntries);
 
@@ -165,6 +195,11 @@ export function BinderView({
                       }
                       spriteUrl={
                         entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined
+                      }
+                      ownedCardImageBase={
+                        entry?.type === 'pokemon'
+                          ? ownedCardImageByDexNumber.get(entry.dexNumber)
+                          : undefined
                       }
                       onClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
                       isManualArrangeActive={isManualArrangeActive}
