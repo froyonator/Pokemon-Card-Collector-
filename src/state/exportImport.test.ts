@@ -53,6 +53,54 @@ describe('parseImportPayload', () => {
     expect(() => parseImportPayload('not json')).toThrow();
   });
 
+  it('throws when a group is missing its rarities array', () => {
+    const payload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: ['x'],
+      groups: [{ id: 'x', name: 'y' }],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+    };
+    expect(() => parseImportPayload(JSON.stringify(payload))).toThrow(
+      'This file does not look like a valid export.'
+    );
+  });
+
+  it('throws when activeGroupIds is not a string array', () => {
+    const payload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [1, 2],
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+    };
+    expect(() => parseImportPayload(JSON.stringify(payload))).toThrow(
+      'This file does not look like a valid export.'
+    );
+  });
+
+  it('throws when owned is an array instead of a record', () => {
+    const payload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: [],
+      wishlist: {},
+      selectedGenerations: [1],
+    };
+    expect(() => parseImportPayload(JSON.stringify(payload))).toThrow(
+      'This file does not look like a valid export.'
+    );
+  });
+
   it('defaults selectedGenerations to [1] for a backup exported before multi-generation support existed', () => {
     const preFeaturePayload = {
       version: 1,

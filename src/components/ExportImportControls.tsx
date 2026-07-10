@@ -39,7 +39,9 @@ export function ExportImportControls() {
     const link = document.createElement('a');
     link.href = url;
     link.download = exportFileName(new Date());
+    document.body.appendChild(link);
     link.click();
+    link.remove();
     URL.revokeObjectURL(url);
     // link.click() has no completion callback and never throws even if the
     // browser's save dialog is cancelled or the download is blocked, so this

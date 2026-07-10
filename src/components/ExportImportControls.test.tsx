@@ -1,9 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExportImportControls } from './ExportImportControls';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   useAppStore.setState({
@@ -37,7 +41,11 @@ describe('ExportImportControls', () => {
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
       wishlist: {},
-      selectedGenerations: [1],
+      // Deliberately different from the beforeEach-seeded [1], so this
+      // assertion actually catches a replaceUserData regression that drops
+      // or fails to apply selectedGenerations, rather than passing
+      // vacuously because both sides happen to already be [1].
+      selectedGenerations: [1, 2],
     };
     const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -46,6 +54,9 @@ describe('ExportImportControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Overwrite and import' }));
     expect(useAppStore.getState().language).toBe('ja');
     expect(useAppStore.getState().currency).toBe('EUR');
+    expect(useAppStore.getState().activeGroupIds).toEqual(['full-art']);
+    expect(useAppStore.getState().owned).toEqual({});
+    expect(useAppStore.getState().selectedGenerations).toEqual([1, 2]);
   });
 
   it('cancelling the confirmation does not change the store', async () => {
@@ -71,8 +82,16 @@ describe('ExportImportControls', () => {
 
   it('marks changes as saved after exporting', async () => {
     useAppStore.setState({ hasUnsavedChanges: true });
+    // jsdom doesn't implement real navigation, so an unmocked
+    // HTMLAnchorElement.click() on a download link logs a noisy (but
+    // harmless) "Not implemented: navigation" stderr warning. Stubbing the
+    // click both silences that and gives a direct assertion on the actual
+    // export mechanics, rather than only inferring it happened via the
+    // hasUnsavedChanges side effect.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     render(<ExportImportControls />);
     await userEvent.click(screen.getByRole('button', { name: 'Export my collection' }));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
 });
