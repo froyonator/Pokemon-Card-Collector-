@@ -1,5 +1,6 @@
 import type { Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
 import type { ExportedUserData } from './store';
+import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
 export type { ExportedUserData } from './store';
 
@@ -92,13 +93,19 @@ export function parseImportPayload(raw: string): ExportedUserData {
     data.selectedGenerations = [1];
   }
   // Backups exported before this feature existed predate this field
-  // entirely. Default to an empty map rather than reject an otherwise-valid
-  // older backup, same precedent as selectedGenerations above. If the field
-  // IS present, it must actually be a card id -> group id string map, not
-  // some other shape. This is a plain user-data mapping with no further
-  // downstream guard, same reasoning as the other shape checks above.
+  // entirely. Default to the same seeded defaults a fresh install or an
+  // existing user's rehydrated localStorage gets (DEFAULT_CARD_OVERRIDES),
+  // not an empty map: this mirrors what selectedGenerations does above,
+  // where the default ([1]) matches the store's own fresh-user default
+  // exactly. An empty map would silently strip hand-verified
+  // classifications (e.g. svp-044) from a user who imports an old backup,
+  // while a user who never imports anything keeps them, an inconsistency
+  // this default is here to avoid. If the field IS present, it must
+  // actually be a card id -> group id string map, not some other shape.
+  // This is a plain user-data mapping with no further downstream guard,
+  // same reasoning as the other shape checks above.
   if (data.cardOverrides === undefined) {
-    data.cardOverrides = {};
+    data.cardOverrides = DEFAULT_CARD_OVERRIDES;
   } else if (!isStringRecord(data.cardOverrides)) {
     throw new Error('This file does not look like a valid export.');
   }

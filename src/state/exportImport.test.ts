@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildExportPayload, exportFileName, parseImportPayload } from './exportImport';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
 const baseState = {
   language: 'en',
@@ -118,7 +119,7 @@ describe('parseImportPayload', () => {
     expect(parsed.selectedGenerations).toEqual([1]);
   });
 
-  it('defaults cardOverrides to an empty object for a backup exported before this feature existed', () => {
+  it('defaults cardOverrides to the seeded defaults for a backup exported before this feature existed', () => {
     const preFeaturePayload = {
       version: 1,
       language: 'en',
@@ -131,7 +132,7 @@ describe('parseImportPayload', () => {
       // no cardOverrides key at all, matching a real pre-feature export file
     };
     const parsed = parseImportPayload(JSON.stringify(preFeaturePayload));
-    expect(parsed.cardOverrides).toEqual({});
+    expect(parsed.cardOverrides).toEqual(DEFAULT_CARD_OVERRIDES);
   });
 
   it('throws when cardOverrides is present but not a plain object of strings', () => {

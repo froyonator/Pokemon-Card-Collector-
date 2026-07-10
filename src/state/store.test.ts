@@ -180,6 +180,11 @@ describe('setCardOverride', () => {
     useAppStore.getState().setCardOverride('svp-044', 'full-art');
     expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
   });
+
+  it('does not set hasUnsavedChanges for a no-op clear of a card with no override', () => {
+    useAppStore.getState().setCardOverride('svp-044', null);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
 });
 
 describe('markChangesSaved', () => {
