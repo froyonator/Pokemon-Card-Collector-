@@ -102,6 +102,14 @@ src/
   types/
 ```
 
+## Export / import (backup)
+
+Since all user data lives in the browser's localStorage/IndexedDB, it's tied to that one browser/device and can be lost (cleared cache, new machine, etc.). To guard against that:
+
+- **Export** — a button serializes just the user-generated data (ownership records incl. condition, wishlist, custom rarity groupings, filter/currency/language settings) to a downloaded JSON file, e.g. `pokemon-collection-export-YYYY-MM-DD.json`. Re-fetchable data (cached card metadata, cached image blobs, price cache) is excluded to keep the file small and portable.
+- **Import** — a file picker reads a previously exported JSON file. Importing shows a confirmation warning that it will overwrite current local data, then fully replaces local state with the imported file's contents (no merge). After import, the card/image/price cache is left as-is and will simply be re-validated/re-fetched against the newly-imported ownership/wishlist records as needed.
+- Both actions live in the Summary or a Settings area (exact placement decided during implementation).
+
 ## CI/CD
 
 - GitHub Actions workflow on push to `main`: install deps, typecheck, lint, test, build.
