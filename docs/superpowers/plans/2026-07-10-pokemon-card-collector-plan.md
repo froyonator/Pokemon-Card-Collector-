@@ -154,6 +154,8 @@ git config user.email "276264696+froyonator@users.noreply.github.com"
 
 - [ ] **Step 5: Write `vite.config.ts`**
 
+> **Note added after Task 14 shipped:** the `test.css.modules.classNameStrategy: 'non-scoped'` line below was not part of the original scaffold; it was added when Task 14's test (`toHaveClass('tile--unavailable')`) failed against Vitest's default hashed/scoped CSS Modules class names (e.g. `_tile--unavailable_542b3e` instead of the literal `tile--unavailable`). It's included here now so a from-scratch execution of this plan doesn't hit the same failure. It only affects how class names resolve under Vitest; `vite build` still hashes/scopes class names normally in production (verified). Because it disables per-file scoping in tests, two `*.module.css` files that reuse the same class name (several already do later in this plan, e.g. `.overlay`/`.panel`/`.header` in both `Picker.module.css` and `ManageGroupsPanel.module.css`) will produce identical literal class strings under test. This is fine as long as tests keep querying by role/text/label first and only checking `.toHaveClass(...)` on an already-uniquely-resolved element (the pattern every test in this plan uses); avoid adding class-selector-based DOM queries (`querySelector('.foo')`, `getComputedStyle`, etc.) to future tests, since those could become ambiguous.
+
 ```ts
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
@@ -166,6 +168,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    css: {
+      modules: {
+        classNameStrategy: 'non-scoped',
+      },
+    },
   },
 });
 ```
@@ -2497,6 +2504,35 @@ describe('Tile', () => {
     );
     expect(screen.getByAltText('Charizard card')).toBeInTheDocument();
   });
+
+  it('falls back to the sprite image in card view when no owned card image is provided', () => {
+    render(
+      <Tile
+        dexNumber={1}
+        name="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        state="available"
+        view="card"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur')).toBeInTheDocument();
+    expect(screen.queryByAltText('Bulbasaur card')).not.toBeInTheDocument();
+  });
+
+  it('applies the available state class name', () => {
+    render(
+      <Tile
+        dexNumber={1}
+        name="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        state="available"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('button')).toHaveClass('tile--available');
+  });
 });
 ```
 
@@ -2529,6 +2565,15 @@ Expected: FAIL, `Cannot find module './Tile'`.
   width: 72px;
   height: 72px;
   object-fit: contain;
+}
+
+.tile--available {
+  /* "available" is the default/undecorated look; no visual override needed.
+     background-color is restated (matches .tile) purely so this selector
+     survives CSS minification and stays a valid, discoverable class hook.
+     A truly empty rule gets stripped by esbuild's CSS minifier in the
+     production build, which would silently drop this class key. */
+  background-color: transparent;
 }
 
 .tile--owned img {
@@ -2592,7 +2637,7 @@ export function Tile({
   return (
     <button
       type="button"
-      className={`${styles.tile} ${styles[`tile--${state}`]}`}
+      className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
       onClick={onClick}
       title={title}
     >
@@ -2608,13 +2653,15 @@ export function Tile({
 }
 ```
 
+The class list is built with `[styles.tile, styles[\`tile--${state}\`]].filter(Boolean).join(' ')` rather than a plain template string. `styles[...]` returns `undefined` for any key that has no matching CSS Modules rule (a real bug: without this guard, an "available"-state tile would render `class="tile undefined"` in production, since CSS Modules doesn't error on a missing key, it just resolves to `undefined`, and Vitest's CSS Modules test mock silently accepts any key so the bug is invisible to tests without an explicit assertion). `.filter(Boolean)` drops any such `undefined` entry instead of stringifying it into the DOM.
+
 - [ ] **Step 5: Run the test to see it pass**
 
 Run:
 ```bash
 npm run test -- Tile.test
 ```
-Expected: 4 passed.
+Expected: 6 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -6390,7 +6437,7 @@ import styles from './Tile.module.css';
   return (
     <motion.button
       type="button"
-      className={`${styles.tile} ${styles[`tile--${state}`]}`}
+      className={[styles.tile, styles[`tile--${state}`]].filter(Boolean).join(' ')}
       onClick={onClick}
       title={title}
       layout
