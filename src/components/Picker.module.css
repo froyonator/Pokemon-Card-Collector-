@@ -151,3 +151,20 @@
   width: 100%;
   border-radius: var(--radius-sm);
 }
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.rarity {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.loading {
+  font-size: 13px;
+  opacity: 0.8;
+  padding: 8px 0;
+}

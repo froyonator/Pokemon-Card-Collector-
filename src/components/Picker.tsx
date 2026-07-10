@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
+import { loadAllPrintingsForDex } from '../state/loadCardData';
 import { useAppStore } from '../state/store';
 import type { CardRecord, Condition } from '../types';
 import { ConditionPicker } from './ConditionPicker';
@@ -11,6 +12,13 @@ export interface PickerProps {
   pokemonName: string;
   cards: CardRecord[];
   onClose: () => void;
+}
+
+function mergeCardsById(curated: CardRecord[], full: CardRecord[]): CardRecord[] {
+  const merged = new Map<string, CardRecord>();
+  for (const card of curated) merged.set(card.id, card);
+  for (const card of full) merged.set(card.id, card);
+  return Array.from(merged.values());
 }
 
 export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) {
@@ -43,15 +51,38 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
   const markOwned = useAppStore((s) => s.markOwned);
   const unmarkOwned = useAppStore((s) => s.unmarkOwned);
   const toggleWishlist = useAppStore((s) => s.toggleWishlist);
+  const language = useAppStore((s) => s.language);
 
   const [pendingCard, setPendingCard] = useState<CardRecord | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [showAllCards, setShowAllCards] = useState(false);
+  const [allCards, setAllCards] = useState<CardRecord[] | null>(null);
+  const [isLoadingAllCards, setIsLoadingAllCards] = useState(false);
 
   function handleStarClick(card: CardRecord, event: React.MouseEvent) {
     event.stopPropagation();
     const result = toggleWishlist(dexNumber, card.id);
     setWarning(result.ok ? null : (result.reason ?? 'That card could not be added.'));
   }
+
+  async function handleToggleShowAll() {
+    const next = !showAllCards;
+    setShowAllCards(next);
+    if (next && allCards === null) {
+      setIsLoadingAllCards(true);
+      const fetched = await loadAllPrintingsForDex(language, dexNumber);
+      setAllCards(fetched);
+      setIsLoadingAllCards(false);
+    }
+  }
+
+  // "Show all cards" must never make a card the user could already see
+  // disappear: the curated `cards` prop and the fetched full print history
+  // are merged (de-duplicated by id, with the full-history copy of a card
+  // winning on conflicts) rather than one replacing the other, since the
+  // full-history fetch is not guaranteed to be a strict superset of the
+  // curated set.
+  const displayedCards = showAllCards ? mergeCardsById(cards, allCards ?? []) : cards;
 
   function handleConditionConfirm(condition: Condition) {
     if (!pendingCard) return;
@@ -93,6 +124,17 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
             Close
           </button>
         </div>
+        <div className={styles.toolbar}>
+          <button
+            type="button"
+            aria-pressed={showAllCards}
+            disabled={isLoadingAllCards}
+            onClick={handleToggleShowAll}
+          >
+            {showAllCards ? 'Show curated cards' : 'Show all cards'}
+          </button>
+        </div>
+        {isLoadingAllCards && <p className={styles.loading}>Loading all cards...</p>}
         {owned && (
           <button type="button" className={styles.unmark} onClick={() => unmarkOwned(dexNumber)}>
             Remove owned card
@@ -103,11 +145,15 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
             {warning}
           </p>
         )}
-        {cards.length === 0 ? (
-          <p>No special or full art cards match your current filters for {pokemonName} yet.</p>
+        {!isLoadingAllCards && displayedCards.length === 0 ? (
+          <p>
+            {showAllCards
+              ? `No cards are on record for ${pokemonName} yet.`
+              : `No special or full art cards match your current filters for ${pokemonName} yet.`}
+          </p>
         ) : (
           <div className={styles.grid}>
-            {cards.map((card) => {
+            {displayedCards.map((card) => {
               const isOwned = owned?.cardId === card.id;
               const isWishlisted = wishlist?.cardId === card.id;
               return (
@@ -137,6 +183,7 @@ export function Picker({ dexNumber, pokemonName, cards, onClose }: PickerProps) 
                     <span>
                       {card.setName} #{card.localId}
                     </span>
+                    <span className={styles.rarity}>{card.rarity}</span>
                   </button>
                 </div>
               );
