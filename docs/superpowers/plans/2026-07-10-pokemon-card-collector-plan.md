@@ -3186,6 +3186,8 @@ git commit -m "Add multi-generation registry wrapping the Gen 1 dex list"
 ## Task 16: DexGrid component
 
 > **Amended** after Tasks 1-10 shipped, to read the generation-filtered dex list (Task 15.5) instead of a hardcoded `GEN1_DEX`, and to fix a real bug an adversarial review caught in the original auto-load logic: `hasCachedDataForLanguage(language)` (Task 9, already shipped) only knows "have I cached *anything* for this language," not *which dex numbers*. Once Gen 1 was cached, that one-shot gate would have permanently skipped auto-fetching for any generation added later, even a newly-selected one, so Gen 2+ tiles would silently sit on "unavailable" until a manual "Refresh Data" click. The fix below doesn't touch Task 9's code at all; it just uses the per-dex-number `getCachedCards` (also already in Task 9, sitting unused) instead of the coarser language-level check.
+>
+> **Amended again** after this task's own code quality review: `getCachedCards`/`getAllCachedCardsForDex` (Task 9) each `JSON.parse` the *entire* card cache blob (every language, every dex number ever cached), not just the requested key. Calling either once per rendered tile (up to 151 times) on every render, including ones triggered by unrelated state like `owned` changing, is real, growing cost. The implementation below memoizes a `cardsByDexNumber` map keyed on `[language, dexEntries, dataVersion]` so the cache is only re-parsed when it could actually have changed, not on every re-render. A "Refresh Data" test was also added, since that button's full-refetch behavior (as opposed to the passive auto-load effect's missing-only fetch) had no test coverage.
 
 **Files:**
 - Create: `src/components/DexGrid.tsx`
@@ -3240,7 +3242,7 @@ git commit -m "Add multi-generation registry wrapping the Gen 1 dex list"
 - [ ] **Step 2: Write the failing test `src/components/DexGrid.test.tsx`**
 
 ```tsx
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DexGrid } from './DexGrid';
@@ -3334,6 +3336,34 @@ describe('DexGrid', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsBefore);
   });
+
+  it('refetches everything currently shown when "Refresh Data" is clicked, unlike the passive auto-load', async () => {
+    render(<DexGrid />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    const fetchCallsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const refreshButton = screen.getByRole('button', { name: 'Refresh Data' });
+    // fireEvent.click, not userEvent.click: it dispatches and flushes React's
+    // state update synchronously, so the loading state is observable right
+    // after this call returns and before the mocked fetch chain (which
+    // resolves via microtasks, not real I/O) has a chance to settle.
+    fireEvent.click(refreshButton);
+    expect(refreshButton).toHaveTextContent('Refreshing...');
+    expect(refreshButton).toBeDisabled();
+
+    await waitFor(() => {
+      expect(refreshButton).toHaveTextContent('Refresh Data');
+      expect(refreshButton).not.toBeDisabled();
+    });
+    // Every dex number was already cached from the initial load, so this
+    // only proves something re-fetched (not a no-op) if the call count grew;
+    // a passive/missing-only implementation would make zero new calls here.
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
+      fetchCallsBefore
+    );
+  });
 });
 ```
 
@@ -3356,6 +3386,7 @@ import { getAllCachedCardsForDex, loadAllCardData } from '../state/loadCardData'
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
+import type { CardRecord } from '../types';
 import { Picker } from './Picker';
 import { Tile } from './Tile';
 import styles from './DexGrid.module.css';
@@ -3409,9 +3440,30 @@ export function DexGrid() {
     [groups, activeGroupIds]
   );
 
+  // Memoized so the cache blob (all languages x all dex numbers ever cached)
+  // is only re-parsed once per dex entry when language, dexEntries, or
+  // dataVersion actually change, not on every re-render, including ones
+  // triggered by unrelated state like `owned` changing after
+  // markOwned/unmarkOwned. Deliberately NOT keyed on `owned`: the cached
+  // cards for a dex number don't change when ownership changes.
+  const cardsByDexNumber = useMemo(() => {
+    // dataVersion itself is never read below; it's a pure cache-busting
+    // signal. The underlying data lives in localStorage (outside React's
+    // reactivity), so this is how the effect above tells this memo "the
+    // cache just changed, go re-read it" after a load completes. The `void`
+    // reference is only here so react-hooks/exhaustive-deps sees dataVersion
+    // as used and doesn't flag it as an unnecessary dependency.
+    void dataVersion;
+    const map = new Map<number, CardRecord[]>();
+    for (const entry of dexEntries) {
+      map.set(entry.number, getAllCachedCardsForDex(language, entry.number));
+    }
+    return map;
+  }, [language, dexEntries, dataVersion]);
+
   const openEntry = openDexNumber ? dexEntries.find((e) => e.number === openDexNumber) : undefined;
-  const openCards = openDexNumber
-    ? availableCardsForDex(getAllCachedCardsForDex(language, openDexNumber), activeSet)
+  const openCards = openEntry
+    ? availableCardsForDex(cardsByDexNumber.get(openEntry.number) ?? [], activeSet)
     : [];
 
   return (
@@ -3436,7 +3488,7 @@ export function DexGrid() {
       ) : (
         <div className={styles.grid} data-version={dataVersion}>
           {dexEntries.map((entry) => {
-            const allCards = getAllCachedCardsForDex(language, entry.number);
+            const allCards = cardsByDexNumber.get(entry.number) ?? [];
             const cards = availableCardsForDex(allCards, activeSet);
             const ownedRecord = owned[entry.number];
             const state = computeTileState(Boolean(ownedRecord), cards.length);
@@ -3479,7 +3531,7 @@ Run:
 ```bash
 npm run test -- DexGrid.test
 ```
-Expected: 5 passed. (The first test still makes roughly 2,000 mocked fetch calls per run, since Gen 1 alone is 151 dex numbers across 13 rarity tiers; it still completes in a few seconds because no real network I/O happens.)
+Expected: 6 passed. (The first test still makes roughly 2,000 mocked fetch calls per run, since Gen 1 alone is 151 dex numbers across 13 rarity tiers; it still completes in a few seconds because no real network I/O happens.)
 
 - [ ] **Step 6: Commit**
 
