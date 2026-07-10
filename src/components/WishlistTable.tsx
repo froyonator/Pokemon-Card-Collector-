@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cardImageUrl } from '../api/tcgdex';
 import {
   buildWishlistRows,
@@ -17,9 +17,12 @@ export function WishlistTable() {
   const currency = useAppStore((s) => s.currency);
   const wishlist = useAppStore((s) => s.wishlist);
   const removeWishlist = useAppStore((s) => s.removeWishlist);
-  // Subscribing to priceVersion (bumped by Summary's "Refresh Market Prices"
-  // action) forces this table to re-read the price cache after a refresh.
-  useAppStore((s) => s.priceVersion);
+  // priceVersion is bumped by Summary's "Refresh Market Prices" action.
+  // Pricing is baked into each row at build time via getCachedPricing, so
+  // it's included in the useMemo deps below (not just subscribed to) —
+  // otherwise a price refresh wouldn't invalidate the memoized rows and
+  // this table would keep showing stale prices after a refresh.
+  const priceVersion = useAppStore((s) => s.priceVersion);
   const usdRates = useUsdRates();
 
   const [sortKey, setSortKey] = useState<SortKey>('dexNumber');
@@ -50,7 +53,24 @@ export function WishlistTable() {
     }
   }
 
-  const rows = buildWishlistRows(language, wishlist);
+  // Memoized so the card cache blob (every ${language}:${dexNumber} entry
+  // ever cached, across every language the user has browsed, not bounded by
+  // wishlist size) and the price cache blob are only re-parsed when
+  // language, wishlist, or priceVersion actually change — not on every
+  // re-render, including ones triggered by sortKey/sortDirection changing
+  // when a header is clicked. See collectionSelectors.ts's comment on
+  // buildWishlistRows for why calling it unmemoized here would be costly.
+  // priceVersion itself is never read inside the callback — pricing is
+  // pulled fresh from the (localStorage-backed) price cache via
+  // buildWishlistRows's own getCachedPricing call, not from a value closed
+  // over here. It's a pure cache-busting signal, same as DexGrid.tsx's
+  // dataVersion in its cardsByDexNumber memo, and the `void` reference
+  // below exists only so react-hooks/exhaustive-deps sees it as used and
+  // doesn't flag it as an unnecessary dependency.
+  const rows = useMemo(() => {
+    void priceVersion;
+    return buildWishlistRows(language, wishlist);
+  }, [language, wishlist, priceVersion]);
 
   if (rows.length === 0) {
     return <p className={styles.empty}>Your wishlist is empty.</p>;
@@ -97,7 +117,11 @@ export function WishlistTable() {
                 </td>
                 <td>{price !== null ? `${price.toFixed(2)} ${currency}` : 'Unknown'}</td>
                 <td>
-                  <button type="button" onClick={() => removeWishlist(row.dexNumber)}>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${row.pokemonName}`}
+                    onClick={() => removeWishlist(row.dexNumber)}
+                  >
                     Remove
                   </button>
                 </td>
