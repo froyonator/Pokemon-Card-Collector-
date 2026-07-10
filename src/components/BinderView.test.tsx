@@ -129,6 +129,73 @@ describe('BinderView manual arrange', () => {
     ]);
   });
 
+  it('dragging under vertical fill moves the correct entry, not the one at the same row/column position under horizontal fill', () => {
+    // 2x2 vertical fill: computeBinderPages assigns sequence[0]->grid[0][0],
+    // sequence[1]->grid[1][0], sequence[2]->grid[0][1], sequence[3]->grid[1][1]
+    // (column-major). Bulbasaur (seq 0) is at grid[0][0]; Ivysaur (seq 1) is
+    // at grid[1][0] -- NOT at the position the horizontal-fill formula would
+    // compute for slotIndex 1 (which would be grid[0][1], Venusaur's cell).
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'vertical' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    render(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+    const bulbasaur = screen.getByRole('button', { name: /bulbasaur/i });
+    const ivysaur = screen.getByRole('button', { name: /ivysaur/i });
+
+    fireEvent.dragStart(bulbasaur);
+    fireEvent.drop(ivysaur);
+
+    const order = activeBinderCustomOrder();
+    // Bulbasaur (seq 0) and Ivysaur (seq 1) swap; Venusaur (seq 2) is
+    // untouched -- if the bug were present, this would incorrectly move
+    // Venusaur instead of Ivysaur.
+    expect(order?.[0]).toEqual({ type: 'pokemon', dexNumber: 2 });
+    expect(order?.[1]).toEqual({ type: 'pokemon', dexNumber: 1 });
+    expect(order?.[2]).toEqual({ type: 'pokemon', dexNumber: 3 });
+  });
+
+  it('switching the active binder clears a pending selection so Keep empty cannot write into the new binder at a stale index', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'Binder A',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+        {
+          id: 'b',
+          name: 'Binder B',
+          language: 'ja',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    const { rerender } = render(
+      <BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /select ivysaur/i }));
+    expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
+
+    useAppStore.getState().setActiveBinder('b');
+    rerender(<BinderView dexEntries={dexEntries} onSlotClick={() => {}} isManualArrangeActive />);
+
+    expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
+    expect(useAppStore.getState().binders.find((b) => b.id === 'b')?.customOrder).toBeNull();
+  });
+
   it('an existing blank also shifts forward when a new blank is inserted before it', async () => {
     useAppStore.setState({
       binders: [

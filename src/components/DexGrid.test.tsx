@@ -466,4 +466,53 @@ describe('Binder view', () => {
       await screen.findByRole('dialog', { name: /card options for bulbasaur/i })
     ).toBeInTheDocument();
   });
+
+  it("shows the binder's own language's cached cards, not the grid's global language's cards, when the two differ and both are cached", async () => {
+    setCachedCards('en', 1, [
+      {
+        id: 'en-card',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'base',
+        setName: 'Base Set',
+        localId: '1',
+        rarity: 'Ultra Rare',
+        imageBase: 'https://example.com/en',
+        language: 'en',
+      },
+    ]);
+    setCachedCards('ja', 1, [
+      {
+        id: 'ja-card',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'base-ja',
+        setName: 'Japanese Base Set',
+        localId: '1',
+        rarity: 'Ultra Rare',
+        imageBase: 'https://example.com/ja',
+        language: 'ja',
+      },
+    ]);
+    useAppStore.setState({
+      language: 'en',
+      binders: [
+        {
+          id: 'a',
+          name: 'Japanese Binder',
+          language: 'ja',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    render(<DexGrid />);
+    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
+    await screen.findByRole('dialog', { name: /card options for bulbasaur/i });
+
+    expect(screen.getByText('Japanese Base Set #1')).toBeInTheDocument();
+    expect(screen.queryByText('Base Set #1')).not.toBeInTheDocument();
+  });
 });

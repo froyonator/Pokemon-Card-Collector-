@@ -180,9 +180,19 @@ export function DexGrid() {
   }, [language, dexEntries, dataVersion]);
 
   const openEntry = openDexNumber ? dexEntries.find((e) => e.number === openDexNumber) : undefined;
+  // Deliberately NOT sourced from cardsByDexNumber: that memo is keyed on
+  // the grid's own global `language`, but a Picker opened from a binder
+  // slot needs cards cached under THAT binder's language instead, which can
+  // differ from the grid's current global language. Reading the cache
+  // directly for just this one dex number (cheap -- a single lookup, not
+  // the full 151-entry memo) keeps the two cases correct without forking
+  // this into two separate code paths: when openPickerLanguage is unset,
+  // effectivePickerLanguage just falls back to the same global language
+  // cardsByDexNumber would have used anyway.
+  const effectivePickerLanguage = openPickerLanguage ?? language;
   const openCards = openEntry
     ? availableCardsForDex(
-        cardsByDexNumber.get(openEntry.number) ?? [],
+        getCachedCards(effectivePickerLanguage, openEntry.number) ?? [],
         activeSet,
         cardOverrides,
         activeGroupIds

@@ -35,7 +35,16 @@ export function BinderView({
 
   useEffect(() => {
     setSpreadIndex(0);
-  }, [activeBinder.id]);
+    // A selection or in-progress drag is a position WITHIN this specific
+    // binder's current layout. Switching to a different binder, or changing
+    // this binder's own rows/columns/fillDirection (which changes what a
+    // given slotIndex even refers to), makes a leftover index dangerously
+    // stale -- without this, a pending "Keep empty" from a previous binder
+    // or layout could silently write a blank into the WRONG binder or the
+    // WRONG position once acted on.
+    setDragFromIndex(null);
+    setSelectedIndex(null);
+  }, [activeBinder.id, activeBinder.config]);
 
   const nameByDexNumber = useMemo(() => {
     const map = new Map<number, string>();
@@ -135,10 +144,16 @@ export function BinderView({
             >
               {pages[pageIndex]?.flatMap((row, r) =>
                 row.map((entry, c) => {
-                  const slotIndex =
-                    pageIndex * activeBinder.config.rows * activeBinder.config.columns +
-                    r * activeBinder.config.columns +
-                    c;
+                  // Must invert computeBinderPages's own fill order exactly:
+                  // horizontal fill assigns sequence index r*columns+c to
+                  // grid[r][c], vertical fill assigns c*rows+r instead. Using
+                  // the horizontal formula unconditionally here would make
+                  // drag-and-drop and "keep empty" silently act on the WRONG
+                  // sequence position under vertical fill.
+                  const { rows, columns, fillDirection } = activeBinder.config;
+                  const withinPage =
+                    fillDirection === 'horizontal' ? r * columns + c : c * rows + r;
+                  const slotIndex = pageIndex * rows * columns + withinPage;
                   return (
                     <BinderSlot
                       key={`${r}-${c}`}
