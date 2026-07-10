@@ -412,4 +412,27 @@ describe('Picker', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't use that image file/i);
     expect(useAppStore.getState().uploadedImages['no-image-card']).toBeUndefined();
   });
+
+  it('uses languageOverride instead of the store language when provided, for the Show all cards fetch', async () => {
+    useAppStore.setState({ language: 'en' });
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/ja/')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected URL for this test: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    render(
+      <Picker
+        dexNumber={6}
+        pokemonName="Charizard"
+        cards={[]}
+        onClose={() => {}}
+        languageOverride="ja"
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    expect(fetchImpl.mock.calls.every(([url]) => url.includes('/ja/'))).toBe(true);
+  });
 });

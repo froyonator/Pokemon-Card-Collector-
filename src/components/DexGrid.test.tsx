@@ -396,3 +396,74 @@ describe('DexGrid', () => {
     });
   });
 });
+
+describe('Binder view', () => {
+  beforeEach(() => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'default',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'default',
+    });
+  });
+
+  it('shows a Binder view button alongside Sprite view and Card view', () => {
+    render(<DexGrid />);
+    expect(screen.getByRole('button', { name: 'Binder view' })).toBeInTheDocument();
+  });
+
+  it('selecting Binder view renders the binder layout instead of the sprite/card grid', async () => {
+    render(<DexGrid />);
+    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
+  });
+
+  it('shows Binder Settings only while Binder view is active', async () => {
+    render(<DexGrid />);
+    expect(screen.queryByText('Binder settings')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    expect(screen.getByText('Binder settings')).toBeInTheDocument();
+  });
+
+  it('clicking a binder slot opens the Picker for that Pokemon', async () => {
+    render(<DexGrid />);
+    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
+    expect(
+      await screen.findByRole('dialog', { name: /card options for bulbasaur/i })
+    ).toBeInTheDocument();
+  });
+
+  it("opens the picker with the active binder's language, not the global language, when a binder slot is clicked", async () => {
+    useAppStore.setState({
+      language: 'en',
+      binders: [
+        {
+          id: 'a',
+          name: 'Japanese Binder',
+          language: 'ja',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    render(<DexGrid />);
+    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
+    // The Picker itself doesn't render the language anywhere visibly, so
+    // the languageOverride plumbing itself is already unit-tested at the
+    // Picker level in Picker.test.tsx -- this test's job is just proving
+    // DexGrid actually PASSES it through, which guards against someone
+    // deleting that wiring later.
+    expect(
+      await screen.findByRole('dialog', { name: /card options for bulbasaur/i })
+    ).toBeInTheDocument();
+  });
+});

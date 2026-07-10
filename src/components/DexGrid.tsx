@@ -7,6 +7,8 @@ import { activeRarities, availableCardsForDex, computeTileState } from '../state
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
+import { BinderSettings } from './BinderSettings';
+import { BinderView } from './BinderView';
 import { Picker } from './Picker';
 import { Tile } from './Tile';
 import styles from './DexGrid.module.css';
@@ -19,8 +21,16 @@ export function DexGrid() {
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
 
-  const [view, setView] = useState<'sprite' | 'card'>('sprite');
+  const [view, setView] = useState<'sprite' | 'card' | 'binder'>('sprite');
+  const [isManualArrangeActive, setIsManualArrangeActive] = useState(false);
   const [openDexNumber, setOpenDexNumber] = useState<number | null>(null);
+  // Set alongside openDexNumber whenever a Picker is opened from a binder
+  // slot, so the Picker fetches "Show all cards" in that binder's own
+  // language rather than the app's global language. Cleared (back to
+  // undefined) whenever a Picker is opened from the ordinary sprite/card
+  // grid instead, so that path keeps using the global language exactly as
+  // it always has.
+  const [openPickerLanguage, setOpenPickerLanguage] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
 
@@ -194,6 +204,9 @@ export function DexGrid() {
           <button type="button" aria-pressed={view === 'card'} onClick={() => setView('card')}>
             Card view
           </button>
+          <button type="button" aria-pressed={view === 'binder'} onClick={() => setView('binder')}>
+            Binder view
+          </button>
         </div>
         <button
           type="button"
@@ -204,10 +217,25 @@ export function DexGrid() {
           {isLoading ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
+      {view === 'binder' && (
+        <BinderSettings
+          isManualArrangeActive={isManualArrangeActive}
+          onToggleManualArrange={() => setIsManualArrangeActive((active) => !active)}
+        />
+      )}
       {dexEntries.length === 0 ? (
         <p className={styles.emptyState}>
           Select at least one generation in the filter bar to see Pokémon here.
         </p>
+      ) : view === 'binder' ? (
+        <BinderView
+          dexEntries={dexEntries}
+          onSlotClick={(dexNumber, language) => {
+            setOpenDexNumber(dexNumber);
+            setOpenPickerLanguage(language);
+          }}
+          isManualArrangeActive={isManualArrangeActive}
+        />
       ) : (
         <div className={styles.grid} data-version={dataVersion}>
           {dexEntries.map((entry) => {
@@ -236,7 +264,10 @@ export function DexGrid() {
                   state={state}
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}
-                  onClick={() => setOpenDexNumber(entry.number)}
+                  onClick={() => {
+                    setOpenDexNumber(entry.number);
+                    setOpenPickerLanguage(undefined);
+                  }}
                 />
               </div>
             );
@@ -261,6 +292,7 @@ export function DexGrid() {
             cards={openCards}
             onClose={() => setOpenDexNumber(null)}
             onAllCardsLoaded={() => setDataVersion((v) => v + 1)}
+            languageOverride={openPickerLanguage}
           />
         )}
       </AnimatePresence>

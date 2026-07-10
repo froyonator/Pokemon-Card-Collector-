@@ -23,6 +23,11 @@ export interface PickerProps {
   // just filtered out, but absent from the array being read -- until
   // something else (e.g. "Refresh Data") happens to bump that counter.
   onAllCardsLoaded?: () => void;
+  // Set only when the Picker is opened from a binder slot, whose binder may
+  // have its own language distinct from the app's global language setting.
+  // When absent, the Picker falls back to the store's global language, same
+  // as it always has.
+  languageOverride?: string;
 }
 
 function mergeCardsById(curated: CardRecord[], full: CardRecord[]): CardRecord[] {
@@ -38,6 +43,7 @@ export function Picker({
   cards,
   onClose,
   onAllCardsLoaded,
+  languageOverride,
 }: PickerProps) {
   const shouldReduceMotion = useReducedMotion();
   // The overlay only ever fades, so it needs no reduced-motion variant of
@@ -68,7 +74,8 @@ export function Picker({
   const markOwned = useAppStore((s) => s.markOwned);
   const unmarkOwned = useAppStore((s) => s.unmarkOwned);
   const toggleWishlist = useAppStore((s) => s.toggleWishlist);
-  const language = useAppStore((s) => s.language);
+  const storeLanguage = useAppStore((s) => s.language);
+  const language = languageOverride ?? storeLanguage;
   const groups = useAppStore((s) => s.groups);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const setCardOverride = useAppStore((s) => s.setCardOverride);
