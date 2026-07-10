@@ -1,0 +1,122 @@
+# Gen 1 Special/Full Art Card Collector — Design
+
+**Status:** Approved
+**Repo:** https://github.com/froyonator/Pokemon-Card-Collector-
+**Date:** 2026-07-10
+
+## Overview
+
+A web app for tracking a personal collection of Gen 1 (Kanto, #001–#151) Pokémon TCG special-art / full-art cards. Shows all 151 Pokémon in dex order, lets the collector mark which specific card printing they own (with condition), track a wishlist, and see market value in their preferred currency. Deployed as a static site on GitHub Pages, built via GitHub Actions on every push to `main`.
+
+## Goals / non-goals
+
+- Goal: comprehensive tracker across the *entire* history of full-art/special-art style cards for Gen 1, not just the current era.
+- Goal: works with live, free, no-API-key data sources only (no scraping, no paid feeds).
+- Goal: visually polished, custom UI with real animation — not a generic templated look.
+- Non-goal: real per-condition (graded) pricing — not available from free sources; condition is a reference-only label.
+- Non-goal: sales-volume ("units sold/month") data — not available from free sources; dropped from scope.
+- Non-goal: tracking Mega/Gmax/regional forms as separate grid tiles — their cards still surface under the base Pokémon's picker.
+
+## Data sources
+
+| Source | Used for | Notes |
+|---|---|---|
+| [TCGdex API](https://tcgdex.dev) (`api.tcgdex.net/v2/{lang}/cards`) | Card metadata, images, rarity, pricing | Query per dex number: `dexId=eq:N&rarity=eq:<tier>`. Supports per-language paths (`en`, `ja`, `fr`, `de`, ...) which naturally excludes region-exclusive prints when querying a different language. Pricing comes embedded on the card detail endpoint (`pricing.cardmarket` EUR, `pricing.tcgplayer` USD). |
+| PokeAPI sprites (`raw.githubusercontent.com/PokeAPI/sprites`) | Dex grid sprite images (official artwork) | Static, stable, keyed by national dex number. |
+| [Frankfurter API](https://frankfurter.dev) | Currency conversion (USD/EUR → AUD/GBP/CAD/etc.) | Free, no key, ECB-sourced daily rates. Conversions are clearly labeled as estimates. |
+
+All three are called client-side at runtime; no backend/server component.
+
+## Rarity scope & grouping
+
+"Special/full art" spans decades of different TCG eras and rarity names. The app fetches and caches **every** rarity tier that plausibly qualifies, then groups them for display/filtering rather than hard-coding a fixed list:
+
+Default groups (seeded, editable):
+1. **Full Art** — Rare Ultra, Ultra Rare (V/EX/VMAX/VSTAR/ex full-art prints)
+2. **Alt Art / Illustration Rare** — Special Illustration Rare, Illustration Rare, Trainer Gallery Rare Holo, Classic Collection
+3. **Rainbow / Gold Secret** — Rare Rainbow, Rare Secret, Hyper Rare, Mega Hyper Rare
+4. **Vintage Specials** — Rare Holo Star, Rare Shining, Rare Shiny GX (special but not full-bleed art)
+
+A **Manage Groups** panel lets the user rename groups, move any rarity tier between groups, or create new groups. Every distinct rarity string TCGdex has ever returned (across all fetched dex numbers) is listed there. Group membership persists in localStorage.
+
+## Filters
+
+- **Rarity group checkboxes** (from the groupings above) — control what counts as "available" for the picker and the red/unavailable tile state.
+- **Language selector** — dropdown of TCGdex-supported languages, default English. Switching language re-scopes which cards exist (region exclusives naturally drop out) and triggers a fetch if that language isn't cached yet.
+- **Currency picker** — USD / EUR (native) plus AUD / GBP / CAD (converted via Frankfurter), applies to all displayed prices and totals.
+
+Filters affect the Dex Grid screen (availability + picker contents) **only**. They never retroactively hide or un-mark something already recorded as owned or wishlisted, and the Collection/Wishlist/Summary tabs always show the user's actual saved records regardless of filter state.
+
+## Screens
+
+### 1. Dex Grid (main screen)
+- 151 tiles, strict national dex order, one tile per Pokémon (no separate form tiles).
+- Toggle: **Sprite view** ↔ **Card view** (compact thumbnail size in both — no oversized/blurry card renders).
+- Tile states:
+  - **Available, not owned** — full color sprite / empty dashed card-shaped placeholder.
+  - **Owned** — desaturated/dulled sprite with a checkmark badge / the owned card's thumbnail.
+  - **Unavailable** — red-tinted sprite / red-tinted placeholder, tooltip explains no cards match current filters.
+- Click a tile → opens the **picker**: thumbnail grid of every card matching current filters for that dex number.
+  - Each picker card has a star icon (top-right) — toggles that card as the dex number's wishlist pick. Only one wishlist pick per dex number; attempting a second while one exists shows a warning and is blocked (must un-star first).
+  - Clicking the card body (not the star) marks it owned: opens a small condition-select step (Mint / Near Mint / Lightly Played / Moderately Played / Heavily Played / Damaged), confirms, closes picker, tile dulls, and clears any wishlist entry for that dex number.
+  - Clicking an already-owned tile reopens the picker with the current pick highlighted, offering change/unmark.
+
+### 2. My Collection
+Table of owned cards: thumbnail, name, set, condition, price (selected currency). Sortable by price, dex number, name. Rows removable.
+
+### 3. Wishlist
+Same table shape for starred cards, plus a running total of price needed to complete the wishlist.
+
+### 4. Summary
+Total owned / 151, total collection value, owned-vs-available progress bar under current filters.
+
+## Pricing & refresh
+
+- Card pricing (Cardmarket EUR, TCGplayer USD) is cached alongside card metadata with its own last-updated timestamp.
+- **Refresh Data** — full rescan of all 151 dex numbers × rarity tiers × selected language. Used when new sets release.
+- **Refresh Market Prices** — lighter action, re-fetches pricing only for cards currently owned or wishlisted.
+- Condition does not adjust price (no free data source breaks pricing out by condition); UI notes this explicitly next to price displays.
+
+## Resilience / offline behavior
+
+- Card metadata cached in localStorage; app renders from cache even if TCGdex is unreachable.
+- Sprite and card images cached as blobs in IndexedDB on first successful load and served from there afterward, so a dead upstream link doesn't break already-viewed images.
+- Internet is required for first-time loads of new data/images and for refresh actions; previously-viewed content survives outages.
+
+## Tech stack
+
+- **React + TypeScript + Vite** — component structure for the tabs/picker/grid/settings state; fast dev/build.
+- **Animation** — Framer Motion for grid tile transitions, picker modal open/close, tab switches.
+- **Styling** — deferred to implementation; visual design pass explicitly must avoid generic/templated ("AI slop") look — smooth, custom, deliberate. The `frontend-design` skill should be invoked during implementation for the visual design pass.
+- **Testing** — Vitest for pure logic (rarity grouping, dex-number mapping, currency conversion, wishlist/ownership rules). No e2e framework for v1; manual browser verification for UI flows.
+
+### Suggested structure
+```
+src/
+  api/          tcgdex.ts, pokeapi.ts, fx.ts
+  storage/      localStorage + IndexedDB wrappers
+  data/         gen1-dex.ts (static #001-151 name/number list)
+  state/        app state (filters, groups, collection, wishlist)
+  components/   DexGrid, Tile, Picker, ConditionPicker, CollectionTable,
+                WishlistTable, Summary, FilterBar, ManageGroupsPanel
+  types/
+```
+
+## CI/CD
+
+- GitHub Actions workflow on push to `main`: install deps, typecheck, lint, test, build.
+- Deploy step publishes `dist/` to GitHub Pages via the official `actions/deploy-pages` flow.
+- PRs get the build/test/lint checks without deploying.
+
+## Versioning & repo hygiene
+
+- `package.json` semantic version, bumped manually per notable change.
+- `CHANGELOG.md` in Keep a Changelog format.
+- `LICENSE` — MIT.
+- `README.md` — project description, features, live Pages link, local dev instructions.
+- Git tag per release matching `package.json` version.
+
+## Open items for implementation planning
+
+- Exact list of rarity strings to pre-seed into each default group (to be enumerated by querying TCGdex live during implementation, since the taxonomy may have entries not yet observed in this design's spot-checks).
+- Whether Pages deployment uses a custom domain (default: `froyonator.github.io/Pokemon-Card-Collector-`).
