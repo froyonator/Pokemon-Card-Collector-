@@ -48,6 +48,23 @@ describe('App', () => {
     render(<App />);
     expect(screen.getByText('Bulbasaur')).toBeInTheDocument();
   });
+
+  it('switches back to the Dex Grid tab when the Tutorial button is clicked from another tab', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Summary' }));
+    expect(screen.getByRole('button', { name: 'Summary' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Dex Grid' })).toHaveAttribute('aria-pressed', 'false');
+
+    // Regression test: Tutorial's tour has steps that only live inside the
+    // Dex Grid tab panel (filter-bar, view-toggle, first-tile,
+    // refresh-data). Without forcing the tab back to 'grid' on tour start,
+    // react-joyride silently fast-forwards past those steps whenever the
+    // tour is started from another tab, instead of showing them.
+    await userEvent.click(screen.getByRole('button', { name: 'Tutorial' }));
+
+    expect(screen.getByRole('button', { name: 'Dex Grid' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 describe('App onboarding gate', () => {
