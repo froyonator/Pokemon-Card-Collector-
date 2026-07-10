@@ -205,18 +205,29 @@ export function Picker({
                     {isWishlisted ? '★' : '☆'}
                   </button>
                   {/* A plain <button> here would nest the placeholder's own
-                      Search/Upload <button>s (rendered by CardImage below)
-                      inside this outer button, which is invalid HTML and
-                      trips React's validateDOMNesting warning. A div with an
-                      explicit button role, tabIndex, and matching keyboard
-                      handling preserves the same click/keyboard-activation
-                      behavior without that nesting. */}
+                      Search/Upload/Remove <button>s (rendered by CardImage
+                      below) inside this outer button, which is invalid HTML
+                      and trips React's validateDOMNesting warning. A div
+                      with an explicit button role, tabIndex, and matching
+                      keyboard handling preserves the same click/keyboard-
+                      activation behavior without that nesting. */}
                   <div
                     role="button"
                     tabIndex={0}
                     className={isOwned ? styles.cardBodySelected : styles.cardBody}
                     onClick={() => setPendingCard(card)}
                     onKeyDown={(event) => {
+                      // A keydown event bubbles up from whatever element is
+                      // actually focused, regardless of CardImage's own
+                      // click-propagation stop (that only stops click, not
+                      // keydown). Without this target check, tabbing to the
+                      // nested Search/Upload/Remove button and pressing
+                      // Enter or Space would fire that button's own action
+                      // AND this handler, spuriously opening the condition
+                      // picker alongside it. Only react when the event
+                      // originated on this div itself, i.e. this div (not a
+                      // focusable descendant of it) is the focused element.
+                      if (event.target !== event.currentTarget) return;
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         setPendingCard(card);
@@ -232,10 +243,11 @@ export function Picker({
                         window.open(buildTcgplayerSearchUrl(card), '_blank', 'noopener,noreferrer')
                       }
                       onUploadImage={(file) => {
-                        resizeImageForUpload(file).then((dataUri) =>
-                          setUploadedImage(card.id, dataUri)
-                        );
+                        resizeImageForUpload(file)
+                          .then((dataUri) => setUploadedImage(card.id, dataUri))
+                          .catch(() => setWarning("Couldn't use that image file. Try a different one."));
                       }}
+                      onRemoveUploadedImage={() => setUploadedImage(card.id, null)}
                     />
                     <span>
                       {card.setName} #{card.localId}

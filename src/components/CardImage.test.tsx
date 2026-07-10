@@ -111,4 +111,86 @@ describe('CardImage', () => {
     expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,ABC123');
     expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
   });
+
+  it('ignores a stale uploadedImageUri and shows the real image when imageBase is valid', () => {
+    render(
+      <CardImage
+        imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        alt="Charizard ex"
+        uploadedImageUri="data:image/jpeg;base64,STALE"
+      />
+    );
+    const img = screen.getByAltText('Charizard ex');
+    expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp');
+  });
+
+  it('falls back to a stale uploadedImageUri only once the real image variants are actually exhausted', () => {
+    render(
+      <CardImage
+        imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        alt="Charizard ex"
+        uploadedImageUri="data:image/jpeg;base64,FALLBACK"
+      />
+    );
+    const img = screen.getByAltText('Charizard ex');
+    // Still showing the real image at this point, not the uploaded one.
+    expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp');
+
+    fireEvent.error(img);
+    fireEvent.error(screen.getByAltText('Charizard ex'));
+
+    expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,FALLBACK'
+    );
+  });
+
+  it('shows a "Remove uploaded image" button only when an uploaded image is actually being shown, and clicking it calls onRemoveUploadedImage', async () => {
+    const onRemoveUploadedImage = vi.fn();
+    render(
+      <CardImage
+        imageBase=""
+        alt="Charizard ex"
+        uploadedImageUri="data:image/jpeg;base64,ABC123"
+        onRemoveUploadedImage={onRemoveUploadedImage}
+      />
+    );
+    const removeButton = screen.getByRole('button', { name: /remove uploaded image/i });
+    await userEvent.click(removeButton);
+    expect(onRemoveUploadedImage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show a "Remove uploaded image" button for a card with no uploaded image, even when onRemoveUploadedImage is provided', () => {
+    render(
+      <CardImage imageBase="" alt="Mystery card" onRemoveUploadedImage={() => {}} />
+    );
+    expect(screen.queryByRole('button', { name: /remove uploaded image/i })).not.toBeInTheDocument();
+  });
+
+  it('does not render a "Remove uploaded image" button when onRemoveUploadedImage is not provided, even with an uploaded image showing', () => {
+    render(
+      <CardImage imageBase="" alt="Charizard ex" uploadedImageUri="data:image/jpeg;base64,ABC123" />
+    );
+    expect(screen.queryByRole('button', { name: /remove uploaded image/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the placeholder identically to the no-props case (exact same shape: one role=img element, no wrapper, no img, no buttons) when onSearchImage/onUploadImage are not provided', () => {
+    const { container } = render(<CardImage imageBase="" alt="Mystery card" />);
+    expect(container.children).toHaveLength(1);
+    expect(container.firstElementChild).toHaveAttribute('role', 'img');
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.querySelectorAll('input')).toHaveLength(0);
+  });
+
+  it('pressing Enter or Space while the Search button is focused still calls onSearchImage (keyboard activation works)', async () => {
+    const onSearchImage = vi.fn();
+    render(<CardImage imageBase="" alt="Mystery card" onSearchImage={onSearchImage} />);
+    const searchButton = screen.getByRole('button', { name: 'Search' });
+    searchButton.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onSearchImage).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard(' ');
+    expect(onSearchImage).toHaveBeenCalledTimes(2);
+  });
 });

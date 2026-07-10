@@ -328,4 +328,88 @@ describe('Picker', () => {
     expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,EXISTING');
     expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
   });
+
+  // Regression test for a bug found in review of 04d52c1: a card with a
+  // real, working image must keep showing it even if uploadedImages happens
+  // to have a stale entry for that card id (e.g. TCGdex gained a real image
+  // after the user had uploaded one) -- an upload must only ever be a
+  // fallback for a card with no real image, never an override of one.
+  it('ignores a stale uploaded image and shows the real card image when imageBase is valid', () => {
+    useAppStore.setState({
+      uploadedImages: { [cardA.id]: 'data:image/jpeg;base64,STALE' },
+    });
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    const img = screen.getByAltText(/charizard ex from 151/i);
+    expect(img).toHaveAttribute('src', `${cardA.imageBase}/low.webp`);
+  });
+
+  // Regression test for a bug found in review of 04d52c1: once an image is
+  // uploaded there was previously no way to undo it from the UI at all.
+  it('shows a "Remove uploaded image" button for a card with an uploaded image, and clicking it clears the upload from the store', async () => {
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    useAppStore.setState({
+      uploadedImages: { 'no-image-card': 'data:image/jpeg;base64,EXISTING' },
+    });
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    // Not getByRole: the outer card-select div is also role="button" and
+    // (with no explicit aria-label of its own) computes its accessible name
+    // from its full text content, which includes this button's own label --
+    // so a role+name query matches both. getByText's exact-text match picks
+    // out just the inner <button>, which is the only element whose OWN
+    // direct text content is precisely "Remove uploaded image".
+    const removeButton = screen.getByText('Remove uploaded image');
+    await userEvent.click(removeButton);
+    expect(useAppStore.getState().uploadedImages['no-image-card']).toBeUndefined();
+    // Back to the ordinary "no image" placeholder with Search/Upload again.
+    expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+  });
+
+  // Regression test for a bug found in review of 04d52c1: keydown bubbles
+  // past CardImage's click-propagation stop (that only stops click events),
+  // so tabbing to the placeholder's Search/Upload button and pressing Enter
+  // or Space used to ALSO fire the outer card-select div's onKeyDown,
+  // spuriously opening the "Choose condition" (mark-owned) dialog. Uses raw
+  // keyboard events (not userEvent.click) since the bug is keyboard-only --
+  // mouse clicks already had propagation correctly stopped.
+  it('pressing Enter or Space while the Search button is focused does not also open the condition picker', async () => {
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    screen.getByRole('button', { name: 'Search' }).focus();
+
+    await userEvent.keyboard('{Enter}');
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/what condition/i)).not.toBeInTheDocument();
+
+    await userEvent.keyboard(' ');
+    expect(openSpy).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/what condition/i)).not.toBeInTheDocument();
+
+    openSpy.mockRestore();
+  });
+
+  it('pressing Enter while the card body itself (not a nested button) is focused still opens the condition picker', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    const cardBody = screen
+      .getByAltText(/charizard ex from 151/i)
+      .closest('[role="button"]') as HTMLElement;
+    cardBody.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByText(/what condition/i)).toBeInTheDocument();
+  });
+
+  // Regression test for a bug found in review of 04d52c1: resizeImageForUpload
+  // rejecting (e.g. a corrupt file, or a non-image file slipped past the
+  // advisory accept="image/*" hint) used to produce a genuine unhandled
+  // promise rejection with zero feedback to the user.
+  it('shows a warning instead of an unhandled rejection when resizing an uploaded image fails', async () => {
+    vi.mocked(resizeImageForUpload).mockRejectedValue(new Error('createImageBitmap failed'));
+    const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+    const file = new File(['not-an-image'], 'corrupt.jpg', { type: 'image/jpeg' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't use that image file/i);
+    expect(useAppStore.getState().uploadedImages['no-image-card']).toBeUndefined();
+  });
 });

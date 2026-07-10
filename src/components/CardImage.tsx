@@ -14,9 +14,12 @@ export interface CardImageProps {
   /** A user-uploaded replacement image for this specific card, as a
    *  `data:` URI (see src/state/imageResize.ts, which produces these).
    *  Unlike imageBase, this is not a TCGdex CDN base path, so it's rendered
-   *  directly rather than run through cardImageUrl's variant/retry logic --
-   *  and it takes priority over both imageBase and the "no image"
-   *  placeholder whenever it's present, even if imageBase is also empty. */
+   *  directly rather than run through cardImageUrl's variant/retry logic.
+   *  Used ONLY as a fallback for a card that has no usable real image (no
+   *  imageBase at all, or every real-image variant has failed to load) --
+   *  never as an override of a real image that's actually available, even
+   *  if a stale value happens to still be set for this card id (e.g.
+   *  TCGdex later gained a real image after the user had uploaded one). */
   uploadedImageUri?: string;
   // When provided, the "no image available" placeholder also renders a
   // "Search" button (calling this) and an "Upload image" file control. When
@@ -24,6 +27,12 @@ export interface CardImageProps {
   // that don't have search/upload context aren't forced to provide it.
   onSearchImage?: () => void;
   onUploadImage?: (file: File) => void;
+  // When provided (and an uploaded image is actually being shown, i.e.
+  // hasNoImage is true and uploadedImageUri is set), renders a "Remove
+  // uploaded image" button so a user can undo a wrong upload or fall back
+  // to the placeholder/real image again -- there is otherwise no way to
+  // clear an uploaded image from the UI once set.
+  onRemoveUploadedImage?: () => void;
 }
 
 interface Variant {
@@ -48,6 +57,7 @@ export function CardImage({
   uploadedImageUri,
   onSearchImage,
   onUploadImage,
+  onRemoveUploadedImage,
 }: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
@@ -65,14 +75,6 @@ export function CardImage({
     setExhausted(false);
   }, [imageBase]);
 
-  // A user-uploaded image takes priority over everything else -- that's the
-  // entire point of uploading one for a card TCGdex has no image for.
-  if (uploadedImageUri) {
-    return (
-      <img src={uploadedImageUri} alt={alt} className={className} width={width} loading={loading} />
-    );
-  }
-
   const hasNoImage = !imageBase || exhausted;
 
   function handleUploadButtonClick() {
@@ -88,6 +90,37 @@ export function CardImage({
   }
 
   if (hasNoImage) {
+    // A user-uploaded image is only ever shown as a fallback for a card
+    // with no usable real image (checked above via hasNoImage) -- a card
+    // with a working imageBase always keeps showing its real image, even
+    // if uploadedImageUri happens to have a stale value set for it.
+    if (uploadedImageUri) {
+      const uploadedImg = (
+        <img
+          src={uploadedImageUri}
+          alt={alt}
+          className={className}
+          width={width}
+          loading={loading}
+        />
+      );
+
+      if (!onRemoveUploadedImage) {
+        return uploadedImg;
+      }
+
+      return (
+        <div className={styles.placeholderWithActions}>
+          {uploadedImg}
+          <div className={styles.actions} onClick={(event) => event.stopPropagation()}>
+            <button type="button" className={styles.actionButton} onClick={onRemoveUploadedImage}>
+              Remove uploaded image
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const placeholder = (
       <div
         className={[styles.placeholder, className].filter(Boolean).join(' ')}
