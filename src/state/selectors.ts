@@ -12,6 +12,20 @@ export function activeRarities(groups: RarityGroup[], activeGroupIds: string[]):
   return set;
 }
 
+// Trainer Gallery is a dedicated alt-art insert subset, distinct from a
+// set's main card line, confirmed by checking TCGdex's entire set catalog:
+// exactly three set ids end in "tg", and all three are literally named
+// "<Set> Trainer Gallery" (swsh9.5tg, swsh11.5tg, swsh12.5tg). Its cards
+// commonly carry the generic "Holo Rare" rarity, shared with hundreds of
+// ordinary non-special cards (confirmed via a live rarity=eq:Holo Rare
+// query), so unlike this problem's other instances (Promo, vintage Rare),
+// rarity alone can't identify them -- but the set id reliably can, since
+// Trainer Gallery is a genuine TCG-design-level alternate-art subset, not a
+// mixed bag requiring per-card visual verification.
+export function isTrainerGalleryCard(setId: string): boolean {
+  return setId.endsWith('tg');
+}
+
 export function availableCardsForDex(
   allCards: CardRecord[],
   activeSet: Set<string>,
@@ -19,7 +33,12 @@ export function availableCardsForDex(
   activeGroupIds: string[] = []
 ): CardRecord[] {
   return allCards.filter((card) => {
-    const overrideGroupId = overrides[card.id];
+    // Precedence: an explicit per-card override (user-assigned or seeded via
+    // DEFAULT_CARD_OVERRIDES) always wins. Failing that, automatic Trainer
+    // Gallery detection assigns the card into 'alt-art' as if it had been
+    // overridden there. Failing that, fall back to raw rarity matching.
+    const overrideGroupId =
+      overrides[card.id] ?? (isTrainerGalleryCard(card.setId) ? 'alt-art' : undefined);
     if (overrideGroupId !== undefined) {
       return activeGroupIds.includes(overrideGroupId);
     }

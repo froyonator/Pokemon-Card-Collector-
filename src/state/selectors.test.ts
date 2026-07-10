@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { activeRarities, availableCardsForDex, computeTileState } from './selectors';
+import {
+  activeRarities,
+  availableCardsForDex,
+  computeTileState,
+  isTrainerGalleryCard,
+} from './selectors';
 import type { CardRecord, RarityGroup } from '../types';
 
 const groups: RarityGroup[] = [
@@ -68,6 +73,65 @@ describe('availableCardsForDex', () => {
     const result = availableCardsForDex(cards, set, {}, []);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('1');
+  });
+
+  it('auto-includes a Trainer Gallery card into alt-art even when its raw rarity would not match any active group', () => {
+    const set = activeRarities(groups, ['a']); // 'Ultra Rare' only, doesn't include 'Holo Rare'
+    const tgCard: CardRecord = {
+      ...cards[0],
+      id: 'swsh12.5tg-TG04',
+      setId: 'swsh12.5tg',
+      rarity: 'Holo Rare',
+    };
+    const result = availableCardsForDex([...cards, tgCard], set, {}, ['a', 'alt-art']);
+    expect(result.map((c) => c.id).sort()).toEqual(['1', 'swsh12.5tg-TG04']);
+  });
+
+  it('excludes a Trainer Gallery card when alt-art is not an active group', () => {
+    const set = activeRarities(groups, ['a']);
+    const tgCard: CardRecord = {
+      ...cards[0],
+      id: 'swsh12.5tg-TG04',
+      setId: 'swsh12.5tg',
+      rarity: 'Holo Rare',
+    };
+    const result = availableCardsForDex([...cards, tgCard], set, {}, ['a']);
+    expect(result.map((c) => c.id)).toEqual(['1']);
+  });
+
+  it('lets an explicit per-card override win over automatic Trainer Gallery detection', () => {
+    const set = activeRarities(groups, ['a']);
+    const tgCard: CardRecord = {
+      ...cards[0],
+      id: 'swsh12.5tg-TG04',
+      setId: 'swsh12.5tg',
+      rarity: 'Holo Rare',
+    };
+    // Explicitly overridden into group 'b', which is active, but 'alt-art'
+    // (where auto-detection would otherwise send it) is not in the active
+    // list here -- proving the explicit override, not the automatic one, is
+    // what actually decided the outcome.
+    const result = availableCardsForDex(
+      [...cards, tgCard],
+      set,
+      { [tgCard.id]: 'b' },
+      ['a', 'b']
+    );
+    expect(result.map((c) => c.id).sort()).toEqual(['1', 'swsh12.5tg-TG04']);
+  });
+});
+
+describe('isTrainerGalleryCard', () => {
+  it('matches known Trainer Gallery set ids', () => {
+    expect(isTrainerGalleryCard('swsh9.5tg')).toBe(true);
+    expect(isTrainerGalleryCard('swsh11.5tg')).toBe(true);
+    expect(isTrainerGalleryCard('swsh12.5tg')).toBe(true);
+  });
+
+  it('does not match ordinary set ids, including ones containing "tg" mid-string', () => {
+    expect(isTrainerGalleryCard('sv03.5')).toBe(false);
+    expect(isTrainerGalleryCard('swsh12.5gg')).toBe(false);
+    expect(isTrainerGalleryCard('tgsomething')).toBe(false);
   });
 });
 
