@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Summary } from './Summary';
@@ -106,5 +106,42 @@ describe('Summary', () => {
     tcgplayerPrice = 250;
     await userEvent.click(screen.getByRole('button', { name: 'Refresh Market Prices' }));
     expect(await screen.findByText('250.00 USD')).toBeInTheDocument();
+  });
+
+  it('shows a disabled, in-flight state on the refresh button while prices are refreshing', async () => {
+    render(<Summary />);
+    await screen.findByText('200.00 USD');
+    const refreshButton = screen.getByRole('button', { name: 'Refresh Market Prices' });
+    // fireEvent.click, not userEvent.click: it dispatches and flushes React's
+    // state update synchronously, so the loading state is observable right
+    // after this call returns and before the mocked fetch chain (which
+    // resolves via microtasks, not real I/O) has a chance to settle. Same
+    // pattern as DexGrid.test.tsx's "Refresh Data" test.
+    fireEvent.click(refreshButton);
+    expect(refreshButton).toHaveTextContent('Refreshing prices...');
+    expect(refreshButton).toBeDisabled();
+
+    await waitFor(() => {
+      expect(refreshButton).toHaveTextContent('Refresh Market Prices');
+      expect(refreshButton).not.toBeDisabled();
+    });
+  });
+
+  it('clamps the progress bar fill to 100% when owned cards exceed the available count under the active filter', () => {
+    // dex 1-3 have no cached card data at all (only dex 6 and 25 do, per the
+    // beforeEach setup), so they don't count toward availableCount, but they
+    // still count toward totalOwned — reproducing a user who owns cards for
+    // Pokemon outside the currently active generation/rarity filters.
+    useAppStore.setState({
+      owned: {
+        6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' },
+        1: { dexNumber: 1, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' },
+        2: { dexNumber: 2, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' },
+        3: { dexNumber: 3, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' },
+      },
+    });
+    const { container } = render(<Summary />);
+    const fill = container.querySelector('.progressBarFill') as HTMLElement;
+    expect(fill.style.width).toBe('100%');
   });
 });

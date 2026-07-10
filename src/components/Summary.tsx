@@ -96,7 +96,14 @@ export function Summary() {
     [language, dexEntries, activeSet]
   );
 
-  const progressPercent = availableCount === 0 ? 0 : Math.round((totalOwned / availableCount) * 100);
+  // Clamped to 100: totalOwned counts every owned card regardless of the
+  // active generation/rarity filters, while availableCount is scoped to
+  // both. A user who owns cards outside the current filter selection can
+  // push totalOwned above availableCount, which would otherwise compute a
+  // fill width over 100% (silently clipped today by progressBarTrack's
+  // overflow: hidden, but not something to rely on).
+  const progressPercent =
+    availableCount === 0 ? 0 : Math.min(100, Math.round((totalOwned / availableCount) * 100));
 
   return (
     <div className={styles.summary}>
@@ -119,7 +126,10 @@ export function Summary() {
         <div className={styles.progressLabel}>
           {totalOwned} of {availableCount} Pokemon with an available card under current filters
         </div>
-        <div className={styles.progressBarTrack}>
+        {/* Decorative: the progressLabel text above already states the same
+            information in words, so the bar itself is redundant for screen
+            reader users rather than adding a role="progressbar" here. */}
+        <div className={styles.progressBarTrack} aria-hidden="true">
           <div className={styles.progressBarFill} style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
