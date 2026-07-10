@@ -24,15 +24,16 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     name: 'Vintage Specials',
     // Seeded empty on purpose: genuine vintage specials (e.g. Neo Destiny's "Shining Charizard",
     // EX-era "Charizard ☆" Star cards) are NOT reliably distinguishable from ordinary common/
-    // uncommon cards via TCGdex's `rarity` field alone — both of those cards report
+    // uncommon cards via TCGdex's `rarity` field alone. Both of those cards report
     // `"rarity":"Rare"`, identical to thousands of completely ordinary non-special cards, so
     // matching on "Rare" would flood the picker with false positives. The 'Shiny rare' family
     // ('Shiny rare', 'Shiny rare V', 'Shiny rare VMAX', 'Shiny Ultra Rare') was also removed from
     // here: it maps to "Shiny Vault" cards (Hidden Fates Shiny Vault, Paldean Fates), which use
     // the standard card frame with just an inverted color palette, not full-bleed/special art.
-    // Note: the Manage Groups panel can only reassign rarities that already appear in some group
-    // (it lists fetchRarityList output, with no free-text entry), so it cannot be used to bring
-    // these specific rarities back — that requires editing an exported JSON backup and re-importing.
+    // Note: the Manage Groups panel lists every rarity seen on a cached card, not just ones
+    // already in a group (see getAllCachedRarities in storage/cardCache.ts), so once a card
+    // bearing one of these rarities has been fetched at least once, it can be reassigned here
+    // like any other rarity. There is no need to edit an exported JSON backup for this.
     rarities: [],
   },
 ];
