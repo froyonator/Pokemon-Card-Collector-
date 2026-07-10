@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 import type { Condition, Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
 
 export interface ExportedUserData {
@@ -12,6 +13,7 @@ export interface ExportedUserData {
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
+  cardOverrides: Record<string, string>;
 }
 
 export type ToggleWishlistResult = { ok: true } | { ok: false; reason: string };
@@ -30,6 +32,7 @@ export interface AppState {
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
+  cardOverrides: Record<string, string>;
   hasUnsavedChanges: boolean;
 
   setLanguage: (language: string) => void;
@@ -37,6 +40,7 @@ export interface AppState {
   toggleActiveGroup: (groupId: string) => void;
   setGroups: (groups: RarityGroup[]) => void;
   toggleGeneration: (id: number) => void;
+  setCardOverride: (cardId: string, groupId: string | null) => void;
 
   markOwned: (dexNumber: number, cardId: string, condition: Condition) => void;
   unmarkOwned: (dexNumber: number) => void;
@@ -73,6 +77,7 @@ export const useAppStore = create<AppState>()(
       // triggers a big background fetch on their next visit. This is a deliberate
       // product choice, not an oversight.
       selectedGenerations: [1],
+      cardOverrides: DEFAULT_CARD_OVERRIDES,
       priceVersion: 0,
       hasUnsavedChanges: false,
 
@@ -91,6 +96,16 @@ export const useAppStore = create<AppState>()(
             ? state.selectedGenerations.filter((gid) => gid !== id)
             : [...state.selectedGenerations, id],
         })),
+      setCardOverride: (cardId, groupId) =>
+        set((state) => {
+          const cardOverrides = { ...state.cardOverrides };
+          if (groupId === null) {
+            delete cardOverrides[cardId];
+          } else {
+            cardOverrides[cardId] = groupId;
+          }
+          return { cardOverrides, hasUnsavedChanges: true };
+        }),
 
       markOwned: (dexNumber, cardId, condition) =>
         set((state) => {
@@ -160,6 +175,7 @@ export const useAppStore = create<AppState>()(
           owned: data.owned,
           wishlist: data.wishlist,
           selectedGenerations: data.selectedGenerations,
+          cardOverrides: data.cardOverrides,
           hasUnsavedChanges: false,
         }),
     }),
@@ -173,6 +189,7 @@ export const useAppStore = create<AppState>()(
         owned: state.owned,
         wishlist: state.wishlist,
         selectedGenerations: state.selectedGenerations,
+        cardOverrides: state.cardOverrides,
         hasUnsavedChanges: state.hasUnsavedChanges,
       }),
     }
