@@ -4,6 +4,7 @@ import {
   deriveSetId,
   extractCardmarketAvgPrice,
   extractTcgplayerMarketPrice,
+  fetchAllCardsForDex,
   fetchCardDetail,
   fetchCardsForDexAndRarity,
   fetchSets,
@@ -42,6 +43,36 @@ describe('fetchCardsForDexAndRarity', () => {
   it('throws on a non-ok response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(null, false, 500));
     await expect(fetchCardsForDexAndRarity(6, 'Ultra Rare', 'en', fetchImpl)).rejects.toThrow(
+      'TCGdex request failed with status 500'
+    );
+  });
+});
+
+describe('fetchAllCardsForDex', () => {
+  it('queries dexId with no rarity filter', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    await fetchAllCardsForDex(4, 'en', fetchImpl);
+    const calledUrl = new URL(fetchImpl.mock.calls[0][0] as string);
+    expect(calledUrl.pathname).toBe('/v2/en/cards');
+    expect(calledUrl.searchParams.get('dexId')).toBe('eq:4');
+    expect(calledUrl.searchParams.has('rarity')).toBe(false);
+  });
+
+  it('filters out Pokemon TCG Pocket cards by image path, same as the per-rarity fetch', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse([
+        { id: 'svp-044', localId: '044', name: 'Charmander', image: 'https://assets.tcgdex.net/en/sv/svp/044' },
+        { id: 'A1a-086', localId: '086', name: 'Mew ex', image: 'https://assets.tcgdex.net/en/tcgp/A1a/086' },
+      ])
+    );
+    const cards = await fetchAllCardsForDex(4, 'en', fetchImpl);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe('svp-044');
+  });
+
+  it('throws on a non-ok response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(null, false, 500));
+    await expect(fetchAllCardsForDex(4, 'en', fetchImpl)).rejects.toThrow(
       'TCGdex request failed with status 500'
     );
   });
