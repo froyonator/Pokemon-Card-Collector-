@@ -69,6 +69,16 @@ beforeEach(() => {
           }),
         } as Response;
       }
+      if (url.includes('/sets')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { id: 'sv03.5', name: '151' },
+            { id: 'me04', name: 'Chaos Rising' },
+          ],
+        } as Response;
+      }
       return {
         ok: true,
         status: 200,
@@ -85,9 +95,15 @@ beforeEach(() => {
 });
 
 describe('Summary', () => {
-  it('shows the total owned count out of 151', () => {
+  it('shows the total owned count out of 151', async () => {
     render(<Summary />);
     expect(screen.getByText('1 / 151')).toBeInTheDocument();
+    // Flushes the data-currency effect's pending fetch before the test ends,
+    // so its later setState doesn't land outside any act() boundary and
+    // trigger a spurious warning. Every test in this file renders <Summary />,
+    // which now always kicks off that fetch on mount, whether or not the
+    // test cares about its result.
+    await screen.findByText('Chaos Rising');
   });
 
   it('shows the total collection value once pricing resolves', async () => {
@@ -95,9 +111,10 @@ describe('Summary', () => {
     expect(await screen.findByText('200.00 USD')).toBeInTheDocument();
   });
 
-  it('shows progress against Pokemon with at least one available card', () => {
+  it('shows progress against Pokemon with at least one available card', async () => {
     render(<Summary />);
     expect(screen.getByText(/1 of 2 pok.mon with an available card/i)).toBeInTheDocument();
+    await screen.findByText('Chaos Rising');
   });
 
   it('refreshes market prices for owned and wishlisted cards when the button is clicked', async () => {
@@ -127,7 +144,7 @@ describe('Summary', () => {
     });
   });
 
-  it('counts a Pokemon toward availability when its only matching card comes from a manual override, not its raw rarity', () => {
+  it('counts a Pokemon toward availability when its only matching card comes from a manual override, not its raw rarity', async () => {
     // pikachuCard's beforeEach rarity ('Ultra Rare') already matches the
     // default 'full-art' group on its own, so overriding it to 'full-art'
     // would be a no-op coincidence and prove nothing about override wiring.
@@ -147,9 +164,30 @@ describe('Summary', () => {
     });
     render(<Summary />);
     expect(screen.getByText(/2 of 2 pok.mon with an available card/i)).toBeInTheDocument();
+    await screen.findByText('Chaos Rising');
   });
 
-  it('clamps the progress bar fill to 100% when owned cards exceed the available count under the active filter', () => {
+  it('shows the newest set name from the card database once the sets list resolves', async () => {
+    render(<Summary />);
+    expect(await screen.findByText('Chaos Rising')).toBeInTheDocument();
+  });
+
+  it('shows nothing for the data-currency line when the sets fetch fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/sets')) {
+          return { ok: false, status: 500, json: async () => ({}) } as Response;
+        }
+        return { ok: true, status: 200, json: async () => ({}) } as Response;
+      })
+    );
+    render(<Summary />);
+    await screen.findByText('1 / 151');
+    expect(screen.queryByText(/card database current through/i)).not.toBeInTheDocument();
+  });
+
+  it('clamps the progress bar fill to 100% when owned cards exceed the available count under the active filter', async () => {
     // dex 1-3 have no cached card data at all (only dex 6 and 25 do, per the
     // beforeEach setup), so they don't count toward availableCount, but they
     // still count toward totalOwned — reproducing a user who owns cards for
@@ -165,5 +203,6 @@ describe('Summary', () => {
     const { container } = render(<Summary />);
     const fill = container.querySelector('.progressBarFill') as HTMLElement;
     expect(fill.style.width).toBe('100%');
+    await screen.findByText('Chaos Rising');
   });
 });

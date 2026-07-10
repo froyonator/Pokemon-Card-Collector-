@@ -54,3 +54,8 @@
   margin-bottom: var(--space-2);
   color: var(--color-text-muted);
 }
+
+.dataCurrency {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}

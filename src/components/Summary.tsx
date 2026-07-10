@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchSets } from '../api/tcgdex';
 import { entriesForGenerations } from '../data/generations';
 import { buildCollectionRows } from '../state/collectionSelectors';
 import { getAllCachedCardsForDex } from '../state/loadCardData';
@@ -23,11 +24,36 @@ export function Summary() {
   const usdRates = useUsdRates();
 
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+  const [newestSetName, setNewestSetName] = useState<string | null>(null);
 
   const dexEntries = useMemo(
     () => entriesForGenerations(selectedGenerations),
     [selectedGenerations]
   );
+
+  // TCGdex's set list appears to be returned in release order (confirmed by
+  // spot-checking known-recent set ids against their position in the array),
+  // so the last entry is the newest set the card database currently knows
+  // about. This is purely a "how current is the data we're drawing from"
+  // indicator, not a promise that every card in that set (or any set) is
+  // fully indexed -- a brand-new set can still have gaps in TCGdex's own
+  // data (e.g. missing dex numbers) even once it shows up here. A failed
+  // fetch just leaves this unset; it's not worth a retry/error UI for a
+  // low-stakes informational label.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSets(language)
+      .then((sets) => {
+        if (cancelled) return;
+        setNewestSetName(sets.length > 0 ? sets[sets.length - 1].name : null);
+      })
+      .catch(() => {
+        if (!cancelled) setNewestSetName(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
 
   async function handleRefreshPrices() {
     setIsRefreshingPrices(true);
@@ -138,6 +164,11 @@ export function Summary() {
           <div className={styles.progressBarFill} style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
+      {newestSetName && (
+        <p className={styles.dataCurrency}>
+          Card database current through: <strong>{newestSetName}</strong>
+        </p>
+      )}
     </div>
   );
 }
