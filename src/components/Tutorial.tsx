@@ -35,7 +35,18 @@ const STEPS: Step[] = [
   },
 ];
 
-export function Tutorial() {
+export interface TutorialProps {
+  // Called before the tour starts, in the same click handler as setRun(true)
+  // (so React batches both updates into one render). App.tsx uses this to
+  // force activeTab back to 'grid' when the tour starts, since 4 of the 6
+  // steps below target elements that only live inside the Dex Grid tab
+  // panel — without this, starting the tour from another tab would leave
+  // those targets absent (or merely present-but-hidden) and react-joyride
+  // would silently fast-forward past them instead of showing them.
+  onStart?: () => void;
+}
+
+export function Tutorial({ onStart }: TutorialProps) {
   const [run, setRun] = useState(false);
 
   function handleCallback(data: CallBackProps) {
@@ -44,12 +55,17 @@ export function Tutorial() {
     }
   }
 
+  function handleStartClick() {
+    onStart?.();
+    setRun(true);
+  }
+
   return (
     <>
       <button
         type="button"
         className={styles.tutorialButton}
-        onClick={() => setRun(true)}
+        onClick={handleStartClick}
         data-tutorial="tutorial-button"
       >
         Tutorial
@@ -60,7 +76,13 @@ export function Tutorial() {
         continuous
         showSkipButton
         callback={handleCallback}
-        styles={{ options: { primaryColor: '#4a9eff' } }}
+        // zIndex: 400 is intentionally above every existing app modal
+        // z-index (Picker's overlay is 100, ManageGroupsPanel's is 200, this
+        // button itself is 300 — see Tutorial.module.css) so the tour's
+        // overlay/spotlight/tooltip always paints on top of any modal that
+        // happens to be open, rather than the stacking order depending on
+        // DOM position.
+        styles={{ options: { primaryColor: '#4a9eff', zIndex: 400 } }}
       />
     </>
   );

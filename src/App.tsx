@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
@@ -7,29 +7,38 @@ import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
 import { Tutorial } from './components/Tutorial';
 import { WishlistTable } from './components/WishlistTable';
+import { USER_DATA_STORAGE_KEY } from './state/store';
 import { useUnsavedChangesWarning } from './state/useUnsavedChangesWarning';
 import styles from './App.module.css';
 
 const ONBOARDED_KEY = 'pcc:onboarded:v1';
-const USER_DATA_KEY = 'pcc:userData:v1';
 
-function readInitialOnboardingNeeded(): boolean {
+function hasOnboardedFlag(): boolean {
   try {
-    if (localStorage.getItem(ONBOARDED_KEY) === 'true') return false;
-    if (localStorage.getItem(USER_DATA_KEY) !== null) {
-      // Real collection data already exists but the onboarding flag is
-      // missing (e.g. cleared independently of the data key by a privacy
-      // extension, a manual DevTools edit, or a future migration bug).
-      // Treat this as already onboarded rather than showing StartScreen
-      // over live data, and self-heal the flag so this branch is a no-op
-      // on the next load.
-      localStorage.setItem(ONBOARDED_KEY, 'true');
-      return false;
-    }
-    return true;
+    return localStorage.getItem(ONBOARDED_KEY) === 'true';
   } catch {
     return false;
   }
+}
+
+function hasExistingUserData(): boolean {
+  try {
+    return localStorage.getItem(USER_DATA_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function readInitialOnboardingNeeded(): boolean {
+  // A pure read, deliberately with no side effects — this runs inside a
+  // useState lazy initializer below, which React (in StrictMode, or in any
+  // future concurrent-rendering path) may invoke more than once per mount.
+  // The self-heal write for the "real data but missing flag" case lives in
+  // the useEffect further down instead, where a double-invoke is harmless
+  // by construction (mount-only, and the write itself is idempotent).
+  if (hasOnboardedFlag()) return false;
+  if (hasExistingUserData()) return false;
+  return true;
 }
 
 type Tab = 'grid' | 'collection' | 'wishlist' | 'summary';
@@ -46,6 +55,25 @@ export default function App() {
   const [needsOnboarding, setNeedsOnboarding] = useState(readInitialOnboardingNeeded);
 
   useUnsavedChangesWarning();
+
+  useEffect(() => {
+    // Real collection data already exists but the onboarding flag is
+    // missing (e.g. cleared independently of the data key by a privacy
+    // extension, a manual DevTools edit, or a future migration bug).
+    // readInitialOnboardingNeeded() above already treats this as "already
+    // onboarded" so StartScreen doesn't show over live data; this effect
+    // just self-heals the flag so this branch is a no-op on the next load.
+    // Runs once on mount, after the initial render/commit, rather than as a
+    // side effect inside the lazy initializer above.
+    if (!hasOnboardedFlag() && hasExistingUserData()) {
+      try {
+        localStorage.setItem(ONBOARDED_KEY, 'true');
+      } catch {
+        // Best-effort self-heal; ignore storage errors here just like
+        // readInitialOnboardingNeeded does above.
+      }
+    }
+  }, []);
 
   if (needsOnboarding) {
     return (
@@ -80,19 +108,31 @@ export default function App() {
         ))}
       </nav>
 
-      {activeTab === 'grid' && (
-        <>
-          <div data-tutorial="filter-bar">
-            <FilterBar />
-          </div>
-          <DexGrid />
-        </>
-      )}
+      {/* The Dex Grid panel stays mounted at all times and is toggled with
+          the `hidden` attribute rather than conditional JSX removal. This
+          keeps its tutorial anchors (filter-bar, view-toggle, first-tile,
+          refresh-data — the 4 of the tour's 6 steps that live inside it)
+          present in the DOM regardless of which tab is currently visible,
+          avoids re-running DexGrid's mount effect (and re-parsing the full
+          card cache blob) on every tab round-trip, and preserves its own
+          local UI state (the view toggle, the open Picker) across tab
+          switches instead of resetting it every time.
+          The other three panels don't hold any tutorial anchors and don't
+          share DexGrid's expensive full-cache-blob mount cost, so they're
+          left conditionally rendered as before — mounting them unconditionally
+          would only add unnecessary background price-rate fetches for tabs
+          the user hasn't opened yet. */}
+      <div hidden={activeTab !== 'grid'}>
+        <div data-tutorial="filter-bar">
+          <FilterBar />
+        </div>
+        <DexGrid />
+      </div>
       {activeTab === 'collection' && <CollectionTable />}
       {activeTab === 'wishlist' && <WishlistTable />}
       {activeTab === 'summary' && <Summary />}
 
-      <Tutorial />
+      <Tutorial onStart={() => setActiveTab('grid')} />
     </main>
   );
 }

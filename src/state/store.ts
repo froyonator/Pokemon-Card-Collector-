@@ -16,6 +16,12 @@ export interface ExportedUserData {
 
 export type ToggleWishlistResult = { ok: true } | { ok: false; reason: string };
 
+// Shared with App.tsx's onboarding-gate self-heal check, which needs to know
+// the exact localStorage key this store's persist middleware writes to.
+// Exported from here (the single source of truth for the key) rather than
+// duplicated as an independent string literal, so the two can't drift apart.
+export const USER_DATA_STORAGE_KEY = 'pcc:userData:v1';
+
 export interface AppState {
   language: string;
   currency: Currency;
@@ -158,7 +164,7 @@ export const useAppStore = create<AppState>()(
         }),
     }),
     {
-      name: 'pcc:userData:v1',
+      name: USER_DATA_STORAGE_KEY,
       partialize: (state) => ({
         language: state.language,
         currency: state.currency,
