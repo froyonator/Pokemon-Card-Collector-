@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fetchRarityList } from '../data/defaultRarityGroups';
+import { getAllCachedRarities } from '../storage/cardCache';
 import { useAppStore } from '../state/store';
 import type { RarityGroup } from '../types';
 import styles from './ManageGroupsPanel.module.css';
@@ -15,7 +16,17 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
   const setGroups = useAppStore((s) => s.setGroups);
   const [localGroups, setLocalGroups] = useState<RarityGroup[]>(groups);
 
-  const allRarities = fetchRarityList(groups);
+  // Union of every rarity ever seen on a cached card with every rarity
+  // already assigned to a (saved) group, so a rarity like 'Promo' -- never
+  // auto-assigned to a default group -- still shows up as assignable here.
+  // Deliberately keyed off `groups` (the saved store value) rather than
+  // `localGroups` (this panel's staged, unsaved edits): the master list of
+  // rarities shouldn't shrink or reshuffle just because the user has, say,
+  // staged a group deletion mid-session without saving. Per-rarity current
+  // assignment is still read from `localGroups` via groupIdForRarity below.
+  const allRarities = Array.from(
+    new Set([...getAllCachedRarities(), ...fetchRarityList(groups)])
+  ).sort();
 
   function groupIdForRarity(rarity: string): string {
     const found = localGroups.find((g) => g.rarities.includes(rarity));

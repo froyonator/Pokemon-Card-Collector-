@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearCardCache,
+  getAllCachedRarities,
   getCachedCards,
   getCachedPricing,
   hasCachedDataForLanguage,
@@ -19,6 +20,30 @@ const sampleCard: CardRecord = {
   rarity: 'Special illustration rare',
   imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
   language: 'en',
+};
+
+const promoCard: CardRecord = {
+  id: 'svp-044',
+  name: 'Charmander',
+  dexNumber: 4,
+  setId: 'svp',
+  setName: 'SV Promos',
+  localId: '044',
+  rarity: 'Promo',
+  imageBase: 'https://assets.tcgdex.net/en/svp/svp/044',
+  language: 'en',
+};
+
+const commonCardJa: CardRecord = {
+  id: 'sv2a-001',
+  name: 'Charmander',
+  dexNumber: 4,
+  setId: 'sv2a',
+  setName: '151',
+  localId: '001',
+  rarity: 'Common',
+  imageBase: 'https://assets.tcgdex.net/ja/sv/sv2a/001',
+  language: 'ja',
 };
 
 const samplePricing: CardPricing = {
@@ -79,5 +104,23 @@ describe('pricing cache', () => {
   it('round-trips pricing for a card id', () => {
     setCachedPricing('sv03.5-199', samplePricing);
     expect(getCachedPricing('sv03.5-199')).toEqual(samplePricing);
+  });
+});
+
+describe('getAllCachedRarities', () => {
+  it('returns an empty array when nothing has been cached', () => {
+    expect(getAllCachedRarities()).toEqual([]);
+  });
+
+  it('returns the deduplicated set of rarities across every language and dex number', () => {
+    setCachedCards('en', 6, [sampleCard]);
+    setCachedCards('en', 4, [promoCard, sampleCard]);
+    setCachedCards('ja', 4, [commonCardJa]);
+
+    const rarities = getAllCachedRarities();
+    expect(new Set(rarities)).toEqual(
+      new Set(['Special illustration rare', 'Promo', 'Common'])
+    );
+    expect(rarities).toHaveLength(3);
   });
 });

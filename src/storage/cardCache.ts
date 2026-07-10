@@ -93,3 +93,19 @@ export function hasCachedDataForLanguage(language: string): boolean {
   const cache = readJson<CardCacheShape>(CARD_CACHE_KEY, {});
   return Object.keys(cache).some((key) => key.startsWith(`${language}:`));
 }
+
+// Scans every language+dexNumber entry currently in the cache and returns
+// the distinct set of rarity strings seen across all of them. Used by
+// ManageGroupsPanel so a rarity that has never been assigned to a group
+// (e.g. 'Promo') can still show up as assignable once at least one cached
+// card carries it.
+export function getAllCachedRarities(): string[] {
+  const cache = readJson<CardCacheShape>(CARD_CACHE_KEY, {});
+  const set = new Set<string>();
+  for (const cards of Object.values(cache)) {
+    for (const card of cards) {
+      set.add(card.rarity);
+    }
+  }
+  return Array.from(set);
+}

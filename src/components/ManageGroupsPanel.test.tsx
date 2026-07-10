@@ -4,6 +4,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ManageGroupsPanel } from './ManageGroupsPanel';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { setCachedCards } from '../storage/cardCache';
+import type { CardRecord } from '../types';
+
+const promoCard: CardRecord = {
+  id: 'svp-044',
+  name: 'Charmander',
+  dexNumber: 4,
+  setId: 'svp',
+  setName: 'SV Promos',
+  localId: '044',
+  rarity: 'Promo',
+  imageBase: 'https://assets.tcgdex.net/en/svp/svp/044',
+  language: 'en',
+};
 
 function resetStore() {
   useAppStore.setState({
@@ -19,6 +33,7 @@ function resetStore() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   resetStore();
 });
 
@@ -56,5 +71,18 @@ describe('ManageGroupsPanel', () => {
     await userEvent.click(deleteButton);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(useAppStore.getState().groups).toHaveLength(3);
+  });
+
+  it('surfaces a rarity that only exists on a cached card, not in any group, as unassigned', async () => {
+    setCachedCards('en', 4, [promoCard]);
+    render(<ManageGroupsPanel onClose={() => {}} />);
+    const select = screen.getByLabelText('Group for Promo');
+    expect(select).toHaveValue('unassigned');
+
+    await userEvent.selectOptions(select, 'rainbow-gold');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(useAppStore.getState().groups.find((g) => g.id === 'rainbow-gold')?.rarities).toContain(
+      'Promo'
+    );
   });
 });
