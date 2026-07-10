@@ -90,7 +90,7 @@ describe('CollectionTable', () => {
   it('removes a row when Remove is clicked', async () => {
     render(<CollectionTable />);
     await screen.findByText('Charizard');
-    const removeButtons = screen.getAllByRole('button', { name: 'Remove' });
+    const removeButtons = screen.getAllByRole('button', { name: /^Remove / });
     await userEvent.click(removeButtons[0]);
     expect(Object.keys(useAppStore.getState().owned)).toHaveLength(1);
   });

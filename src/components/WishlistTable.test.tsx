@@ -58,7 +58,7 @@ describe('WishlistTable', () => {
   it('removes a wishlist entry when Remove is clicked', async () => {
     render(<WishlistTable />);
     await screen.findByText('Charizard');
-    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Charizard' }));
     expect(useAppStore.getState().wishlist[6]).toBeUndefined();
   });
 
