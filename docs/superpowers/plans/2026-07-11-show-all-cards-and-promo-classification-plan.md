@@ -450,7 +450,7 @@ In `parseImportPayload`, add a validation branch for `cardOverrides` right after
   // entirely. Default to an empty map rather than reject an otherwise-valid
   // older backup, same precedent as selectedGenerations above. If the field
   // IS present, it must actually be a card id -> group id string map, not
-  // some other shape, this is a plain user-data mapping with no further
+  // some other shape. This is a plain user-data mapping with no further
   // downstream guard, same reasoning as the other shape checks above.
   if (data.cardOverrides === undefined) {
     data.cardOverrides = {};
@@ -475,7 +475,7 @@ npm run test
 npm run typecheck
 npm run lint
 ```
-Expected: all pass. Some other test files that seed the store directly with `useAppStore.setState({...})` (e.g. `DexGrid.test.tsx`, `FilterBar.test.tsx`, `ManageGroupsPanel.test.tsx`, `CollectionTable.test.tsx`, `WishlistTable.test.tsx`, `Summary.test.tsx`, `ExportImportControls.test.tsx`, `StartScreen.test.tsx`, `App.test.tsx`) do NOT set `cardOverrides` in their fixtures, since it's a new field with a real default value (`DEFAULT_CARD_OVERRIDES`, not `{}`) baked into the store's initial state, and `useAppStore.setState({...})` in each of those tests only overwrites the keys it explicitly lists, `cardOverrides` will keep whatever value it already had (either the real seeded default, or whatever a previous test in the same file left behind, since Zustand state persists across `setState` calls within a test file unless a test explicitly resets it). This is very unlikely to break any of those tests' assertions, since none of them currently reference `cardOverrides`, `svp-044`, or dex number 4 (Charmander) in a way the seeded default could interfere with, but run the full suite and confirm this empirically rather than assuming it. If any test unexpectedly fails, investigate the actual interference rather than blindly adding `cardOverrides: {}` everywhere.
+Expected: all pass. Some other test files that seed the store directly with `useAppStore.setState({...})` (e.g. `DexGrid.test.tsx`, `FilterBar.test.tsx`, `ManageGroupsPanel.test.tsx`, `CollectionTable.test.tsx`, `WishlistTable.test.tsx`, `Summary.test.tsx`, `ExportImportControls.test.tsx`, `StartScreen.test.tsx`, `App.test.tsx`) do NOT set `cardOverrides` in their fixtures, since it's a new field with a real default value (`DEFAULT_CARD_OVERRIDES`, not `{}`) baked into the store's initial state. Because `useAppStore.setState({...})` in each of those tests only overwrites the keys it explicitly lists, `cardOverrides` will keep whatever value it already had (either the real seeded default, or whatever a previous test in the same file left behind, since Zustand state persists across `setState` calls within a test file unless a test explicitly resets it). This is very unlikely to break any of those tests' assertions, since none of them currently reference `cardOverrides`, `svp-044`, or dex number 4 (Charmander) in a way the seeded default could interfere with, but run the full suite and confirm this empirically rather than assuming it. If any test unexpectedly fails, investigate the actual interference rather than blindly adding `cardOverrides: {}` everywhere.
 
 - [ ] **Step 14: Commit**
 
