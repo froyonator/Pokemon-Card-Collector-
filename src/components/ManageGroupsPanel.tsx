@@ -39,7 +39,7 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
   }
 
   function addGroup() {
-    const id = `custom-${localGroups.length}-${localGroups.map((g) => g.id).join('')}`;
+    const id = `custom-${crypto.randomUUID()}`;
     setLocalGroups((prev) => [...prev, { id, name: 'New Group', rarities: [] }]);
   }
 
@@ -69,7 +69,11 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
                 value={group.name}
                 onChange={(e) => renameGroup(group.id, e.target.value)}
               />
-              <button type="button" onClick={() => deleteGroup(group.id)}>
+              <button
+                type="button"
+                aria-label={`Delete ${group.name}`}
+                onClick={() => deleteGroup(group.id)}
+              >
                 Delete group
               </button>
             </li>
