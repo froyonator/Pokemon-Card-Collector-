@@ -1,5 +1,7 @@
 .slot {
   aspect-ratio: 1;
+  min-width: 72px;
+  min-height: 72px;
   border-radius: var(--radius-md);
   background: #0c0a08;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -17,19 +19,22 @@
 }
 
 .slot img {
-  max-width: 100%;
-  max-height: 100%;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.slot:hover img,
-.slot:focus-visible img {
-  opacity: 1;
+  /* Fixed pixel dimensions, not percentage-based: a percentage width/height
+     here would depend on the slot's own size, but the slot is a CSS Grid
+     item sized from `repeat(columns, 1fr)` with the default `auto` minimum
+     track size, which resolves from the CONTENT'S intrinsic size when that
+     content has no fixed size of its own. That circular dependency is what
+     made the whole grid balloon to the sprite's native pixel dimensions the
+     moment it mounted on hover. A fixed size sidesteps the cycle entirely. */
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
 }
 
 .blank {
   aspect-ratio: 1;
+  min-width: 72px;
+  min-height: 72px;
   border-radius: var(--radius-md);
   border: 1px dashed rgba(255, 255, 255, 0.12);
   background: transparent;

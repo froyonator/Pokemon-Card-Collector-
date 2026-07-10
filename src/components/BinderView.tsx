@@ -120,8 +120,16 @@ export function BinderView({
               className={styles.page}
               aria-label={`Page ${pageIndex + 1}`}
               style={{
-                gridTemplateColumns: `repeat(${activeBinder.config.columns}, 1fr)`,
-                gridTemplateRows: `repeat(${activeBinder.config.rows}, 1fr)`,
+                // minmax(0, 1fr), not a bare 1fr: a bare 1fr track's default
+                // minimum is its content's intrinsic size, which let a
+                // revealed sprite balloon the whole grid on hover before the
+                // fixed pixel sizing in BinderSlot.module.css also capped
+                // this at the image level. Both fixes address the same
+                // underlying "grid track sized from unconstrained content"
+                // problem, from different layers, since either alone would
+                // leave a future slot-content change able to reintroduce it.
+                gridTemplateColumns: `repeat(${activeBinder.config.columns}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${activeBinder.config.rows}, minmax(0, 1fr))`,
               }}
               {...pageMotion}
             >
