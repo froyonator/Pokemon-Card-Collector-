@@ -29,11 +29,19 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     selectedGenerations: state.selectedGenerations,
     cardOverrides: state.cardOverrides,
     uploadedImages: state.uploadedImages,
-    // Placeholder until ExportableState grows binderConfig/binderCustomOrder
+    // Placeholder until ExportableState grows binders/activeBinderId
     // (planned in the binder view's export/import wiring task) -- this just
     // keeps ExportedUserData's now-required binder fields satisfied here.
-    binderConfig: DEFAULT_BINDER_CONFIG,
-    binderCustomOrder: null,
+    binders: [
+      {
+        id: 'default',
+        name: 'My Binder',
+        language: 'en',
+        config: DEFAULT_BINDER_CONFIG,
+        customOrder: null,
+      },
+    ],
+    activeBinderId: 'default',
   };
 }
 

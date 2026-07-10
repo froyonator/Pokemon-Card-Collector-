@@ -20,12 +20,7 @@ export interface CardPricing {
 }
 
 export type Condition =
-  | 'Mint'
-  | 'Near Mint'
-  | 'Lightly Played'
-  | 'Moderately Played'
-  | 'Heavily Played'
-  | 'Damaged';
+  'Mint' | 'Near Mint' | 'Lightly Played' | 'Moderately Played' | 'Heavily Played' | 'Damaged';
 
 export const CONDITIONS: Condition[] = [
   'Mint',
@@ -57,15 +52,21 @@ export interface RarityGroup {
 
 export type BinderFillDirection = 'horizontal' | 'vertical';
 
-export type BinderSlotEntry =
-  | { type: 'pokemon'; dexNumber: number }
-  | { type: 'blank' };
+export type BinderSlotEntry = { type: 'pokemon'; dexNumber: number } | { type: 'blank' };
 
 export interface BinderConfig {
   rows: number;
   columns: number;
   pageCount: number;
   fillDirection: BinderFillDirection;
+}
+
+export interface Binder {
+  id: string;
+  name: string;
+  language: string;
+  config: BinderConfig;
+  customOrder: BinderSlotEntry[] | null;
 }
 
 export type Currency = 'USD' | 'EUR' | 'AUD' | 'GBP' | 'CAD';

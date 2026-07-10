@@ -13,6 +13,21 @@ function resetStore() {
     selectedGenerations: [1],
     cardOverrides: {},
     uploadedImages: {},
+    // Reset to a single deterministic binder before every test, mirroring
+    // the store's real fresh-install default of exactly one seeded binder.
+    // Without this, createBinder (which appends) would let binders pile up
+    // across tests, since resetStore is the only per-test reset mechanism
+    // this file has -- individual tests don't each re-seed the array.
+    binders: [
+      {
+        id: 'default',
+        name: 'My Binder',
+        language: 'en',
+        config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+        customOrder: null,
+      },
+    ],
+    activeBinderId: 'default',
     hasUnsavedChanges: false,
   });
 }
@@ -236,8 +251,16 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: { 'other-card': 'rainbow-gold' },
       uploadedImages: { 'other-card': 'data:image/jpeg;base64,NEW' },
-      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
-      binderCustomOrder: null,
+      binders: [
+        {
+          id: 'x',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'x',
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
@@ -261,8 +284,16 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: {},
       uploadedImages: {},
-      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
-      binderCustomOrder: null,
+      binders: [
+        {
+          id: 'x',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'x',
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
@@ -279,8 +310,16 @@ describe('replaceUserData', () => {
       selectedGenerations: [1],
       cardOverrides: {},
       uploadedImages: {},
-      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
-      binderCustomOrder: null,
+      binders: [
+        {
+          id: 'x',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'x',
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
@@ -288,67 +327,107 @@ describe('replaceUserData', () => {
   });
 });
 
-describe('binderConfig', () => {
-  it('defaults to a 3x3 grid, 17 pages, horizontal fill', () => {
+function firstBinderId() {
+  return useAppStore.getState().binders[0].id;
+}
+
+describe('binders', () => {
+  it('seeds exactly one binder by default, named "My Binder", matching the store language', () => {
     useAppStore.setState({
-      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
-      binderCustomOrder: null,
+      binders: [
+        {
+          id: 'seed',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'seed',
     });
-    expect(useAppStore.getState().binderConfig).toEqual({
-      rows: 3,
-      columns: 3,
-      pageCount: 17,
-      fillDirection: 'horizontal',
-    });
+    const state = useAppStore.getState();
+    expect(state.binders).toHaveLength(1);
+    expect(state.binders[0]).toMatchObject({ name: 'My Binder', language: 'en' });
+    expect(state.activeBinderId).toBe(state.binders[0].id);
   });
 
-  it('setBinderConfig merges a partial update over the existing config', () => {
-    useAppStore.setState({
-      binderConfig: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+  it('createBinder adds a new binder with the given name/language, default config, and makes it active', () => {
+    const before = useAppStore.getState().binders.length;
+    useAppStore.getState().createBinder('Chinese Binder', 'zh-cn');
+    const state = useAppStore.getState();
+    expect(state.binders).toHaveLength(before + 1);
+    const created = state.binders[state.binders.length - 1];
+    expect(created).toMatchObject({
+      name: 'Chinese Binder',
+      language: 'zh-cn',
+      config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+      customOrder: null,
     });
-    useAppStore.getState().setBinderConfig({ rows: 4, columns: 5 });
-    expect(useAppStore.getState().binderConfig).toEqual({
-      rows: 4,
-      columns: 5,
-      pageCount: 17,
-      fillDirection: 'horizontal',
-    });
+    expect(state.activeBinderId).toBe(created.id);
   });
 
-  it('setBinderConfig marks unsaved changes', () => {
+  it('createBinder marks unsaved changes', () => {
     useAppStore.setState({ hasUnsavedChanges: false });
-    useAppStore.getState().setBinderConfig({ pageCount: 20 });
+    useAppStore.getState().createBinder('Second Binder', 'en');
     expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+
+  it('setActiveBinder switches which binder is active', () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const secondId = useAppStore.getState().binders[1].id;
+    const firstId = useAppStore.getState().binders[0].id;
+    useAppStore.getState().setActiveBinder(firstId);
+    expect(useAppStore.getState().activeBinderId).toBe(firstId);
+    useAppStore.getState().setActiveBinder(secondId);
+    expect(useAppStore.getState().activeBinderId).toBe(secondId);
+  });
+
+  it("renameBinder updates only the target binder's name", () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const id = firstBinderId();
+    useAppStore.getState().renameBinder(id, 'My Renamed Binder');
+    const state = useAppStore.getState();
+    expect(state.binders.find((b) => b.id === id)?.name).toBe('My Renamed Binder');
+    expect(state.binders[1].name).toBe('Second Binder');
+  });
+
+  it("setBinderLanguage updates only the target binder's language", () => {
+    const id = firstBinderId();
+    useAppStore.getState().setBinderLanguage(id, 'fr');
+    expect(useAppStore.getState().binders.find((b) => b.id === id)?.language).toBe('fr');
+  });
+
+  it("setBinderConfig merges a partial update into only the target binder's config", () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const [first, second] = useAppStore.getState().binders;
+    useAppStore.getState().setBinderConfig(first.id, { rows: 5 });
+    const state = useAppStore.getState();
+    expect(state.binders.find((b) => b.id === first.id)?.config.rows).toBe(5);
+    expect(state.binders.find((b) => b.id === second.id)?.config.rows).toBe(3);
+  });
+
+  it("setBinderCustomOrder sets the target binder's custom order only", () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const [first, second] = useAppStore.getState().binders;
+    const order = [{ type: 'blank' as const }];
+    useAppStore.getState().setBinderCustomOrder(first.id, order);
+    const state = useAppStore.getState();
+    expect(state.binders.find((b) => b.id === first.id)?.customOrder).toEqual(order);
+    expect(state.binders.find((b) => b.id === second.id)?.customOrder).toBeNull();
   });
 });
 
-describe('binderCustomOrder', () => {
-  it('defaults to null', () => {
-    useAppStore.setState({ binderCustomOrder: null });
-    expect(useAppStore.getState().binderCustomOrder).toBeNull();
-  });
-
-  it('setBinderCustomOrder stores a custom sequence and marks unsaved changes', () => {
-    useAppStore.setState({ binderCustomOrder: null, hasUnsavedChanges: false });
-    const order = [{ type: 'pokemon' as const, dexNumber: 1 }, { type: 'blank' as const }];
-    useAppStore.getState().setBinderCustomOrder(order);
-    expect(useAppStore.getState().binderCustomOrder).toEqual(order);
-    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
-  });
-
-  it('setBinderCustomOrder(null) clears back to the live default and marks unsaved changes', () => {
-    useAppStore.setState({
-      binderCustomOrder: [{ type: 'pokemon', dexNumber: 1 }],
-      hasUnsavedChanges: false,
-    });
-    useAppStore.getState().setBinderCustomOrder(null);
-    expect(useAppStore.getState().binderCustomOrder).toBeNull();
-    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
-  });
-});
-
-describe('replaceUserData with binder fields', () => {
-  it('copies binderConfig and binderCustomOrder from imported data', () => {
+describe('replaceUserData with binders', () => {
+  it('copies binders and activeBinderId from imported data', () => {
+    const imported = [
+      {
+        id: 'a',
+        name: 'Imported Binder',
+        language: 'ko',
+        config: { rows: 4, columns: 4, pageCount: 10, fillDirection: 'vertical' as const },
+        customOrder: null,
+      },
+    ];
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'en',
@@ -360,15 +439,10 @@ describe('replaceUserData with binder fields', () => {
       selectedGenerations: [1],
       cardOverrides: {},
       uploadedImages: {},
-      binderConfig: { rows: 4, columns: 4, pageCount: 10, fillDirection: 'vertical' },
-      binderCustomOrder: [{ type: 'blank' }],
+      binders: imported,
+      activeBinderId: 'a',
     });
-    expect(useAppStore.getState().binderConfig).toEqual({
-      rows: 4,
-      columns: 4,
-      pageCount: 10,
-      fillDirection: 'vertical',
-    });
-    expect(useAppStore.getState().binderCustomOrder).toEqual([{ type: 'blank' }]);
+    expect(useAppStore.getState().binders).toEqual(imported);
+    expect(useAppStore.getState().activeBinderId).toBe('a');
   });
 });
