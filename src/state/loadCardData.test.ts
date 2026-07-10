@@ -160,4 +160,98 @@ describe('loadAllPrintingsForDex', () => {
     expect(result).toEqual([]);
     expect(getAllCachedCardsForDex('en', 999)).toEqual([]);
   });
+
+  it('does not refetch over the network on a later call for the same dex number once the full print history is cached', async () => {
+    // Simulates a picker being closed and reopened: Picker's own "already
+    // fetched" state is local component state that resets on remount, so
+    // this call-it-twice-independently pattern is what actually exercises
+    // the durable, localStorage-backed cache check inside
+    // loadAllPrintingsForDex itself, not any in-memory guard a caller keeps.
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      if (url.includes('dexId=eq%3A4') || url.includes('dexId=eq:4')) {
+        return jsonResponse([
+          {
+            id: 'svp-044',
+            localId: '044',
+            name: 'Charmander',
+            image: 'https://assets.tcgdex.net/en/sv/svp/044',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    const first = await loadAllPrintingsForDex('en', 4, fetchImpl);
+    const callsAfterFirst = fetchImpl.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+
+    const second = await loadAllPrintingsForDex('en', 4, fetchImpl);
+
+    expect(fetchImpl.mock.calls.length).toBe(callsAfterFirst);
+    expect(second).toEqual(first);
+  });
+
+  it('refetches after a curated-only loadAllCardData run overwrites the same dex number, instead of trusting a stale full-history flag', async () => {
+    const showAllFetch = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ]);
+    });
+    await loadAllPrintingsForDex('en', 4, showAllFetch);
+
+    // A curated refresh (e.g. "Refresh Data") overwrites dex 4's cache slot
+    // with just the narrower curated subset.
+    const curatedFetch = vi.fn().mockResolvedValue(jsonResponse([]));
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      fetchImpl: curatedFetch,
+    });
+
+    const secondShowAllFetch = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ]);
+    });
+    await loadAllPrintingsForDex('en', 4, secondShowAllFetch);
+
+    expect(secondShowAllFetch.mock.calls.length).toBeGreaterThan(0);
+  });
 });

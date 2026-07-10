@@ -165,4 +165,77 @@ describe('DexGrid', () => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
   });
+
+  it('updates the Card-view tile immediately after marking a card discovered only via "Show all cards" as owned, without needing Refresh Data', async () => {
+    // A dedicated mock, distinguishing curated per-rarity requests (which
+    // carry a `rarity=` param) from the unfiltered "show all" request (which
+    // never does): the curated fetch only ever finds sv03.5-199, while the
+    // full print history turns up a promo, svp-044, that was never part of
+    // the curated cache. This mirrors the real gap this feature closes:
+    // TCGdex tags every promo "Promo", a rarity outside the curated groups,
+    // so a promo is invisible to the curated fetch no matter how special it
+    // actually looks.
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charizard',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+        if (url.includes('rarity=')) {
+          return jsonResponse([
+            {
+              id: 'sv03.5-199',
+              localId: '199',
+              name: 'Charizard ex',
+              image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+            },
+          ]);
+        }
+        return jsonResponse([
+          {
+            id: 'svp-044',
+            localId: '044',
+            name: 'Charizard',
+            image: 'https://assets.tcgdex.net/en/sv/svp/044',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    render(<DexGrid />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Card view' }));
+    await userEvent.click(screen.getByRole('button', { name: /charizard/i }));
+
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: /show all cards/i }));
+    const promoCardButton = await within(dialog).findByAltText(
+      /charizard from svp black star promos/i
+    );
+    await userEvent.click(promoCardButton);
+    await userEvent.click(screen.getByRole('button', { name: 'Near Mint' }));
+
+    expect(useAppStore.getState().owned[6]).toMatchObject({ cardId: 'svp-044' });
+
+    // No "Refresh Data" click here: this is the exact self-healing step the
+    // fix removes the need for.
+    await waitFor(() => {
+      const tile = screen.getByRole('button', { name: /charizard/i });
+      const img = within(tile).getByRole('img', { name: /charizard card/i });
+      expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/svp/044/low.webp');
+    });
+  });
 });

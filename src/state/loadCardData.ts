@@ -1,7 +1,13 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
 import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
-import { getCachedCards, setCachedCards } from '../storage/cardCache';
+import {
+  clearFullPrintHistory,
+  getCachedCards,
+  hasFullPrintHistory,
+  markFullPrintHistoryFetched,
+  setCachedCards,
+} from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
 export interface LoadProgress {
@@ -59,6 +65,12 @@ export async function loadAllCardData(
       }
     }
     setCachedCards(language, entry.number, perDex);
+    // A curated-only fetch just overwrote this dex number's cache slot with
+    // the narrower rarity-filtered subset, so any earlier "Show all cards"
+    // full-print-history flag for it no longer describes what's actually
+    // cached. Clear it so the next "Show all cards" toggle re-fetches
+    // properly instead of trusting stale curated data as if it were complete.
+    clearFullPrintHistory(language, entry.number);
     completed += 1;
     onProgress?.({ completed, total });
   }
@@ -83,6 +95,16 @@ export async function loadAllPrintingsForDex(
   dexNumber: number,
   fetchImpl: FetchImplParam['fetchImpl'] = fetch
 ): Promise<CardRecord[]> {
+  // Per the design spec, "Show all cards" fetches on first use only and does
+  // not refetch on every open once cached. A Picker mount only remembers
+  // this in local component state, which resets every time the picker is
+  // closed and reopened (it's a fresh mount), so the durable signal has to
+  // live in localStorage instead, via hasFullPrintHistory/
+  // markFullPrintHistoryFetched, not in any caller's in-memory state.
+  if (hasFullPrintHistory(language, dexNumber)) {
+    const cached = getCachedCards(language, dexNumber);
+    if (cached) return cached;
+  }
   const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl);
   const cards: CardRecord[] = [];
   for (const brief of briefs) {
@@ -106,5 +128,6 @@ export async function loadAllPrintingsForDex(
     });
   }
   setCachedCards(language, dexNumber, cards);
+  markFullPrintHistoryFetched(language, dexNumber);
   return cards;
 }

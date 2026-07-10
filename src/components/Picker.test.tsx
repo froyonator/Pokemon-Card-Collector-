@@ -44,6 +44,13 @@ function resetStore() {
 }
 
 beforeEach(() => {
+  // "Show all cards" persists a durable "already fetched" flag to
+  // localStorage (see hasFullPrintHistory in src/storage/cardCache.ts), on
+  // purpose: it needs to survive a Picker remount. But that also means it
+  // survives across tests in this file unless cleared here, since several
+  // tests below toggle "show all" for the same dexNumber=6/language='en'
+  // combination with their own distinct fetch mocks.
+  localStorage.clear();
   resetStore();
 });
 
@@ -175,5 +182,40 @@ describe('Picker', () => {
   it('every shown card displays its rarity label', () => {
     render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
     expect(screen.getByText(cardA.rarity)).toBeInTheDocument();
+  });
+
+  it('prefers the fetched full print history over the curated prop when the same card id appears in both, on conflict', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/cards/sv03.5-199')) {
+          return jsonResponse({
+            id: 'sv03.5-199',
+            localId: '199',
+            name: 'Charizard ex',
+            rarity: 'Ultra Rare',
+            set: { id: 'sv03.5', name: '151' },
+          });
+        }
+        if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+          return jsonResponse([
+            {
+              id: 'sv03.5-199',
+              localId: '199',
+              name: 'Charizard ex',
+              image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+            },
+          ]);
+        }
+        return jsonResponse([]);
+      })
+    );
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    expect(screen.getByText(cardA.rarity)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(cardA.rarity)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Ultra Rare')).toBeInTheDocument();
   });
 });

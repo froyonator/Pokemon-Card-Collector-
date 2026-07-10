@@ -165,6 +165,7 @@ export function DexGrid() {
             pokemonName={openEntry.name}
             cards={openCards}
             onClose={() => setOpenDexNumber(null)}
+            onAllCardsLoaded={() => setDataVersion((v) => v + 1)}
           />
         )}
       </AnimatePresence>
