@@ -127,6 +127,28 @@ describe('Summary', () => {
     });
   });
 
+  it('counts a Pokemon toward availability when its only matching card comes from a manual override, not its raw rarity', () => {
+    // pikachuCard's beforeEach rarity ('Ultra Rare') already matches the
+    // default 'full-art' group on its own, so overriding it to 'full-art'
+    // would be a no-op coincidence and prove nothing about override wiring.
+    // Re-cache dex 25 here with a rarity that matches no default group, and
+    // mark both dex 6 and dex 25 owned so totalOwned is a fixed 2 regardless
+    // of the override -- isolating the change under test to availableCount
+    // alone. Without the override below, pikachu's card wouldn't match any
+    // active group and availableCount would be 1 (Charizard only, "2 of 1");
+    // only the override raises it back to 2 ("2 of 2").
+    setCachedCards('en', 25, [{ ...pikachuCard, rarity: 'Promo' }]);
+    useAppStore.setState({
+      owned: {
+        6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' },
+        25: { dexNumber: 25, cardId: 'swsh35-74', condition: 'Near Mint', addedAt: '' },
+      },
+      cardOverrides: { 'swsh35-74': 'full-art' },
+    });
+    render(<Summary />);
+    expect(screen.getByText(/2 of 2 pok.mon with an available card/i)).toBeInTheDocument();
+  });
+
   it('clamps the progress bar fill to 100% when owned cards exceed the available count under the active filter', () => {
     // dex 1-3 have no cached card data at all (only dex 6 and 25 do, per the
     // beforeEach setup), so they don't count toward availableCount, but they

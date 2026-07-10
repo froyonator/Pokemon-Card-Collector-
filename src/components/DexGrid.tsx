@@ -17,6 +17,7 @@ export function DexGrid() {
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
   const owned = useAppStore((s) => s.owned);
+  const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
 
   const [view, setView] = useState<'sprite' | 'card'>('sprite');
@@ -84,7 +85,12 @@ export function DexGrid() {
 
   const openEntry = openDexNumber ? dexEntries.find((e) => e.number === openDexNumber) : undefined;
   const openCards = openEntry
-    ? availableCardsForDex(cardsByDexNumber.get(openEntry.number) ?? [], activeSet)
+    ? availableCardsForDex(
+        cardsByDexNumber.get(openEntry.number) ?? [],
+        activeSet,
+        cardOverrides,
+        activeGroupIds
+      )
     : [];
 
   return (
@@ -120,7 +126,7 @@ export function DexGrid() {
         <div className={styles.grid} data-version={dataVersion}>
           {dexEntries.map((entry) => {
             const allCards = cardsByDexNumber.get(entry.number) ?? [];
-            const cards = availableCardsForDex(allCards, activeSet);
+            const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
             const ownedRecord = owned[entry.number];
             const state = computeTileState(Boolean(ownedRecord), cards.length);
             const ownedCard = ownedRecord

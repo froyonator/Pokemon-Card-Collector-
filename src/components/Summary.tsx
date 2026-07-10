@@ -16,6 +16,7 @@ export function Summary() {
   const wishlist = useAppStore((s) => s.wishlist);
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
+  const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
   const priceVersion = useAppStore((s) => s.priceVersion);
   const bumpPriceVersion = useAppStore((s) => s.bumpPriceVersion);
@@ -90,10 +91,14 @@ export function Summary() {
     () =>
       dexEntries.filter(
         (entry) =>
-          availableCardsForDex(getAllCachedCardsForDex(language, entry.number), activeSet)
-            .length > 0
+          availableCardsForDex(
+            getAllCachedCardsForDex(language, entry.number),
+            activeSet,
+            cardOverrides,
+            activeGroupIds
+          ).length > 0
       ).length,
-    [language, dexEntries, activeSet]
+    [language, dexEntries, activeSet, cardOverrides, activeGroupIds]
   );
 
   // Clamped to 100: totalOwned counts every owned card regardless of the
