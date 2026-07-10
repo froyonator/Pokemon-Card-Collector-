@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllCachedCardsForDex, loadAllCardData } from './loadCardData';
+import { getAllCachedCardsForDex, loadAllCardData, loadAllPrintingsForDex } from './loadCardData';
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -112,5 +112,52 @@ describe('loadAllCardData', () => {
     const cached = getAllCachedCardsForDex('en', 6);
     expect(cached).toHaveLength(2);
     expect(cached.map((c) => c.id).sort()).toEqual(['sv03-223', 'sv03.5-199']);
+  });
+});
+
+describe('loadAllPrintingsForDex', () => {
+  it('fetches the full unfiltered card list, backfills rarity and set name per card via a detail lookup, and caches the result', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charmander',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      if (url.includes('dexId=eq%3A4') || url.includes('dexId=eq:4')) {
+        return jsonResponse([
+          {
+            id: 'svp-044',
+            localId: '044',
+            name: 'Charmander',
+            image: 'https://assets.tcgdex.net/en/sv/svp/044',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    const result = await loadAllPrintingsForDex('en', 4, fetchImpl);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 'svp-044',
+      dexNumber: 4,
+      setId: 'svp',
+      setName: 'SVP Black Star Promos',
+      rarity: 'Promo',
+      language: 'en',
+    });
+    expect(getAllCachedCardsForDex('en', 4)).toEqual(result);
+  });
+
+  it('caches an empty array when a Pokemon has no cards at all', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const result = await loadAllPrintingsForDex('en', 999, fetchImpl);
+    expect(result).toEqual([]);
+    expect(getAllCachedCardsForDex('en', 999)).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
-import { deriveSetId, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
+import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
 import { getCachedCards, setCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
@@ -66,4 +66,45 @@ export async function loadAllCardData(
 
 export function getAllCachedCardsForDex(language: string, dexNumber: number): CardRecord[] {
   return getCachedCards(language, dexNumber) ?? [];
+}
+
+// Same method-shorthand workaround as LoadAllCardDataOptions.fetchImpl above:
+// a plain `fetchImpl: typeof fetch = fetch` parameter is checked
+// contravariantly under this project's strict mode, which rejects this
+// file's test mocks (`vi.fn(async (url: string) => ...)`, explicitly typed
+// to just `string`). Routing the parameter's type through a method-shorthand
+// interface member gets bivariant checking instead, with no runtime change.
+interface FetchImplParam {
+  fetchImpl(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+export async function loadAllPrintingsForDex(
+  language: string,
+  dexNumber: number,
+  fetchImpl: FetchImplParam['fetchImpl'] = fetch
+): Promise<CardRecord[]> {
+  const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl);
+  const cards: CardRecord[] = [];
+  for (const brief of briefs) {
+    // Unlike loadAllCardData above, this doesn't need a separate fetchSets
+    // call for a name lookup: the per-card detail response already carries
+    // the correct set name directly (detail.set.name), since a full detail
+    // fetch is already required here to get each card's rarity (the list
+    // endpoint queried by fetchAllCardsForDex omits rarity entirely).
+    const detail = await fetchCardDetail(brief.id, language, fetchImpl);
+    const setId = deriveSetId(brief.id, brief.localId);
+    cards.push({
+      id: brief.id,
+      name: brief.name,
+      dexNumber,
+      setId,
+      setName: detail.set.name,
+      localId: brief.localId,
+      rarity: detail.rarity ?? 'Unknown',
+      imageBase: brief.image ?? '',
+      language,
+    });
+  }
+  setCachedCards(language, dexNumber, cards);
+  return cards;
 }
