@@ -1,0 +1,40 @@
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.viewToggle {
+  display: inline-flex;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+}
+
+.viewToggle button {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.viewToggle button[aria-pressed='true'] {
+  background: #4a9eff;
+  color: white;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.emptyState {
+  opacity: 0.7;
+  padding: 24px 0;
+  text-align: center;
+}
