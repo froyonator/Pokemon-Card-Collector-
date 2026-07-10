@@ -50,6 +50,21 @@ export async function fetchCardsForDexAndRarity(
   return cards.filter((card) => !isPocketCard(card));
 }
 
+export async function fetchAllCardsForDex(
+  dexNumber: number,
+  language: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<TcgdexCardBrief[]> {
+  const url = new URL(`${TCGDEX_BASE}/${language}/cards`);
+  url.searchParams.set('dexId', `eq:${dexNumber}`);
+  const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`TCGdex request failed with status ${res.status}`);
+  }
+  const cards: TcgdexCardBrief[] = await res.json();
+  return cards.filter((card) => !isPocketCard(card));
+}
+
 export async function fetchCardDetail(
   cardId: string,
   language: string,
