@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DexGrid } from './DexGrid';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { setCachedCards } from '../storage/cardCache';
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -119,5 +120,49 @@ describe('DexGrid', () => {
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
       fetchCallsBefore
     );
+  });
+
+  it('colors a tile as available when its only matching card comes from a manual override, not its raw rarity', async () => {
+    // Pre-seed the cache directly, bypassing the fetch-driven loadAllCardData
+    // loop, with a Charizard record whose rarity is 'Promo' -- a string that
+    // appears in none of DEFAULT_RARITY_GROUPS' curated rarity lists.
+    //
+    // This sidesteps a trap in the naive version of this test: loadAllCardData
+    // fetches once per curated rarity (fetchRarityList(DEFAULT_RARITY_GROUPS))
+    // and labels each returned CardRecord with whatever rarity string was
+    // being *queried* for that iteration, not anything from the API response
+    // itself. The top-of-file mock above returns the Charizard brief
+    // unconditionally for any dexId=eq:6 request, so if this card were driven
+    // through that loop it would land in the cache nine times, once per
+    // curated rarity -- and one of those nine copies would always be labeled
+    // rarity: 'Ultra Rare', which is exactly the 'full-art' group's own
+    // seeded rarity. That copy alone would make the tile "available" on raw
+    // rarity, with or without the override below, so the test would pass for
+    // the wrong reason. Seeding the cache directly with a single record whose
+    // rarity matches nothing avoids that coincidence entirely: without the
+    // override, activeSet here is only {'Ultra Rare'} (activeGroupIds is
+    // scoped to just 'full-art'), and 'Promo' isn't in it.
+    setCachedCards('en', 6, [
+      {
+        id: 'sv03.5-199',
+        name: 'Charizard ex',
+        dexNumber: 6,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({
+      cardOverrides: { 'sv03.5-199': 'full-art' },
+      activeGroupIds: ['full-art'],
+      groups: DEFAULT_RARITY_GROUPS,
+    });
+    render(<DexGrid />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
   });
 });
