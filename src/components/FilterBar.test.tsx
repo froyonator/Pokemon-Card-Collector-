@@ -1,0 +1,62 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { FilterBar } from './FilterBar';
+import { useAppStore } from '../state/store';
+import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+
+function resetStore() {
+  useAppStore.setState({
+    language: 'en',
+    currency: 'USD',
+    activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+    groups: DEFAULT_RARITY_GROUPS,
+    owned: {},
+    wishlist: {},
+    selectedGenerations: [1],
+    hasUnsavedChanges: false,
+  });
+}
+
+beforeEach(() => {
+  resetStore();
+});
+
+describe('FilterBar', () => {
+  it('toggles a rarity group off and on', async () => {
+    render(<FilterBar />);
+    const checkbox = screen.getByLabelText('Full Art');
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().activeGroupIds).not.toContain('full-art');
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().activeGroupIds).toContain('full-art');
+  });
+
+  it('changes the language', async () => {
+    render(<FilterBar />);
+    await userEvent.selectOptions(screen.getByLabelText('Language'), 'ja');
+    expect(useAppStore.getState().language).toBe('ja');
+  });
+
+  it('changes the currency', async () => {
+    render(<FilterBar />);
+    await userEvent.selectOptions(screen.getByLabelText('Currency'), 'AUD');
+    expect(useAppStore.getState().currency).toBe('AUD');
+  });
+
+  it('opens the Manage Groups panel', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByRole('button', { name: 'Manage groups' }));
+    expect(screen.getByRole('dialog', { name: 'Manage rarity groups' })).toBeInTheDocument();
+  });
+
+  it('toggles a generation off and on', async () => {
+    render(<FilterBar />);
+    const checkbox = screen.getByLabelText('Generation 1 (Kanto)');
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().selectedGenerations).not.toContain(1);
+    await userEvent.click(checkbox);
+    expect(useAppStore.getState().selectedGenerations).toContain(1);
+  });
+});
