@@ -23,18 +23,56 @@ interface PriceCacheShape {
   [cardId: string]: CardPricing;
 }
 
+// In-memory cache of the parsed blob for each localStorage key, so repeated
+// reads within a short span (e.g. DexGrid's cardsByDexNumber memo calling
+// getCachedCards once per dex entry -- up to 151 times -- which now
+// recomputes on every onDexLoaded-triggered, rAF-coalesced dataVersion bump
+// during a streaming load, not just once at the very end) don't re-run
+// JSON.parse over the entire ever-growing cache blob on every single call.
+//
+// Keyed on the raw string actually read from localStorage, not just
+// invalidated on writes made through writeJson below: localStorage.getItem
+// is cheap (an object property lookup), so every read still confirms the
+// underlying raw string hasn't changed before trusting a cached parse. That
+// is what keeps this correct even against mutations this module didn't make
+// itself -- direct localStorage.setItem/removeItem/clear() calls, which the
+// test suite's `beforeEach(() => localStorage.clear())` and at least one
+// test (cardCache.test.ts's corrupted-JSON case) both do -- not just writes
+// that happened to go through writeJson.
+//
+// Read results (e.g. from getCachedCards) are the cached object's own
+// nested arrays/values, not defensive copies, so callers must treat them as
+// read-only; nothing in this codebase currently mutates a returned array in
+// place; if that ever changes, copy before mutating.
+const parsedCache = new Map<string, { raw: string | null; parsed: unknown }>();
+
 function readJson<T>(key: string, fallback: T): T {
   const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
+  const cached = parsedCache.get(key);
+  if (cached && cached.raw === raw) {
+    return cached.parsed as T;
+  }
+  if (!raw) {
+    parsedCache.set(key, { raw, parsed: fallback });
+    return fallback;
+  }
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as T;
+    parsedCache.set(key, { raw, parsed });
+    return parsed;
   } catch {
+    parsedCache.set(key, { raw, parsed: fallback });
     return fallback;
   }
 }
 
 function writeJson(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value));
+  const raw = JSON.stringify(value);
+  localStorage.setItem(key, raw);
+  // Cache the write's own value directly (not just invalidate-and-let-the-
+  // next-read-reparse) so a write is reflected immediately without an
+  // unnecessary redundant JSON.parse of what we just serialized ourselves.
+  parsedCache.set(key, { raw, parsed: value });
 }
 
 export function cardCacheKey(language: string, dexNumber: number): string {

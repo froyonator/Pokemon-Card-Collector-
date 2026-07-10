@@ -67,6 +67,28 @@ export async function loadAllCardData(
   const sets = await fetchSets(language, fetchImpl);
   const setNameById = new Map(sets.map((s) => [s.id, s.name]));
 
+  // Defensive check, not currently reachable in production: GEN1_DEX has no
+  // duplicates and entriesForGenerations doesn't produce any either. Worth
+  // guarding anyway, since the accumulator below is keyed strictly by dex
+  // number with `remaining` initialized to exactly `rarities.length` -- a
+  // duplicate entry would still only get ONE accumulator, so its `remaining`
+  // counter would hit zero after only half the actual job count, firing
+  // setCachedCards/onProgress/onDexLoaded prematurely and silently dropping
+  // the other copy's cards.
+  const seenDexNumbers = new Set<number>();
+  for (const entry of dexEntries) {
+    if (seenDexNumbers.has(entry.number)) {
+      console.warn(
+        `loadAllCardData: dexEntries contains a duplicate dex number (${entry.number}). ` +
+          "Each dex number's card data may be incomplete: the accumulator design keys " +
+          'strictly by dex number, so only one copy\'s worth of rarity jobs gets counted ' +
+          "toward completion. Deduplicate dexEntries before calling loadAllCardData."
+      );
+      break;
+    }
+    seenDexNumbers.add(entry.number);
+  }
+
   const total = dexEntries.length;
   let completed = 0;
 

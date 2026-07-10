@@ -85,6 +85,37 @@ describe('loadAllCardData', () => {
     expect(loadedDexNumbers.sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 
+  it('warns (but does not crash) when dexEntries contains a duplicate dex number, since the accumulator is keyed strictly by dex number', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    await loadAllCardData('en', {
+      dexEntries: [
+        { number: 1, name: 'Bulbasaur' },
+        { number: 1, name: 'Bulbasaur' },
+      ],
+      rarities: ['Ultra Rare'],
+      fetchImpl,
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toMatch(/duplicate dex number \(1\)/);
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when dexEntries has no duplicates', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    await loadAllCardData('en', {
+      dexEntries: [
+        { number: 1, name: 'Bulbasaur' },
+        { number: 2, name: 'Ivysaur' },
+      ],
+      rarities: ['Ultra Rare'],
+      fetchImpl,
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('caches every dex number, reports progress, and fires onDexLoaded when the rarities list is empty (e.g. every rarity group emptied via Manage Groups)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
     const progressCalls: { completed: number; total: number }[] = [];

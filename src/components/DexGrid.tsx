@@ -49,6 +49,22 @@ export function DexGrid() {
     });
   }
 
+  // Tracks which auto-load/refresh call is the most recently started one.
+  // Neither the auto-load effect nor handleRefreshData cancels an in-flight
+  // loadAllCardData call when a newer one starts (e.g. the user switches
+  // language, or toggles a generation, before a cold-start load finishes) --
+  // loadAllCardData has no AbortController plumbing. Without this guard, a
+  // straggling STALE call's `.finally()`/onDexLoaded would unconditionally
+  // write isLoading/dataVersion state after a NEWER call has already taken
+  // over, flipping isLoading back to false while the newer load is still
+  // actually in flight. That's harmless on its own, but now that
+  // isLoadingDex feeds straight into computeTileState, it would flip
+  // still-loading tiles to "unavailable" instead of "loading" for the rest
+  // of the newer load's duration. Both call sites bump this ref and only
+  // let their own completion touch state if they're still the current
+  // generation by the time they resolve.
+  const loadGeneration = useRef(0);
+
   useEffect(() => {
     if (dexEntries.length === 0) return;
     // Per-dex-number check, not a per-language one: this is what makes a
@@ -58,11 +74,19 @@ export function DexGrid() {
       (entry) => getCachedCards(language, entry.number) === undefined
     );
     if (missingEntries.length === 0) return;
+
+    loadGeneration.current += 1;
+    const thisGeneration = loadGeneration.current;
+
     setIsLoading(true);
     loadAllCardData(language, {
       dexEntries: missingEntries,
-      onDexLoaded: () => scheduleDataVersionBump(),
+      onDexLoaded: () => {
+        if (loadGeneration.current !== thisGeneration) return;
+        scheduleDataVersionBump();
+      },
     }).finally(() => {
+      if (loadGeneration.current !== thisGeneration) return;
       setIsLoading(false);
       // A final catch-all flush: cheap no-op if nothing changed since the
       // last onDexLoaded-triggered bump, but guarantees the last dex
@@ -73,11 +97,18 @@ export function DexGrid() {
   }, [language, dexEntries]);
 
   async function handleRefreshData() {
+    loadGeneration.current += 1;
+    const thisGeneration = loadGeneration.current;
+
     setIsLoading(true);
     await loadAllCardData(language, {
       dexEntries,
-      onDexLoaded: () => scheduleDataVersionBump(),
+      onDexLoaded: () => {
+        if (loadGeneration.current !== thisGeneration) return;
+        scheduleDataVersionBump();
+      },
     });
+    if (loadGeneration.current !== thisGeneration) return;
     setIsLoading(false);
     setDataVersion((v) => v + 1);
   }

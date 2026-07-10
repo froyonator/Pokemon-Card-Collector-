@@ -5,6 +5,22 @@ import { DexGrid } from './DexGrid';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { setCachedCards } from '../storage/cardCache';
+import { loadAllCardData } from '../state/loadCardData';
+
+// Wraps the real loadAllCardData in a vi.fn so most tests below get its
+// genuine behavior unchanged (delegating straight through, driven by the
+// module-level fetch mock like before), while a couple of tests further
+// down swap in fully-controlled implementations via mockImplementationOnce
+// to deterministically simulate a stale-vs-current load race without
+// needing to drive hundreds of real dex x rarity fetch calls to completion.
+vi.mock('../state/loadCardData', async () => {
+  const actual =
+    await vi.importActual<typeof import('../state/loadCardData')>('../state/loadCardData');
+  return {
+    ...actual,
+    loadAllCardData: vi.fn(actual.loadAllCardData),
+  };
+});
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -89,6 +105,77 @@ describe('DexGrid', () => {
     expect(bulbasaurTile).toHaveClass('tile--owned');
     expect(bulbasaurTile).not.toHaveClass('tile--loading');
     expect(bulbasaurTile).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('shows a genuinely mixed mid-load state: a tile already cached from a prior session settles immediately while the rest are still loading', () => {
+    // Bulbasaur is pre-seeded as already cached (e.g. a prior session's
+    // partial load), Ivysaur is not -- so on the very first render, before
+    // any fetch resolves, the grid should show a real mix: one tile already
+    // settled, the rest still 'loading', not every tile stuck in lockstep.
+    setCachedCards('en', 1, [
+      {
+        id: 'sv03.5-999',
+        name: 'Bulbasaur Star',
+        dexNumber: 1,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '999',
+        rarity: 'Ultra Rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/999',
+        language: 'en',
+      },
+    ]);
+
+    render(<DexGrid />);
+
+    const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
+    const ivysaurTile = screen.getByRole('button', { name: /ivysaur/i });
+
+    expect(bulbasaurTile).not.toHaveClass('tile--loading');
+    expect(bulbasaurTile).toHaveClass('tile--available');
+    expect(ivysaurTile).toHaveClass('tile--loading');
+  });
+
+  it('does not flip a still-loading tile to "unavailable" when a stale auto-load call resolves after language changes mid-load', async () => {
+    // Fully controlled loadAllCardData calls (via the module mock declared
+    // at the top of this file), one per effect run, so the exact moment
+    // each "load" settles is driven by hand instead of depending on
+    // draining hundreds of real dex x rarity fetches to completion.
+    let resolveEn: (() => void) | undefined;
+    let resolveFr: (() => void) | undefined;
+    vi.mocked(loadAllCardData)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveEn = resolve)))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveFr = resolve)));
+
+    render(<DexGrid />);
+    await waitFor(() => expect(resolveEn).toBeDefined());
+
+    const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
+    expect(bulbasaurTile).toHaveClass('tile--loading');
+
+    // Switch language mid-load: the auto-load effect reruns (its dependency
+    // array includes `language`), kicking off a second, newer
+    // loadAllCardData call while the first ('en') one is still unresolved.
+    useAppStore.setState({ language: 'fr' });
+    await waitFor(() => expect(resolveFr).toBeDefined());
+    expect(bulbasaurTile).toHaveClass('tile--loading');
+
+    // Resolve ONLY the stale 'en' call. Its .finally() must not clobber
+    // isLoading, since the newer 'fr' call (a different generation) is
+    // still in flight -- this is exactly the race the fix guards against.
+    resolveEn!();
+    // Flush the microtask queue so the stale call's .finally() has a chance
+    // to run (and, before the fix, incorrectly flip isLoading to false).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(bulbasaurTile).toHaveClass('tile--loading');
+    expect(bulbasaurTile).not.toHaveClass('tile--unavailable');
+
+    // Resolving the current ('fr') call settles things normally.
+    resolveFr!();
+    await waitFor(() => {
+      expect(bulbasaurTile).not.toHaveClass('tile--loading');
+    });
   });
 
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
