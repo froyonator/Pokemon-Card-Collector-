@@ -5,6 +5,8 @@ import {
   computeBinderPages,
   computeSpreadPageIndices,
   defaultBinderSequence,
+  insertBlankAt,
+  moveEntry,
 } from '../state/binderLayout';
 import { useAppStore } from '../state/store';
 import type { DexEntry } from '../data/gen1Dex';
@@ -14,14 +16,22 @@ import styles from './BinderView.module.css';
 export interface BinderViewProps {
   dexEntries: DexEntry[];
   onSlotClick: (dexNumber: number, language: string) => void;
+  isManualArrangeActive?: boolean;
 }
 
-export function BinderView({ dexEntries, onSlotClick }: BinderViewProps) {
+export function BinderView({
+  dexEntries,
+  onSlotClick,
+  isManualArrangeActive = false,
+}: BinderViewProps) {
   const binders = useAppStore((s) => s.binders);
   const activeBinderId = useAppStore((s) => s.activeBinderId);
+  const setBinderCustomOrder = useAppStore((s) => s.setBinderCustomOrder);
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
   const shouldReduceMotion = useReducedMotion();
   const [spreadIndex, setSpreadIndex] = useState(0);
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setSpreadIndex(0);
@@ -34,6 +44,30 @@ export function BinderView({ dexEntries, onSlotClick }: BinderViewProps) {
   }, [dexEntries]);
 
   const sequence = activeBinder.customOrder ?? defaultBinderSequence(dexEntries);
+
+  // Manual-arrange edits always operate on `sequence` as it exists RIGHT
+  // NOW (whether that's the live default or an already-customized order),
+  // and every edit writes the full result back via setBinderCustomOrder --
+  // this is what "snapshots the current default sequence on first edit"
+  // means in practice: there's no separate snapshot step, the first edit's
+  // own write IS the snapshot, and every edit after that reads the
+  // already-persisted customOrder as its starting point instead of
+  // recomputing the default.
+  function handleDrop(toIndex: number) {
+    if (dragFromIndex === null || dragFromIndex === toIndex) {
+      setDragFromIndex(null);
+      return;
+    }
+    setBinderCustomOrder(activeBinder.id, moveEntry(sequence, dragFromIndex, toIndex));
+    setDragFromIndex(null);
+  }
+
+  function handleKeepEmpty() {
+    if (selectedIndex === null) return;
+    setBinderCustomOrder(activeBinder.id, insertBlankAt(sequence, selectedIndex));
+    setSelectedIndex(null);
+  }
+
   const pages = useMemo(
     () => computeBinderPages(sequence, activeBinder.config),
     [sequence, activeBinder.config]
@@ -72,6 +106,11 @@ export function BinderView({ dexEntries, onSlotClick }: BinderViewProps) {
         >
           &rarr;
         </button>
+        {isManualArrangeActive && selectedIndex !== null && (
+          <button type="button" onClick={handleKeepEmpty}>
+            Keep empty
+          </button>
+        )}
       </div>
       <div className={styles.spread}>
         <AnimatePresence>
@@ -87,19 +126,32 @@ export function BinderView({ dexEntries, onSlotClick }: BinderViewProps) {
               {...pageMotion}
             >
               {pages[pageIndex]?.flatMap((row, r) =>
-                row.map((entry, c) => (
-                  <BinderSlot
-                    key={`${r}-${c}`}
-                    entry={entry}
-                    pokemonName={
-                      entry?.type === 'pokemon' ? nameByDexNumber.get(entry.dexNumber) : undefined
-                    }
-                    spriteUrl={
-                      entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined
-                    }
-                    onClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
-                  />
-                ))
+                row.map((entry, c) => {
+                  const slotIndex =
+                    pageIndex * activeBinder.config.rows * activeBinder.config.columns +
+                    r * activeBinder.config.columns +
+                    c;
+                  return (
+                    <BinderSlot
+                      key={`${r}-${c}`}
+                      entry={entry}
+                      pokemonName={
+                        entry?.type === 'pokemon'
+                          ? nameByDexNumber.get(entry.dexNumber)
+                          : undefined
+                      }
+                      spriteUrl={
+                        entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined
+                      }
+                      onClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
+                      isManualArrangeActive={isManualArrangeActive}
+                      isSelected={selectedIndex === slotIndex}
+                      onSelect={() => setSelectedIndex(slotIndex)}
+                      onDragStart={() => setDragFromIndex(slotIndex)}
+                      onDrop={() => handleDrop(slotIndex)}
+                    />
+                  );
+                })
               )}
             </motion.div>
           ))}
