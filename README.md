@@ -45,4 +45,6 @@ Open the printed local URL in your browser. The app talks to the TCGdex, PokeAPI
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+A modified MIT license: free to use and modify for noncommercial purposes,
+with attribution required on any modified version, and commercial use
+requiring a separate agreement. See [LICENSE](LICENSE) for the full terms.
