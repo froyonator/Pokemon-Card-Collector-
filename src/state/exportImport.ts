@@ -1,6 +1,5 @@
-import type { Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
+import type { Binder, BinderSlotEntry, Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
 import type { ExportedUserData } from './store';
-import { DEFAULT_BINDER_CONFIG } from './store';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
 export type { ExportedUserData } from './store';
@@ -15,6 +14,8 @@ export interface ExportableState {
   selectedGenerations: number[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
+  binders: Binder[];
+  activeBinderId: string;
 }
 
 export function buildExportPayload(state: ExportableState): ExportedUserData {
@@ -29,19 +30,8 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     selectedGenerations: state.selectedGenerations,
     cardOverrides: state.cardOverrides,
     uploadedImages: state.uploadedImages,
-    // Placeholder until ExportableState grows binders/activeBinderId
-    // (planned in the binder view's export/import wiring task) -- this just
-    // keeps ExportedUserData's now-required binder fields satisfied here.
-    binders: [
-      {
-        id: 'default',
-        name: 'My Binder',
-        language: 'en',
-        config: DEFAULT_BINDER_CONFIG,
-        customOrder: null,
-      },
-    ],
-    activeBinderId: 'default',
+    binders: state.binders,
+    activeBinderId: state.activeBinderId,
   };
 }
 
@@ -73,6 +63,42 @@ function isValidGroups(value: unknown): value is RarityGroup[] {
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return isPlainObject(value) && Object.values(value).every((v) => typeof v === 'string');
+}
+
+function isBinderFillDirection(value: unknown): value is 'horizontal' | 'vertical' {
+  return value === 'horizontal' || value === 'vertical';
+}
+
+function isValidBinderConfig(value: unknown): boolean {
+  return (
+    isPlainObject(value) &&
+    typeof value.rows === 'number' &&
+    typeof value.columns === 'number' &&
+    typeof value.pageCount === 'number' &&
+    isBinderFillDirection(value.fillDirection)
+  );
+}
+
+function isValidBinderSlotEntry(value: unknown): value is BinderSlotEntry {
+  if (!isPlainObject(value)) return false;
+  if (value.type === 'blank') return true;
+  return value.type === 'pokemon' && typeof value.dexNumber === 'number';
+}
+
+function isValidBinder(value: unknown): value is Binder {
+  return (
+    isPlainObject(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.language === 'string' &&
+    isValidBinderConfig(value.config) &&
+    (value.customOrder === null ||
+      (Array.isArray(value.customOrder) && value.customOrder.every(isValidBinderSlotEntry)))
+  );
+}
+
+function isValidBindersArray(value: unknown): value is Binder[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isValidBinder);
 }
 
 export function parseImportPayload(raw: string): ExportedUserData {
@@ -134,6 +160,31 @@ export function parseImportPayload(raw: string): ExportedUserData {
   if (data.uploadedImages === undefined) {
     data.uploadedImages = {};
   } else if (!isStringRecord(data.uploadedImages)) {
+    throw new Error('This file does not look like a valid export.');
+  }
+  // Backups exported before multiple binders existed predate this field
+  // entirely. Seed a single default binder, matching what a fresh install
+  // gets, rather than reject an otherwise-valid older backup, same
+  // reasoning as selectedGenerations/cardOverrides/uploadedImages above. If
+  // the field IS present, both it and activeBinderId must actually be
+  // well-formed, since replaceUserData writes them straight into state with
+  // no further guard downstream (e.g. BinderSettings looks up the active
+  // binder by id unconditionally).
+  if (data.binders === undefined) {
+    const seedId = crypto.randomUUID();
+    data.binders = [
+      {
+        id: seedId,
+        name: 'My Binder',
+        language: 'en',
+        config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' },
+        customOrder: null,
+      },
+    ];
+    data.activeBinderId = seedId;
+  } else if (!isValidBindersArray(data.binders)) {
+    throw new Error('This file does not look like a valid export.');
+  } else if (typeof data.activeBinderId !== 'string') {
     throw new Error('This file does not look like a valid export.');
   }
   return data as ExportedUserData;

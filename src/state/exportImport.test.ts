@@ -13,6 +13,16 @@ const baseState = {
   selectedGenerations: [1],
   cardOverrides: { 'svp-044': 'full-art' },
   uploadedImages: { 'svp-044': 'data:image/jpeg;base64,ABC' },
+  binders: [
+    {
+      id: 'binder-1',
+      name: 'My Binder',
+      language: 'en',
+      config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' as const },
+      customOrder: null,
+    },
+  ],
+  activeBinderId: 'binder-1',
 };
 
 describe('buildExportPayload', () => {
@@ -166,5 +176,90 @@ describe('parseImportPayload', () => {
     expect(() => parseImportPayload(JSON.stringify(badPayload))).toThrow(
       'This file does not look like a valid export.'
     );
+  });
+});
+
+const sampleBinder = {
+  id: 'binder-1',
+  name: 'My Binder',
+  language: 'en',
+  config: { rows: 3, columns: 3, pageCount: 17, fillDirection: 'horizontal' as const },
+  customOrder: null,
+};
+
+describe('binders in export/import', () => {
+  it('buildExportPayload includes binders and activeBinderId', () => {
+    const payload = buildExportPayload({
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binders: [sampleBinder],
+      activeBinderId: 'binder-1',
+    });
+    expect(payload.binders).toEqual([sampleBinder]);
+    expect(payload.activeBinderId).toBe('binder-1');
+  });
+
+  it('parseImportPayload defaults to a single seeded binder when binders is missing (pre-feature backup)', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.binders).toHaveLength(1);
+    expect(parsed.binders[0].name).toBe('My Binder');
+    expect(parsed.activeBinderId).toBe(parsed.binders[0].id);
+  });
+
+  it('parseImportPayload accepts a valid binders array with multiple binders', () => {
+    const secondBinder = { ...sampleBinder, id: 'binder-2', name: 'Second', language: 'ja' };
+    const raw = JSON.stringify({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binders: [sampleBinder, secondBinder],
+      activeBinderId: 'binder-2',
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.binders).toHaveLength(2);
+    expect(parsed.activeBinderId).toBe('binder-2');
+  });
+
+  it('parseImportPayload rejects a malformed binders array', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binders: [{ id: 'x', name: 'Missing fields' }],
+    });
+    expect(() => parseImportPayload(raw)).toThrow('This file does not look like a valid export.');
   });
 });

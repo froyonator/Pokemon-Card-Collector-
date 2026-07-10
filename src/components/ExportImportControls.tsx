@@ -19,6 +19,8 @@ export function ExportImportControls() {
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
+  const binders = useAppStore((s) => s.binders);
+  const activeBinderId = useAppStore((s) => s.activeBinderId);
   const replaceUserData = useAppStore((s) => s.replaceUserData);
   const markChangesSaved = useAppStore((s) => s.markChangesSaved);
 
@@ -37,6 +39,8 @@ export function ExportImportControls() {
       selectedGenerations,
       cardOverrides,
       uploadedImages,
+      binders,
+      activeBinderId,
     });
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
