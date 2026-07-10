@@ -11,6 +11,7 @@ function resetStore() {
     owned: {},
     wishlist: {},
     selectedGenerations: [1],
+    cardOverrides: {},
     hasUnsavedChanges: false,
   });
 }
@@ -163,6 +164,24 @@ describe('bumpPriceVersion', () => {
   });
 });
 
+describe('setCardOverride', () => {
+  it('assigns a card to a group, overriding its raw rarity', () => {
+    useAppStore.getState().setCardOverride('svp-044', 'full-art');
+    expect(useAppStore.getState().cardOverrides['svp-044']).toBe('full-art');
+  });
+
+  it('clears an override when passed null', () => {
+    useAppStore.getState().setCardOverride('svp-044', 'full-art');
+    useAppStore.getState().setCardOverride('svp-044', null);
+    expect(useAppStore.getState().cardOverrides['svp-044']).toBeUndefined();
+  });
+
+  it('sets hasUnsavedChanges', () => {
+    useAppStore.getState().setCardOverride('svp-044', 'full-art');
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
 describe('markChangesSaved', () => {
   it('resets hasUnsavedChanges to false', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
@@ -173,8 +192,9 @@ describe('markChangesSaved', () => {
 });
 
 describe('replaceUserData', () => {
-  it('overwrites the full user data slice, including selectedGenerations', () => {
+  it('overwrites the full user data slice, including selectedGenerations and cardOverrides', () => {
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');
+    useAppStore.getState().setCardOverride('svp-044', 'full-art');
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'ja',
@@ -184,11 +204,13 @@ describe('replaceUserData', () => {
       owned: {},
       wishlist: {},
       selectedGenerations: [1],
+      cardOverrides: { 'other-card': 'rainbow-gold' },
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
     expect(state.currency).toBe('EUR');
     expect(state.owned[6]).toBeUndefined();
+    expect(state.cardOverrides).toEqual({ 'other-card': 'rainbow-gold' });
   });
 
   it('resets hasUnsavedChanges to false, regardless of what was pending before', () => {
@@ -203,6 +225,7 @@ describe('replaceUserData', () => {
       owned: {},
       wishlist: {},
       selectedGenerations: [1],
+      cardOverrides: {},
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
@@ -217,6 +240,7 @@ describe('replaceUserData', () => {
       owned: {},
       wishlist: {},
       selectedGenerations: [1],
+      cardOverrides: {},
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
     useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint');

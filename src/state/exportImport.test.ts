@@ -10,6 +10,7 @@ const baseState = {
   owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint' as const, addedAt: '' } },
   wishlist: {},
   selectedGenerations: [1],
+  cardOverrides: { 'svp-044': 'full-art' },
 };
 
 describe('buildExportPayload', () => {
@@ -19,6 +20,7 @@ describe('buildExportPayload', () => {
     expect(payload.owned).toEqual(baseState.owned);
     expect(payload.groups).toEqual(DEFAULT_RARITY_GROUPS);
     expect(payload.selectedGenerations).toEqual([1]);
+    expect(payload.cardOverrides).toEqual({ 'svp-044': 'full-art' });
   });
 });
 
@@ -114,5 +116,28 @@ describe('parseImportPayload', () => {
     };
     const parsed = parseImportPayload(JSON.stringify(preFeaturePayload));
     expect(parsed.selectedGenerations).toEqual([1]);
+  });
+
+  it('defaults cardOverrides to an empty object for a backup exported before this feature existed', () => {
+    const preFeaturePayload = {
+      version: 1,
+      language: 'en',
+      currency: 'USD',
+      activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+      groups: DEFAULT_RARITY_GROUPS,
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      // no cardOverrides key at all, matching a real pre-feature export file
+    };
+    const parsed = parseImportPayload(JSON.stringify(preFeaturePayload));
+    expect(parsed.cardOverrides).toEqual({});
+  });
+
+  it('throws when cardOverrides is present but not a plain object of strings', () => {
+    const badPayload = { ...baseState, version: 1, cardOverrides: { 'svp-044': 42 } };
+    expect(() => parseImportPayload(JSON.stringify(badPayload))).toThrow(
+      'This file does not look like a valid export.'
+    );
   });
 });

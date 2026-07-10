@@ -11,6 +11,7 @@ export interface ExportableState {
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
   selectedGenerations: number[];
+  cardOverrides: Record<string, string>;
 }
 
 export function buildExportPayload(state: ExportableState): ExportedUserData {
@@ -23,6 +24,7 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
     owned: state.owned,
     wishlist: state.wishlist,
     selectedGenerations: state.selectedGenerations,
+    cardOverrides: state.cardOverrides,
   };
 }
 
@@ -50,6 +52,10 @@ function isValidGroups(value: unknown): value is RarityGroup[] {
         isStringArray(group.rarities)
     )
   );
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isPlainObject(value) && Object.values(value).every((v) => typeof v === 'string');
 }
 
 export function parseImportPayload(raw: string): ExportedUserData {
@@ -84,6 +90,17 @@ export function parseImportPayload(raw: string): ExportedUserData {
   // for import data.
   if (!Array.isArray(data.selectedGenerations)) {
     data.selectedGenerations = [1];
+  }
+  // Backups exported before this feature existed predate this field
+  // entirely. Default to an empty map rather than reject an otherwise-valid
+  // older backup, same precedent as selectedGenerations above. If the field
+  // IS present, it must actually be a card id -> group id string map, not
+  // some other shape. This is a plain user-data mapping with no further
+  // downstream guard, same reasoning as the other shape checks above.
+  if (data.cardOverrides === undefined) {
+    data.cardOverrides = {};
+  } else if (!isStringRecord(data.cardOverrides)) {
+    throw new Error('This file does not look like a valid export.');
   }
   return data as ExportedUserData;
 }
