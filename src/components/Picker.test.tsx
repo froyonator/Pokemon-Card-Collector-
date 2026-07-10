@@ -92,6 +92,31 @@ describe('Picker', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('clicking outside the panel (the overlay backdrop) closes the picker', async () => {
+    const onClose = vi.fn();
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={onClose} />);
+    await userEvent.click(screen.getByRole('dialog', { name: /card options for charizard/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking inside the panel does not close the picker', async () => {
+    const onClose = vi.fn();
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={onClose} />);
+    await userEvent.click(screen.getByRole('heading', { name: 'Charizard' }));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('clicking outside the condition picker returns to the card grid instead of fully closing', async () => {
+    const onClose = vi.fn();
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={onClose} />);
+    await userEvent.click(screen.getByAltText(/charizard ex from 151/i));
+    expect(screen.getByText(/what condition/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('dialog', { name: /choose condition for charizard ex/i }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText(/what condition/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /card options for charizard/i })).toBeInTheDocument();
+  });
+
   it('shows a "Show all cards" toggle that is off by default', () => {
     render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
     expect(screen.getByRole('button', { name: /show all cards/i })).toHaveAttribute(

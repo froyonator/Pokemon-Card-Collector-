@@ -116,9 +116,14 @@ export function Picker({
         className={styles.overlay}
         role="dialog"
         aria-label={`Choose condition for ${pendingCard.name}`}
+        onClick={() => setPendingCard(null)}
         {...overlayMotion}
       >
-        <motion.div className={styles.panel} {...panelMotion}>
+        <motion.div
+          className={styles.panel}
+          onClick={(event) => event.stopPropagation()}
+          {...panelMotion}
+        >
           <ConditionPicker
             cardName={pendingCard.name}
             onConfirm={handleConditionConfirm}
@@ -134,9 +139,14 @@ export function Picker({
       className={styles.overlay}
       role="dialog"
       aria-label={`Card options for ${pokemonName}`}
+      onClick={onClose}
       {...overlayMotion}
     >
-      <motion.div className={styles.panel} {...panelMotion}>
+      <motion.div
+        className={styles.panel}
+        onClick={(event) => event.stopPropagation()}
+        {...panelMotion}
+      >
         <div className={styles.header}>
           <h2>{pokemonName}</h2>
           <button type="button" onClick={onClose} aria-label="Close">
