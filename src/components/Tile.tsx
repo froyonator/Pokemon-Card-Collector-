@@ -90,7 +90,7 @@ export function Tile({
             width={68}
           />
         ) : (
-          <img src={spriteUrl} alt={name} loading="lazy" />
+          <img src={spriteUrl} alt={name} loading="lazy" className={styles.spriteImg} />
         )}
         <span className={styles.name}>{name}</span>
       </motion.button>

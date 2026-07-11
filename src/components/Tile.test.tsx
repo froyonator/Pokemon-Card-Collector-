@@ -99,6 +99,22 @@ describe('Tile', () => {
     expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
   });
 
+  it('does not apply the sprite-dulling filter class to real card art in Card view', () => {
+    render(
+      <Tile
+        dexNumber={25}
+        name="Pikachu"
+        spriteUrl="https://example.com/25.png"
+        state="owned"
+        view="card"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/236"
+        onClick={() => {}}
+      />
+    );
+    const cardImg = screen.getByAltText('Pikachu card');
+    expect(cardImg.className).not.toContain('spriteImg');
+  });
+
   it('falls back to the sprite image in card view when no owned card image is provided', () => {
     render(
       <Tile
