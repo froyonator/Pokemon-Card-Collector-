@@ -22,6 +22,30 @@ describe('Art of Pokémon parsers', () => {
     ]);
   });
 
+  it('dedupes multiple thumbnails that share the same sourceCardId, keeping only the first', () => {
+    // Real-world case confirmed live on set 458 ("Starter Set VSTAR, Lucario"
+    // -- a multi-product bundle page): the site reuses the identical
+    // /sets/458/card/3 lightbox URL for three genuinely different cards
+    // (Scyther, Meditite, Lucario V), distinguished only by a client-side
+    // lightbox modal, not a real distinct URL. Fetching that one URL always
+    // returns the same detail page regardless of which thumbnail linked to
+    // it, so keeping all three just meant re-fetching the identical page
+    // twice more and failing to write the same card directory a second and
+    // third time (EEXIST). The other two cards aren't reachable through this
+    // site's public URL scheme at all -- deduping stops the wasted
+    // duplicate-fetch/error noise, it can't recover them.
+    const html = `<div id="cards-container">
+      <a data-lightbox-url="/sets/458/card/3" data-lightbox-title="Scyther, Starter Set VSTAR, Lucario"></a>
+      <a data-lightbox-url="/sets/458/card/3" data-lightbox-title="Meditite, Starter Set VSTAR, Lucario"></a>
+      <a data-lightbox-url="/sets/458/card/3" data-lightbox-title="Lucario V, Starter Set VSTAR, Lucario"></a>
+      <a data-lightbox-url="/sets/458/card/4" data-lightbox-title="Riolu, Starter Set VSTAR, Lucario"></a>
+    </div>`;
+    expect(parseArtOfPkmSetPage(html, '458')).toEqual([
+      { sourceCardId: '3', name: 'Scyther', url: 'https://www.artofpkm.com/sets/458/card/3' },
+      { sourceCardId: '4', name: 'Riolu', url: 'https://www.artofpkm.com/sets/458/card/4' },
+    ]);
+  });
+
   it('parses Japanese card identity and its image from one detail page', () => {
     const html = `<main><a href="/sets/594"><div class="font-bold">Premium Deck</div><div class="ja">プレミアムデッキ</div></a>
       <div><img data-card-image-loader-target="image" src="/card.png">

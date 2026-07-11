@@ -53,20 +53,32 @@ export function parseArtOfPkmSetList(html: string): ArtOfPkmSetLink[] {
 
 export function parseArtOfPkmSetPage(html: string, setId: string): ArtOfPkmCardLink[] {
   const $ = cheerio.load(html);
-  return $('#cards-container a[data-lightbox-url]')
-    .map((_, element) => {
-      const relativeUrl = $(element).attr('data-lightbox-url') ?? '';
-      const match = relativeUrl.match(new RegExp(`^/sets/${setId}/card/(\\d+)$`));
-      if (!match) return null;
-      const title = $(element).attr('data-lightbox-title') ?? '';
-      return {
-        sourceCardId: match[1],
-        name: title.split(',')[0].trim(),
-        url: `${BASE}${relativeUrl}`,
-      };
-    })
-    .get()
-    .filter((entry): entry is ArtOfPkmCardLink => entry !== null);
+  const seen = new Map<string, ArtOfPkmCardLink>();
+  $('#cards-container a[data-lightbox-url]').each((_, element) => {
+    const relativeUrl = $(element).attr('data-lightbox-url') ?? '';
+    const match = relativeUrl.match(new RegExp(`^/sets/${setId}/card/(\\d+)$`));
+    if (!match || seen.has(match[1])) return;
+    const title = $(element).attr('data-lightbox-title') ?? '';
+    seen.set(match[1], {
+      sourceCardId: match[1],
+      name: title.split(',')[0].trim(),
+      url: `${BASE}${relativeUrl}`,
+    });
+  });
+  // A multi-product "bundle" set page (e.g. a starter set combining several
+  // decks) can reuse the identical /sets/{setId}/card/{n} lightbox URL for
+  // more than one genuinely different card -- confirmed live on set 458
+  // ("Starter Set VSTAR, Lucario"), where card/3 pointed at Scyther,
+  // Meditite, AND Lucario V, distinguished only by a client-side lightbox
+  // modal, not a real distinct URL. Fetching that one URL always returns
+  // the same detail page regardless of which thumbnail linked to it, so
+  // keeping every occurrence just meant re-fetching the identical page and
+  // failing to write the same card directory a second/third time (EEXIST).
+  // The other cards sharing an id aren't reachable through this site's
+  // public URL scheme at all -- deduping (first occurrence wins, matching
+  // parseArtOfPkmSetList's own dedup) stops the wasted duplicate-fetch/
+  // error noise; it can't recover them.
+  return [...seen.values()];
 }
 
 export function parseArtOfPkmDetail(html: string, sourceUrl: string): ArtOfPkmRecord {
