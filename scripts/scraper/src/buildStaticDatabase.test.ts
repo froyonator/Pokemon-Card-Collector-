@@ -55,6 +55,11 @@ describe('recordToCardRecords', () => {
     expect(recordToCardRecords(noImageRecord)[0].imageBase).toBe('');
   });
 
+  it('defaults rarity to "Unknown" when TCGdex has no rarity recorded for a card, matching the live-fetch path\'s own fallback', () => {
+    const noRarityRecord: TcgdexSnapshotRecord = { ...baseRecord, rarity: '' };
+    expect(recordToCardRecords(noRarityRecord)[0].rarity).toBe('Unknown');
+  });
+
   it('skips a record with no dexId array', () => {
     const { dexId, ...withoutDexId } = baseRecord;
     expect(recordToCardRecords(withoutDexId as TcgdexSnapshotRecord)).toEqual([]);

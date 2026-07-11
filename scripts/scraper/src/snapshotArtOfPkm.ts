@@ -45,6 +45,19 @@ async function main(): Promise<void> {
     const manifests: Array<{ id: string; name: string; cardCount: number }> = [];
     const failures: Array<{ url: string; error: string }> = [];
 
+    // A card's OWN detail page can report the same sourceCardId under more
+    // than one listing URL within a set (e.g. a bundle-style set page that
+    // lists the same physical card at more than one position/photo) --
+    // parseArtOfPkmSetPage's own dedup only catches duplicates that already
+    // share one identical URL on the listing page, not two different URLs
+    // that each resolve, once fetched, to the same underlying card. Tracked
+    // globally (not just per-set) since nothing rules out the same card
+    // appearing under two different sets' listings either. Without this,
+    // the second attempt's `mkdir(cardDir, { recursive: false })` throws
+    // EEXIST -- a real card that WAS already captured successfully, logged
+    // as a failure purely from re-processing something already done.
+    const seenCardDirs = new Set<string>();
+
     for (const set of sets) {
       let links;
       try {
@@ -80,9 +93,14 @@ async function main(): Promise<void> {
           if (!record.name || !record.expansionId || !record.imageUrl) {
             throw new Error(`Invalid Art of Pokémon detail page: ${link.url}`);
           }
+          const cardDir = path.join(setDir, record.sourceCardId);
+          if (seenCardDirs.has(cardDir)) {
+            console.log(`  SKIP ${link.url}: already captured as ${cardDir} via another listing`);
+            skippedCount++;
+            continue;
+          }
           const image = await politeImage(record.imageUrl);
           if ('error' in image) throw new Error(`Image failed for ${link.url}: ${image.error}`);
-          const cardDir = path.join(setDir, record.sourceCardId);
           await mkdir(cardDir, { recursive: false });
           const ext = image.image.contentType.split('/')[1] ?? 'png';
           const imageFile = `image.${ext}`;
@@ -105,6 +123,11 @@ async function main(): Promise<void> {
               2
             )
           );
+          // Only marked as captured now, after every write above actually
+          // succeeded -- if this exact attempt had thrown instead, a later
+          // duplicate reference to the same card should still retry it, not
+          // be silently skipped for a card that was never really saved.
+          seenCardDirs.add(cardDir);
           cardCount++;
           console.log(`  OK ${record.cardNumber}: ${record.name}`);
         } catch (error) {

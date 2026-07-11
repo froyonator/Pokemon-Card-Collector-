@@ -74,7 +74,14 @@ export function recordToCardRecords(record: TcgdexSnapshotRecord): CardRecord[] 
       setId: record.set.id,
       setName: record.set.name,
       localId: record.localId,
-      rarity: record.rarity,
+      // A handful of specific cards (the same ones across every language
+      // that has them, e.g. certain SV2a/SV4a/SV5K promos) genuinely have no
+      // rarity recorded in TCGdex's own data -- confirmed via an audit that
+      // cross-checked the raw scrape directly, not a scraper/build bug.
+      // Matches the same fallback loadCardData.ts's live fetch path already
+      // uses for the identical situation, so a card's rarity is never a
+      // blank string in either the static or live-API code path.
+      rarity: record.rarity || 'Unknown',
       imageBase: record.image ?? '',
       language: record.language,
     });
