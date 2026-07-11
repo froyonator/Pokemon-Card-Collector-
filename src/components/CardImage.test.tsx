@@ -36,6 +36,38 @@ describe('CardImage', () => {
     );
   });
 
+  it('requests the high-resolution PNG variant first when preferHighQuality is set', () => {
+    render(
+      <CardImage
+        imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        alt="Charizard ex"
+        preferHighQuality
+      />
+    );
+    const img = screen.getByAltText('Charizard ex');
+    expect(img).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
+    );
+  });
+
+  it('falls back to the low-resolution webp variant when the high-res one fails to load, under preferHighQuality', () => {
+    render(
+      <CardImage
+        imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        alt="Charizard ex"
+        preferHighQuality
+      />
+    );
+    const img = screen.getByAltText('Charizard ex');
+    fireEvent.error(img);
+    const retriedImg = screen.getByAltText('Charizard ex');
+    expect(retriedImg).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+    );
+  });
+
   it('falls back to the placeholder when both variants fail to load', () => {
     const { container } = render(
       <CardImage imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199" alt="Charizard ex" />

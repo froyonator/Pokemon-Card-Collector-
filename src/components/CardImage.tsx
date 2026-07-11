@@ -10,6 +10,15 @@ export interface CardImageProps {
   alt: string;
   className?: string;
   width?: number;
+  /** When true, requests the high-resolution PNG variant first instead of
+   *  the low-resolution webp thumbnail every other caller gets by default.
+   *  For contexts where a card is displayed large enough that resolution
+   *  actually matters (the click-to-enlarge zoom overlay, a binder slot
+   *  sized to its full 5:7 card proportions) -- NOT the default small-
+   *  thumbnail contexts (the grid Tile, Picker's selection grid) where a
+   *  smaller download is the better tradeoff since the image is never
+   *  shown larger than roughly 100px there. */
+  preferHighQuality?: boolean;
   loading?: 'lazy' | 'eager';
   /** A user-uploaded replacement image for this specific card, as a
    *  `data:` URI (see src/state/imageResize.ts, which produces these).
@@ -48,6 +57,11 @@ const VARIANTS: Variant[] = [
   { quality: 'high', ext: 'png' },
 ];
 
+const HIGH_QUALITY_VARIANTS: Variant[] = [
+  { quality: 'high', ext: 'png' },
+  { quality: 'low', ext: 'webp' },
+];
+
 export function CardImage({
   imageBase,
   alt,
@@ -58,6 +72,7 @@ export function CardImage({
   onSearchImage,
   onUploadImage,
   onRemoveUploadedImage,
+  preferHighQuality = false,
 }: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
@@ -178,10 +193,11 @@ export function CardImage({
     );
   }
 
-  const variant = VARIANTS[variantIndex];
+  const variants = preferHighQuality ? HIGH_QUALITY_VARIANTS : VARIANTS;
+  const variant = variants[variantIndex];
 
   function handleError() {
-    if (variantIndex < VARIANTS.length - 1) {
+    if (variantIndex < variants.length - 1) {
       setVariantIndex((index) => index + 1);
     } else {
       setExhausted(true);
