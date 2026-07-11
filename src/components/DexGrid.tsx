@@ -17,6 +17,13 @@ import styles from './DexGrid.module.css';
 export interface DexGridProps {
   view: DexView;
   isManualArrangeActive: boolean;
+  // Passed straight through to BinderView -- see that component's own
+  // onExitManualArrange prop for why this needs to be threaded down rather
+  // than owned locally (isManualArrangeActive itself is lifted all the way
+  // up to App.tsx). Optional, matching BinderView's own prop: only
+  // meaningful once the binder view is actually showing, which most
+  // existing callers/tests here (sprite/card view) never reach.
+  onExitManualArrange?: () => void;
   onLoadingChange: (isLoading: boolean) => void;
   // Bumped by the parent (via Sidebar's Refresh Data button) to trigger a
   // refresh from outside -- a counter, not a boolean, so bumping it twice in
@@ -25,7 +32,13 @@ export interface DexGridProps {
   refreshRequestId: number;
 }
 
-export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshRequestId }: DexGridProps) {
+export function DexGrid({
+  view,
+  isManualArrangeActive,
+  onExitManualArrange,
+  onLoadingChange,
+  refreshRequestId,
+}: DexGridProps) {
   const language = useAppStore((s) => s.language);
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
@@ -266,6 +279,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
             setOpenPickerLanguage(language);
           }}
           isManualArrangeActive={isManualArrangeActive}
+          onExitManualArrange={onExitManualArrange}
         />
       ) : (
         <div className={styles.grid} data-version={dataVersion}>

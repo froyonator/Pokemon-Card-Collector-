@@ -10,6 +10,15 @@ import type { DexEntry } from '../data/gen1Dex';
 // implement it at all) -- BinderView measures its .spread container via one
 // to compute real pixel slot sizes (see src/state/binderSlotSizing.ts).
 
+// The real implementation needs a live HTMLImageElement decode, unavailable
+// in this project's jsdom test environment (verified live in a browser
+// instead, same as loadImageDimensions's own doc comment explains) -- this
+// only needs a stable, known width/height for the split-image save flow's
+// own math to run against.
+vi.mock('../state/loadImageDimensions', () => ({
+  loadImageDimensions: vi.fn().mockResolvedValue({ width: 400, height: 400 }),
+}));
+
 const dexEntries: DexEntry[] = [
   { number: 1, name: 'Bulbasaur' },
   { number: 2, name: 'Ivysaur' },
@@ -65,6 +74,49 @@ describe('BinderView', () => {
   it('the previous button on the first spread is disabled', () => {
     render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
     expect(screen.getByRole('button', { name: /previous page/i })).toBeDisabled();
+  });
+
+  describe('page-turn animation direction', () => {
+    // Real 5-page binder (spreads: [0], [1,2], [3,4]) so both a forward and a
+    // backward move land on a genuine two-page spread -- a real physical
+    // binder page only turns on the side you're actually flipping, not both
+    // pages at once, and the "reveal" side depends on which direction you're
+    // going.
+    beforeEach(() => {
+      useAppStore.setState({
+        binders: [
+          {
+            id: 'a',
+            name: 'My Binder',
+            language: 'en',
+            config: { rows: 2, columns: 2, pageCount: 5, fillDirection: 'horizontal' },
+            customOrder: null,
+          },
+        ],
+        activeBinderId: 'a',
+        hasUnsavedChanges: false,
+      });
+    });
+
+    it('moving forward turns only the incoming right page, not the left one', async () => {
+      render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
+      // Spread [3,4] -> pageIndex 3 ("Page 4") is the left page, pageIndex 4
+      // ("Page 5") is the right page -- see BinderView.tsx's own side
+      // computation (i === 0 && length === 2 ? 'left' : 'right').
+      expect(screen.getByLabelText(/page 5/i)).toHaveAttribute('data-turning', 'true'); // right
+      expect(screen.getByLabelText(/page 4/i)).toHaveAttribute('data-turning', 'false'); // left
+    });
+
+    it('moving backward turns only the incoming left page, not the right one', async () => {
+      render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
+      await userEvent.click(screen.getByRole('button', { name: /previous page/i })); // -> spread [1,2]
+      expect(screen.getByLabelText(/page 2/i)).toHaveAttribute('data-turning', 'true'); // left
+      expect(screen.getByLabelText(/page 3/i)).toHaveAttribute('data-turning', 'false'); // right
+    });
   });
 
   it("clicking a filled slot calls onSlotClick with the dex number and the active binder's language", async () => {
@@ -425,6 +477,265 @@ describe('BinderView manual arrange', () => {
     expect(
       screen.queryByRole('dialog', { name: /edit custom binder slot image/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('selecting an already-blank slot offers Edit image and Remove empty slot instead of Keep empty', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          // Exactly 3 slots of capacity for exactly 3 entries -- no
+          // out-of-capacity padding slot, which would otherwise ALSO render
+          // as an ambiguous second "Select this empty slot" match.
+          config: { rows: 1, columns: 3, pageCount: 1, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'blank' },
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'pokemon', dexNumber: 2 },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+
+    // The blank slot itself is now selectable/draggable during manual
+    // arrange (see BinderSlot's own "keeps an empty slot selectable" fix) --
+    // its accessible name is "Select this empty slot" while blank and
+    // unowned.
+    await userEvent.click(screen.getByRole('button', { name: /select this empty slot/i }));
+
+    expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^edit image$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove empty slot/i })).toBeInTheDocument();
+  });
+
+  it('"Edit image" opens the editor directly without leaving manual arrange mode', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          // Exactly 2 slots of capacity for exactly 2 entries -- see the
+          // previous test's comment for why this must match exactly.
+          config: { rows: 1, columns: 2, pageCount: 1, fillDirection: 'horizontal' },
+          customOrder: [{ type: 'blank' }, { type: 'pokemon', dexNumber: 1 }],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /select this empty slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit image$/i }));
+    expect(screen.getByRole('dialog', { name: /edit custom binder slot image/i })).toBeInTheDocument();
+  });
+
+  it('"Remove empty slot" deletes just that one blank, shifting the rest back, without touching Reset arrangement', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          // Exactly 3 slots of capacity for exactly 3 entries -- see the
+          // first test's comment for why this must match exactly.
+          config: { rows: 1, columns: 3, pageCount: 1, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'blank' },
+            { type: 'pokemon', dexNumber: 2 },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /select this empty slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /remove empty slot/i }));
+    expect(activeBinderCustomOrder()).toEqual([
+      { type: 'pokemon', dexNumber: 1 },
+      { type: 'pokemon', dexNumber: 2 },
+    ]);
+  });
+
+  it('pressing Escape exits manual arrange mode too, not just zoom mode', async () => {
+    const onExitManualArrange = vi.fn();
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{}}
+        dataVersion={0}
+        onSlotClick={() => {}}
+        isManualArrangeActive
+        onExitManualArrange={onExitManualArrange}
+      />
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(onExitManualArrange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('BinderView split-image multi-select', () => {
+  // rows x columns = 2 x 3, 3 pages -- spreads: [0], [1,2]. Page 0 (lone)
+  // gives a page with no spine restriction at all; the paired spread [1,2]
+  // gives a genuine left page (spine = its own last column, index 2) and
+  // right page (spine = its own first column, index 0), each 3 columns wide
+  // so there's room for both a spine-including and a spine-avoiding 2-column
+  // range on the very same page.
+  function setUpSplitBinder() {
+    const blank = { type: 'blank' as const };
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 3, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [
+            // Page 0 (lone): row0 = [blank, blank, pokemon]; row1 = all blank.
+            blank,
+            blank,
+            { type: 'pokemon', dexNumber: 1 },
+            blank,
+            blank,
+            blank,
+            // Page 1 ("Page 2", left of the [1,2] spread): all blank.
+            blank,
+            blank,
+            blank,
+            blank,
+            blank,
+            blank,
+            // Page 2 ("Page 3", right of the [1,2] spread): all blank.
+            blank,
+            blank,
+            blank,
+            blank,
+            blank,
+            blank,
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+  }
+
+  beforeEach(() => {
+    resetStore();
+    setUpSplitBinder();
+  });
+
+  function blankSlotsWithin(pageLabel: RegExp) {
+    return within(screen.getByLabelText(pageLabel)).getAllByRole('button', {
+      name: /select this empty slot/i,
+    });
+  }
+
+  it('offers "Split image across 2 slots" after clicking one blank slot then shift-clicking an adjacent blank slot on the same lone page', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    const slots = blankSlotsWithin(/page 1/i);
+    await userEvent.click(slots[0]); // slot 0 (row0 col0)
+    fireEvent.click(slots[1], { shiftKey: true }); // slot 1 (row0 col1)
+    expect(screen.getByRole('button', { name: /split image across 2 slots/i })).toBeInTheDocument();
+  });
+
+  it('does not offer the split action, and shows a rejection message, when the shift-clicked range touches a non-blank (pokemon) slot', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    const page1 = screen.getByLabelText(/page 1/i);
+    const slots = blankSlotsWithin(/page 1/i);
+    await userEvent.click(slots[1]); // slot 1 (row0 col1), blank
+    fireEvent.click(within(page1).getByRole('button', { name: /select bulbasaur/i }), {
+      shiftKey: true,
+    }); // slot 2 (row0 col2), pokemon
+    expect(screen.queryByRole('button', { name: /split image across/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/crosses the spine or an existing card/i);
+  });
+
+  it('offers the split action for a valid non-spine range on a LEFT page of a two-page spread', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+    const slots = blankSlotsWithin(/page 2/i); // pageIndex 1, the LEFT page
+    await userEvent.click(slots[0]); // row0 col0
+    fireEvent.click(slots[1], { shiftKey: true }); // row0 col1 -- not the spine (col2)
+    expect(screen.getByRole('button', { name: /split image across 2 slots/i })).toBeInTheDocument();
+  });
+
+  it('rejects a range on a LEFT page that includes its own spine-adjacent last column', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+    const slots = blankSlotsWithin(/page 2/i); // pageIndex 1, the LEFT page
+    await userEvent.click(slots[1]); // row0 col1
+    fireEvent.click(slots[2], { shiftKey: true }); // row0 col2 -- the spine column
+    expect(screen.queryByRole('button', { name: /split image across/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('offers the split action for a valid non-spine range on a RIGHT page of a two-page spread', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+    const slots = blankSlotsWithin(/page 3/i); // pageIndex 2, the RIGHT page
+    await userEvent.click(slots[1]); // row0 col1
+    fireEvent.click(slots[2], { shiftKey: true }); // row0 col2 -- not the spine (col0)
+    expect(screen.getByRole('button', { name: /split image across 2 slots/i })).toBeInTheDocument();
+  });
+
+  it('rejects a range on a RIGHT page that includes its own spine-adjacent first column', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+    const slots = blankSlotsWithin(/page 3/i); // pageIndex 2, the RIGHT page
+    await userEvent.click(slots[0]); // row0 col0 -- the spine column
+    fireEvent.click(slots[1], { shiftKey: true }); // row0 col1
+    expect(screen.queryByRole('button', { name: /split image across/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('rejects a range whose anchor and target land on two different pages, even though both are visible in the same spread', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+    const leftSlots = blankSlotsWithin(/page 2/i);
+    const rightSlots = blankSlotsWithin(/page 3/i);
+    await userEvent.click(leftSlots[0]);
+    fireEvent.click(rightSlots[0], { shiftKey: true });
+    expect(screen.queryByRole('button', { name: /split image across/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('uploading and saving an image through the split editor gives each slot in the range its own distinct crop transform', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    const slots = blankSlotsWithin(/page 1/i);
+    await userEvent.click(slots[0]);
+    fireEvent.click(slots[1], { shiftKey: true });
+    await userEvent.click(screen.getByRole('button', { name: /split image across 2 slots/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /split image across binder slots/i });
+    const file = new File(['fake-image-bytes'], 'filler.png', { type: 'image/png' });
+    await userEvent.upload(within(dialog).getByLabelText(/upload an image/i), file);
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Save' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: /split image across binder slots/i })
+    ).not.toBeInTheDocument();
+
+    const order = activeBinderCustomOrder();
+    const first = order?.[0];
+    const second = order?.[1];
+    expect(first).toMatchObject({ type: 'blank' });
+    expect(second).toMatchObject({ type: 'blank' });
+    const firstImage = first?.type === 'blank' ? first.customImage : undefined;
+    const secondImage = second?.type === 'blank' ? second.customImage : undefined;
+    expect(firstImage).toBeDefined();
+    expect(secondImage).toBeDefined();
+    // The two adjacent slots must show DIFFERENT slices of the same source
+    // image, not both independently re-cropping to the same center.
+    expect(firstImage?.offsetX).not.toBeCloseTo(secondImage?.offsetX ?? 0, 2);
+    expect(firstImage?.dataUri).toBe(secondImage?.dataUri);
   });
 });
 

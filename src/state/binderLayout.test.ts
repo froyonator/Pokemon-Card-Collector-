@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeBinderPages,
+  computeSplitRange,
   computeSpreadPageIndices,
   defaultBinderSequence,
   insertBlankAt,
   moveEntry,
+  positionToSlotIndex,
+  removeEntryAt,
+  slotIndexToPosition,
 } from './binderLayout';
+import type { BinderConfig } from '../types';
 import type { DexEntry } from '../data/gen1Dex';
 
 describe('defaultBinderSequence', () => {
@@ -136,6 +141,29 @@ describe('insertBlankAt', () => {
   });
 });
 
+describe('removeEntryAt', () => {
+  it('removes the entry at the given index, shifting everything after it back by one -- the exact inverse of insertBlankAt', () => {
+    const entries = [
+      { type: 'pokemon' as const, dexNumber: 1 },
+      { type: 'blank' as const },
+      { type: 'pokemon' as const, dexNumber: 2 },
+    ];
+    expect(removeEntryAt(entries, 1)).toEqual([
+      { type: 'pokemon', dexNumber: 1 },
+      { type: 'pokemon', dexNumber: 2 },
+    ]);
+  });
+
+  it('does not mutate the input array', () => {
+    const entries = [
+      { type: 'pokemon' as const, dexNumber: 1 },
+      { type: 'blank' as const },
+    ];
+    removeEntryAt(entries, 1);
+    expect(entries).toEqual([{ type: 'pokemon', dexNumber: 1 }, { type: 'blank' }]);
+  });
+});
+
 describe('moveEntry', () => {
   it('moves an entry from one index to another, shifting entries in between', () => {
     const entries = [1, 2, 3, 4].map((n) => ({ type: 'pokemon' as const, dexNumber: n }));
@@ -147,5 +175,132 @@ describe('moveEntry', () => {
     const entries = [1, 2].map((n) => ({ type: 'pokemon' as const, dexNumber: n }));
     moveEntry(entries, 0, 1);
     expect(entries.map((e) => (e.type === 'pokemon' ? e.dexNumber : 'blank'))).toEqual([1, 2]);
+  });
+});
+
+describe('slotIndexToPosition / positionToSlotIndex', () => {
+  const horizontalConfig: BinderConfig = {
+    rows: 3,
+    columns: 3,
+    pageCount: 4,
+    fillDirection: 'horizontal',
+  };
+  const verticalConfig: BinderConfig = { ...horizontalConfig, fillDirection: 'vertical' };
+
+  it('resolves horizontal fill exactly like BinderPage\'s own withinPage formula (r*columns+c)', () => {
+    // Page 1 (index 1), row 2, col 1 -> withinPage = 2*3+1 = 7 -> slotIndex = 1*9+7 = 16.
+    expect(slotIndexToPosition(16, horizontalConfig)).toEqual({ pageIndex: 1, row: 2, col: 1 });
+    expect(positionToSlotIndex(1, 2, 1, horizontalConfig)).toBe(16);
+  });
+
+  it('resolves vertical fill exactly like BinderPage\'s own withinPage formula (c*rows+r)', () => {
+    // Page 2 (index 2), row 1, col 2 -> withinPage = 2*3+1 = 7 -> slotIndex = 2*9+7 = 25.
+    expect(slotIndexToPosition(25, verticalConfig)).toEqual({ pageIndex: 2, row: 1, col: 2 });
+    expect(positionToSlotIndex(2, 1, 2, verticalConfig)).toBe(25);
+  });
+
+  it('round-trips every slot index on a page under both fill directions', () => {
+    for (const config of [horizontalConfig, verticalConfig]) {
+      for (let slotIndex = 0; slotIndex < config.rows * config.columns * 2; slotIndex++) {
+        const position = slotIndexToPosition(slotIndex, config);
+        expect(positionToSlotIndex(position.pageIndex, position.row, position.col, config)).toBe(
+          slotIndex
+        );
+      }
+    }
+  });
+});
+
+describe('computeSplitRange', () => {
+  // 3 columns, 3 rows so each page has a clear non-spine column to test
+  // against too, not just the spine column itself.
+  const config: BinderConfig = { rows: 3, columns: 3, pageCount: 6, fillDirection: 'horizontal' };
+
+  function indexAt(pageIndex: number, row: number, col: number): number {
+    return positionToSlotIndex(pageIndex, row, col, config);
+  }
+
+  it('succeeds for a valid 1x2 horizontal range on a lone page\'s leftmost two columns', () => {
+    const range = computeSplitRange(
+      indexAt(0, 0, 0),
+      indexAt(0, 0, 1),
+      config,
+      'right',
+      false,
+      false
+    );
+    expect(range).toEqual({ pageIndex: 0, rowStart: 0, rowEnd: 0, colStart: 0, colEnd: 1, rows: 1, cols: 2 });
+  });
+
+  it('fails for the same shape on a LEFT page\'s last two columns, since that includes the spine column', () => {
+    const range = computeSplitRange(
+      indexAt(1, 0, 1),
+      indexAt(1, 0, 2),
+      config,
+      'left',
+      false,
+      true
+    );
+    expect(range).toBeNull();
+  });
+
+  it('fails for the mirror case on a RIGHT page\'s first two columns, since that includes the spine column', () => {
+    const range = computeSplitRange(
+      indexAt(2, 0, 0),
+      indexAt(2, 0, 1),
+      config,
+      'right',
+      true,
+      false
+    );
+    expect(range).toBeNull();
+  });
+
+  it('succeeds on a LEFT page using its non-spine columns 0-1 (of 3), matching "in left page the first and second column can share a continuous image"', () => {
+    const range = computeSplitRange(
+      indexAt(1, 0, 0),
+      indexAt(1, 0, 1),
+      config,
+      'left',
+      false,
+      true
+    );
+    expect(range).toEqual({ pageIndex: 1, rowStart: 0, rowEnd: 0, colStart: 0, colEnd: 1, rows: 1, cols: 2 });
+  });
+
+  it('succeeds on a RIGHT page using its non-spine columns 1-2 (of 3), matching "on right pages the second and 3rd column can share a continuous image"', () => {
+    const range = computeSplitRange(
+      indexAt(2, 0, 1),
+      indexAt(2, 0, 2),
+      config,
+      'right',
+      true,
+      false
+    );
+    expect(range).toEqual({ pageIndex: 2, rowStart: 0, rowEnd: 0, colStart: 1, colEnd: 2, rows: 1, cols: 2 });
+  });
+
+  it('succeeds for a range spanning multiple rows -- rows have no restriction at all', () => {
+    const range = computeSplitRange(
+      indexAt(0, 0, 0),
+      indexAt(0, 2, 0),
+      config,
+      'right',
+      false,
+      false
+    );
+    expect(range).toEqual({ pageIndex: 0, rowStart: 0, rowEnd: 2, colStart: 0, colEnd: 0, rows: 3, cols: 1 });
+  });
+
+  it('fails when the anchor and target resolve to different pageIndex values', () => {
+    const range = computeSplitRange(
+      indexAt(0, 0, 0),
+      indexAt(1, 0, 0),
+      config,
+      'right',
+      false,
+      false
+    );
+    expect(range).toBeNull();
   });
 });

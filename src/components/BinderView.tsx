@@ -4,15 +4,22 @@ import { createPortal } from 'react-dom';
 import { spriteUrl } from '../api/pokeapi';
 import {
   computeBinderPages,
+  computeSplitRange,
   computeSpreadPageIndices,
   defaultBinderSequence,
   insertBlankAt,
   moveEntry,
+  positionToSlotIndex,
+  removeEntryAt,
+  slotIndexToPosition,
 } from '../state/binderLayout';
 import { computeSlotSize } from '../state/binderSlotSizing';
+import { loadImageDimensions } from '../state/loadImageDimensions';
+import { sliceImageForSlots } from '../state/slotImageSplit';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
+import type { SplitRange } from '../state/binderLayout';
 import type {
   BinderFillDirection,
   BinderSlotEntry,
@@ -36,8 +43,14 @@ import styles from './BinderView.module.css';
 // edge. `awayRotation`'s sign is chosen so a page swings AWAY from the
 // viewer on exit/entry, as if genuinely rotating back on its hinge, rather
 // than rotating through the viewer's side of the page.
-function getPageMotion(side: 'left' | 'right', shouldReduceMotion: boolean | null) {
-  if (shouldReduceMotion) {
+// Only the page actually being "turned" gets the dramatic 3D flip -- a real
+// binder page turn only ever moves ONE page at a time (the one you're
+// grabbing), not both pages of a spread simultaneously. `isTurning` is false
+// for the other page in the spread (and for reduced-motion), which instead
+// gets a plain fade so its new content still visibly changes without a
+// competing, direction-less flip fighting the one that's actually turning.
+function getPageMotion(side: 'left' | 'right', isTurning: boolean, shouldReduceMotion: boolean | null) {
+  if (shouldReduceMotion || !isTurning) {
     return { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } };
   }
   const awayRotation = side === 'left' ? 130 : -130;
@@ -46,6 +59,17 @@ function getPageMotion(side: 'left' | 'right', shouldReduceMotion: boolean | nul
     animate: { opacity: 1, rotateY: 0, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
     exit: { opacity: 0, rotateY: awayRotation, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
   };
+}
+
+// Which side is "turning" for a given navigation direction: moving forward
+// turns the right page (as if flipping it over to reveal the next spread);
+// moving backward turns the left page. Before any navigation has happened
+// (direction is null, e.g. the very first mount), both pages play their
+// full entrance animation exactly as before -- this only kicks in once the
+// user has actually clicked Previous/Next.
+function isTurningPage(side: 'left' | 'right', direction: 'forward' | 'backward' | null): boolean {
+  if (direction === null) return true;
+  return direction === 'forward' ? side === 'right' : side === 'left';
 }
 
 export interface BinderViewProps {
@@ -58,6 +82,12 @@ export interface BinderViewProps {
   dataVersion: number;
   onSlotClick: (dexNumber: number, language: string) => void;
   isManualArrangeActive?: boolean;
+  // Lets Escape back out of manual arrange mode too, not just zoom mode --
+  // this component doesn't own isManualArrangeActive itself (it's lifted to
+  // App.tsx, shared with Sidebar/BinderSettings' own toggle button), so
+  // exiting it from in here needs an explicit callback rather than local
+  // state. Optional since not every caller wires manual arrange up at all.
+  onExitManualArrange?: () => void;
 }
 
 // Must match .page's own `gap` in BinderView.module.css (currently
@@ -112,7 +142,11 @@ interface BinderPageProps {
   onSlotClick: (dexNumber: number) => void;
   isManualArrangeActive: boolean;
   selectedIndex: number | null;
-  onSelectSlot: (slotIndex: number) => void;
+  // Takes the originating click event too (not just the slotIndex) so
+  // BinderView's own handleSelectSlot can read Shift off it for the
+  // split-image range-selection flow (see BinderSlot's own onSelect prop
+  // for the full rationale).
+  onSelectSlot: (slotIndex: number, event: React.MouseEvent<HTMLButtonElement>) => void;
   onDragStartSlot: (slotIndex: number) => void;
   onDropSlot: (slotIndex: number) => void;
   // Only relevant for a `blank` entry, and only outside manual-arrange mode
@@ -125,6 +159,10 @@ interface BinderPageProps {
   // BinderPage calls directly since the motion also needs to pair with the
   // matching .pageLeft/.pageRight CSS class for its transform-origin.
   side: 'left' | 'right';
+  // Which navigation direction is currently in flight -- see isTurningPage
+  // above, which BinderPage calls directly (alongside side) to decide
+  // whether THIS page gets the dramatic flip or a plain fade.
+  direction: 'forward' | 'backward' | null;
 }
 
 // Sets `node` on every ref in `refs`, function or object alike -- needed
@@ -169,11 +207,13 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
     onEditSlot,
     onEnlargeSlot,
     side,
+    direction,
   },
   forwardedRef
 ) {
   const [measureRef, size] = usePageSize();
   const shouldReduceMotion = useReducedMotion();
+  const isTurning = isTurningPage(side, direction);
   const slotSize = computeSlotSize({
     containerWidth: size.width - PAGE_PADDING_PX,
     containerHeight: size.height - PAGE_PADDING_PX,
@@ -187,11 +227,16 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
       ref={mergeRefs(measureRef, forwardedRef)}
       className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
       aria-label={`Page ${pageIndex + 1}`}
+      // Not used for any styling -- purely a test hook, since Framer
+      // Motion's initial/animate/exit props aren't otherwise observable
+      // from outside the component; the actual visual result is verified
+      // live in a browser instead.
+      data-turning={isTurning}
       style={{
         gridTemplateColumns: `repeat(${columns}, ${slotSize.width}px)`,
         gridTemplateRows: `repeat(${rows}, ${slotSize.height}px)`,
       }}
-      {...getPageMotion(side, shouldReduceMotion)}
+      {...getPageMotion(side, isTurning, shouldReduceMotion)}
     >
       {entries.flatMap((row, r) =>
         row.map((entry, c) => {
@@ -218,7 +263,7 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
               onClick={onSlotClick}
               isManualArrangeActive={isManualArrangeActive}
               isSelected={selectedIndex === slotIndex}
-              onSelect={() => onSelectSlot(slotIndex)}
+              onSelect={(event) => onSelectSlot(slotIndex, event)}
               onDragStart={() => onDragStartSlot(slotIndex)}
               onDrop={() => onDropSlot(slotIndex)}
               onEditCustomImage={entry?.type === 'blank' ? () => onEditSlot(slotIndex) : undefined}
@@ -237,6 +282,7 @@ export function BinderView({
   dataVersion,
   onSlotClick,
   isManualArrangeActive = false,
+  onExitManualArrange,
 }: BinderViewProps) {
   const binders = useAppStore((s) => s.binders);
   const activeBinderId = useAppStore((s) => s.activeBinderId);
@@ -245,8 +291,32 @@ export function BinderView({
   const uploadedImages = useAppStore((s) => s.uploadedImages);
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
   const [spreadIndex, setSpreadIndex] = useState(0);
+  // Which navigation direction is currently in flight -- see isTurningPage
+  // above, which decides which side of the spread gets the dramatic flip vs
+  // a plain fade. null until the user has actually clicked Previous/Next
+  // once (see isTurningPage's own null-direction case).
+  const [direction, setDirection] = useState<'forward' | 'backward' | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // The most recently plainly-clicked slot -- a fresh anchor for a possible
+  // FUTURE shift-click, kept separate from selectedIndex so an invalid
+  // shift-click attempt (see handleSelectSlot below) can leave both alone
+  // instead of silently anchoring onto whatever was last shift-clicked.
+  const [rangeAnchorIndex, setRangeAnchorIndex] = useState<number | null>(null);
+  // The resolved, currently-valid rectangular block of blank slots a
+  // shift-click has selected for the split-image feature, or null when
+  // there isn't one (no shift-click yet, or the last one was rejected).
+  const [splitRange, setSplitRange] = useState<SplitRange | null>(null);
+  // Briefly shown near the nav bar when a shift-click attempt is rejected
+  // (crosses the spine, spans two pages, or touches a non-blank slot) --
+  // cleared on the very next slot click, whether that click succeeds or
+  // not, same as ExportImportControls' own inline error message pattern.
+  const [rangeRejectionMessage, setRangeRejectionMessage] = useState<string | null>(null);
+  // Whether the split-image editor overlay (for the currently-resolved
+  // splitRange) is open -- kept separate from splitRange itself so the
+  // overlay only opens on an explicit "Split image across N slots" click,
+  // not the instant a valid range is shift-clicked.
+  const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isZoomModeActive, setIsZoomModeActive] = useState(false);
   // Which blank slot's custom-image editor is currently open, as an index
@@ -264,20 +334,36 @@ export function BinderView({
   // swallowed.
   const spreadRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard: 'g' enters zoom mode, Escape exits it. Attached to `window`
-  // rather than a specific element since the user can press 'g' with focus
-  // anywhere on the page, not just while a binder element itself has focus.
+  // Keyboard: 'g' enters zoom mode, Escape exits it -- AND, confirmed live
+  // as a real dead end otherwise, exits manual arrange mode too. Manual
+  // arrange has no other keyboard escape hatch: clicking a slot while it's
+  // active only selects it for reordering (never re-opens the Picker), so
+  // without this, the only way out was noticing that the SAME "Manual
+  // arrange" button in Binder Settings also toggles it back off -- not
+  // obvious, since nothing about that button's label hints that clicking it
+  // again is how you leave. Attached to `window` rather than a specific
+  // element since the user can press 'g'/Escape with focus anywhere on the
+  // page, not just while a binder element itself has focus.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'g' || event.key === 'G') {
         setIsZoomModeActive(true);
       } else if (event.key === 'Escape') {
         setIsZoomModeActive(false);
+        if (isManualArrangeActive) {
+          onExitManualArrange?.();
+          setSelectedIndex(null);
+          setDragFromIndex(null);
+          setRangeAnchorIndex(null);
+          setSplitRange(null);
+          setRangeRejectionMessage(null);
+          setIsSplitEditorOpen(false);
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isManualArrangeActive, onExitManualArrange]);
 
   // Any click anywhere exits zoom mode. A click that lands on the binder
   // pages themselves (.spread, via spreadRef) also gets swallowed --
@@ -317,6 +403,7 @@ export function BinderView({
 
   useEffect(() => {
     setSpreadIndex(0);
+    setDirection(null);
     // A selection, in-progress drag, or open custom-image editor is a
     // position WITHIN this specific binder's current layout. Switching to a
     // different binder, or changing this binder's own
@@ -332,6 +419,10 @@ export function BinderView({
     setSelectedIndex(null);
     setEditingSlotIndex(null);
     setZoomedCard(null);
+    setRangeAnchorIndex(null);
+    setSplitRange(null);
+    setRangeRejectionMessage(null);
+    setIsSplitEditorOpen(false);
   }, [activeBinder.id, activeBinder.config]);
 
   const nameByDexNumber = useMemo(() => {
@@ -385,6 +476,119 @@ export function BinderView({
 
   const sequence = activeBinder.customOrder ?? defaultBinderSequence(dexEntries);
 
+  const spreads = useMemo(
+    () => computeSpreadPageIndices(activeBinder.config.pageCount),
+    [activeBinder.config.pageCount]
+  );
+  const currentSpread = spreads[spreadIndex] ?? [];
+
+  // Resolves a given pageIndex's OWN side/pairing info within the CURRENTLY
+  // displayed spread -- exactly mirroring the `side` computation the JSX
+  // below already does for each rendered BinderPage, just runnable from a
+  // slot-click handler that only knows a flat slotIndex (not which literal
+  // DOM side it renders on). Needed by computeSplitRange to know which
+  // column, if any, is this page's spine-adjacent one. Returns side: null
+  // when pageIndex isn't part of the current spread at all (shouldn't
+  // normally happen for a slot that was just clicked, but keeps this total
+  // rather than throwing).
+  function resolvePagePairing(pageIndex: number): {
+    side: 'left' | 'right' | null;
+    hasLeftNeighbor: boolean;
+    hasRightNeighbor: boolean;
+  } {
+    const i = currentSpread.indexOf(pageIndex);
+    if (i === -1) return { side: null, hasLeftNeighbor: false, hasRightNeighbor: false };
+    const side: 'left' | 'right' = i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+    return {
+      side,
+      hasLeftNeighbor: side === 'right' && currentSpread.length === 2,
+      hasRightNeighbor: side === 'left',
+    };
+  }
+
+  // Every (row, col) position within a resolved range must currently be a
+  // real blank entry -- reusing setBinderSlotCustomImage's own requirement
+  // (it silently no-ops on anything else, see store.ts) rather than a
+  // separate, looser notion of "blank". A pokemon entry in the range, or an
+  // out-of-capacity position past the end of `sequence`, both fail this.
+  function isRangeAllBlank(range: SplitRange): boolean {
+    for (let row = range.rowStart; row <= range.rowEnd; row++) {
+      for (let col = range.colStart; col <= range.colEnd; col++) {
+        const slotIndex = positionToSlotIndex(range.pageIndex, row, col, activeBinder.config);
+        if (sequence[slotIndex]?.type !== 'blank') return false;
+      }
+    }
+    return true;
+  }
+
+  // A plain click always starts a fresh single-slot selection AND becomes
+  // the new anchor for a possible future shift-click -- a shift-click, if
+  // there IS an anchor already, instead tries to resolve a rectangular
+  // range between that anchor and this slot. An INVALID range (crosses the
+  // spine, spans two pages, or touches a non-blank slot) clears any
+  // previously-resolved splitRange and surfaces a rejection message, but
+  // deliberately leaves selectedIndex/rangeAnchorIndex untouched -- so it
+  // doesn't silently select something nonsensical in their place.
+  function handleSelectSlot(slotIndex: number, event: React.MouseEvent<HTMLButtonElement>) {
+    if (event.shiftKey && rangeAnchorIndex !== null) {
+      const { pageIndex } = slotIndexToPosition(slotIndex, activeBinder.config);
+      const { side, hasLeftNeighbor, hasRightNeighbor } = resolvePagePairing(pageIndex);
+      const range = computeSplitRange(
+        rangeAnchorIndex,
+        slotIndex,
+        activeBinder.config,
+        side,
+        hasLeftNeighbor,
+        hasRightNeighbor
+      );
+      if (range && isRangeAllBlank(range)) {
+        setSplitRange(range);
+        setRangeRejectionMessage(null);
+      } else {
+        setSplitRange(null);
+        setRangeRejectionMessage(
+          'That range crosses the spine or an existing card. Pick two blank slots on the same page, avoiding the spine-adjacent column.'
+        );
+      }
+      return;
+    }
+    setSelectedIndex(slotIndex);
+    setRangeAnchorIndex(slotIndex);
+    setSplitRange(null);
+    setRangeRejectionMessage(null);
+  }
+
+  // Slices the uploaded aggregate image across every slot in the current
+  // splitRange and persists each slot's own piece -- the split-image
+  // feature's actual save step. Needs the source image's real pixel
+  // dimensions first (sliceImageForSlots is pure and takes them as plain
+  // numbers), which means loading it, hence async; see
+  // loadImageDimensions's own doc comment for why that's a separate,
+  // easily-mocked module rather than inlined here.
+  async function handleSaveSplitImage(
+    aggregate: { offsetX: number; offsetY: number; zoom: number },
+    dataUri: string
+  ) {
+    if (!splitRange) return;
+    const { width, height } = await loadImageDimensions(dataUri);
+    const slices = sliceImageForSlots(dataUri, width, height, splitRange.rows, splitRange.cols, aggregate);
+    for (let r = 0; r < splitRange.rows; r++) {
+      for (let c = 0; c < splitRange.cols; c++) {
+        const slotIndex = positionToSlotIndex(
+          splitRange.pageIndex,
+          splitRange.rowStart + r,
+          splitRange.colStart + c,
+          activeBinder.config
+        );
+        setBinderSlotCustomImage(activeBinder.id, slotIndex, slices[r][c]);
+      }
+    }
+    setSplitRange(null);
+    setRangeAnchorIndex(null);
+    setSelectedIndex(null);
+    setIsSplitEditorOpen(false);
+  }
+
   // Manual-arrange edits always operate on `sequence` as it exists RIGHT
   // NOW (whether that's the live default or an already-customized order),
   // and every edit writes the full result back via setBinderCustomOrder --
@@ -408,6 +612,39 @@ export function BinderView({
     setSelectedIndex(null);
   }
 
+  // The exact inverse of Keep empty: deletes just this ONE blank slot,
+  // shifting the rest back -- previously the only way to undo a single
+  // kept-empty slot was "Reset arrangement", which throws away every other
+  // manual change (drags, other blanks) too.
+  function handleRemoveEmpty() {
+    if (selectedIndex === null) return;
+    setBinderCustomOrder(activeBinder.id, removeEntryAt(sequence, selectedIndex));
+    setSelectedIndex(null);
+  }
+
+  // Opens the custom-image editor for the currently-selected blank slot
+  // directly from the nav bar, without leaving manual arrange mode first.
+  // BinderSlot's own click handling disables editing while manual arrange
+  // is active (dragging/selecting takes priority for a raw click on the
+  // slot itself), but that restriction was making the editor nearly
+  // undiscoverable in practice -- confirmed live: exiting manual arrange,
+  // then finding and clicking the slot's own small "+" affordance again, is
+  // an easy-to-miss two-step dance. This button is a deliberate, explicit
+  // action, not a raw slot click, so it bypasses that restriction on
+  // purpose.
+  function handleEditSelected() {
+    if (selectedIndex === null) return;
+    setEditingSlotIndex(selectedIndex);
+  }
+
+  // Which nav-bar action(s) make sense for the current selection: Keep
+  // empty for a real pokemon entry (turns it into a blank slot), or
+  // Edit image/Remove empty slot for a blank entry that already exists (an
+  // out-of-capacity slot beyond `sequence`'s own length resolves to
+  // `undefined` here, same as before this was added -- it still only gets
+  // Keep empty, matching its pre-existing behavior).
+  const selectedEntry = selectedIndex !== null ? sequence[selectedIndex] : undefined;
+
   function handleSaveCustomImage(customImage: CustomSlotImage) {
     if (editingSlotIndex === null) return;
     setBinderSlotCustomImage(activeBinder.id, editingSlotIndex, customImage);
@@ -425,11 +662,6 @@ export function BinderView({
     () => computeBinderPages(sequence, activeBinder.config),
     [sequence, activeBinder.config]
   );
-  const spreads = useMemo(
-    () => computeSpreadPageIndices(activeBinder.config.pageCount),
-    [activeBinder.config.pageCount]
-  );
-  const currentSpread = spreads[spreadIndex] ?? [];
 
   return (
     <>
@@ -439,7 +671,10 @@ export function BinderView({
             type="button"
             aria-label="Previous page"
             disabled={spreadIndex === 0}
-            onClick={() => setSpreadIndex((i) => Math.max(0, i - 1))}
+            onClick={() => {
+              setDirection('backward');
+              setSpreadIndex((i) => Math.max(0, i - 1));
+            }}
           >
             &larr;
           </button>
@@ -447,15 +682,44 @@ export function BinderView({
             type="button"
             aria-label="Next page"
             disabled={spreadIndex >= spreads.length - 1}
-            onClick={() => setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1))}
+            onClick={() => {
+              setDirection('forward');
+              setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1));
+            }}
           >
             &rarr;
           </button>
-          {isManualArrangeActive && selectedIndex !== null && (
-            <button type="button" onClick={handleKeepEmpty}>
-              Keep empty
+          {/* A valid shift-click range takes over the nav bar entirely --
+              offering the split action INSTEAD OF (not alongside) the
+              single-slot Keep empty/Edit image/Remove empty slot buttons
+              below, which all stay gated on splitRange === null. */}
+          {isManualArrangeActive && splitRange !== null && (
+            <button type="button" onClick={() => setIsSplitEditorOpen(true)}>
+              Split image across {splitRange.rows * splitRange.cols} slots
             </button>
           )}
+          {isManualArrangeActive &&
+            splitRange === null &&
+            selectedIndex !== null &&
+            selectedEntry?.type !== 'blank' && (
+              <button type="button" onClick={handleKeepEmpty}>
+                Keep empty
+              </button>
+            )}
+          {isManualArrangeActive &&
+            splitRange === null &&
+            selectedIndex !== null &&
+            selectedEntry?.type === 'blank' && (
+              <>
+                <button type="button" onClick={handleEditSelected}>
+                  Edit image
+                </button>
+                <button type="button" onClick={handleRemoveEmpty}>
+                  Remove empty slot
+                </button>
+              </>
+            )}
+          {isManualArrangeActive && rangeRejectionMessage && <p role="alert">{rangeRejectionMessage}</p>}
           <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
         </div>
         <div
@@ -494,12 +758,13 @@ export function BinderView({
                   onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
                   isManualArrangeActive={isManualArrangeActive}
                   selectedIndex={selectedIndex}
-                  onSelectSlot={setSelectedIndex}
+                  onSelectSlot={handleSelectSlot}
                   onDragStartSlot={setDragFromIndex}
                   onDropSlot={handleDrop}
                   onEditSlot={setEditingSlotIndex}
                   onEnlargeSlot={setZoomedCard}
                   side={side}
+                  direction={direction}
                 />
               );
             })}
@@ -525,6 +790,34 @@ export function BinderView({
               initialImage={editingEntry?.type === 'blank' ? editingEntry.customImage ?? null : null}
               onSave={handleSaveCustomImage}
               onCancel={() => setEditingSlotIndex(null)}
+            />
+          </div>,
+          document.body
+        )}
+      {/* Same portal-to-document.body pattern as the single-slot editor
+          overlay just above, for the exact same reason (see that block's
+          own comment) -- guarded on splitRange too, not just
+          isSplitEditorOpen, so this can never render with a stale/cleared
+          range (e.g. right after Save resets both in the same tick). */}
+      {isSplitEditorOpen &&
+        splitRange &&
+        createPortal(
+          <div
+            className={styles.editorOverlay}
+            role="dialog"
+            aria-label="Split image across binder slots"
+          >
+            <SlotImageEditor
+              initialImage={null}
+              frameWidthUnits={splitRange.cols * 5}
+              frameHeightUnits={splitRange.rows * 7}
+              onSave={(image) =>
+                handleSaveSplitImage(
+                  { offsetX: image.offsetX, offsetY: image.offsetY, zoom: image.zoom },
+                  image.dataUri
+                )
+              }
+              onCancel={() => setIsSplitEditorOpen(false)}
             />
           </div>,
           document.body

@@ -86,6 +86,19 @@
   transform-origin: left center;
 }
 
+/* A lone first page (no left-hand partner) still gets .pageRight (see
+   BinderView.tsx's own side computation), but as .page's only child in
+   .spread it would otherwise stretch via flex: 1 to fill the ENTIRE row --
+   centered across where a two-page spread's combined width would be,
+   instead of sitting in the same place the right page of a real spread
+   occupies. flex-grow: 0 with this same half-width basis stops it from
+   stretching past a real right page's own width; margin-left: auto pushes
+   it to the row's right edge instead of leaving it flush left. */
+.pageRight:only-child {
+  flex: 0 1 calc(50% - var(--space-4) / 2);
+  margin-left: auto;
+}
+
 .nav {
   display: flex;
   gap: var(--space-4);

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { BinderSlot } from './BinderSlot';
@@ -127,6 +127,31 @@ describe('BinderSlot', () => {
     expect(screen.getByAltText('Custom binder slot image')).toBeInTheDocument();
   });
 
+  it("renders the custom image with the exact same translate+scale transform as the editor's own live preview, not objectPosition", () => {
+    // Regression test: a previous version used `objectPosition:
+    // "${50+offsetX*100}% ${50+offsetY*100}%"` plus a plain `scale(zoom)`
+    // transform -- a fundamentally different, non-equivalent
+    // interpretation of offsetX/offsetY than SlotImageEditor's own preview
+    // (which pans via `translate(offsetX*frameWidth, offsetY*frameHeight)
+    // scale(zoom)`), so a saved crop never actually matched what the editor
+    // showed. Percentage units here (not the editor's hardcoded 200x280px
+    // frame) make this resolution-independent -- see customImageStyle's own
+    // comment in BinderSlot.tsx.
+    render(
+      <BinderSlot
+        entry={{
+          type: 'blank',
+          customImage: { dataUri: 'data:image/png;base64,ABC', offsetX: 0.1, offsetY: -0.2, zoom: 1.5 },
+        }}
+        onClick={() => {}}
+        onEditCustomImage={() => {}}
+      />
+    );
+    const img = screen.getByAltText('Custom binder slot image');
+    expect(img.style.transform).toBe('translate(10%, -20%) scale(1.5)');
+    expect(img.style.objectPosition).toBe('');
+  });
+
   it('does not offer to edit a blank slot\'s custom image while manual arrange is active (drag/select takes priority)', () => {
     render(
       <BinderSlot
@@ -187,6 +212,33 @@ describe('BinderSlot', () => {
     expect(screen.getByAltText('Custom binder slot image')).toBeInTheDocument();
     await userEvent.click(button);
     expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the click event through to onSelect for a blank slot, so BinderView can detect Shift for a range selection', () => {
+    const onSelect = vi.fn();
+    render(
+      <BinderSlot entry={{ type: 'blank' }} onClick={() => {}} isManualArrangeActive onSelect={onSelect} />
+    );
+    fireEvent.click(screen.getByRole('button'), { shiftKey: true });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ shiftKey: true });
+  });
+
+  it('passes the click event through to onSelect for a pokemon slot during manual arrange too', () => {
+    const onSelect = vi.fn();
+    render(
+      <BinderSlot
+        entry={{ type: 'pokemon', dexNumber: 1 }}
+        pokemonName="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        onClick={() => {}}
+        isManualArrangeActive
+        onSelect={onSelect}
+      />
+    );
+    fireEvent.click(screen.getByRole('button'), { shiftKey: true });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ shiftKey: true });
   });
 
   describe('enlarge button', () => {

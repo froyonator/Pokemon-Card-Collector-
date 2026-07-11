@@ -43,8 +43,13 @@ export function BinderSettings({
       <button type="button" onClick={() => createBinder('New Binder', activeBinder.language)}>
         New binder
       </button>
+      {/* Label changes while active instead of always reading "Manual
+          arrange" -- confirmed live as a real point of confusion: nothing
+          about a static label hints that clicking the SAME button again is
+          how you leave the mode (Escape also exits it now, see BinderView's
+          own keydown handler, but the button itself should say so too). */}
       <button type="button" aria-pressed={isManualArrangeActive} onClick={onToggleManualArrange}>
-        Manual arrange
+        {isManualArrangeActive ? 'Done arranging' : 'Manual arrange'}
       </button>
       {activeBinder.customOrder !== null && (
         <button type="button" onClick={() => setBinderCustomOrder(activeBinder.id, null)}>

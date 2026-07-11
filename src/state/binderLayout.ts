@@ -63,6 +63,17 @@ export function insertBlankAt(entries: BinderSlotEntry[], index: number): Binder
   return next;
 }
 
+// The exact inverse of insertBlankAt: removes the entry at `index` outright
+// (not replacing it with anything), shifting everything after it back by
+// one. Used to undo a single kept-empty slot without resetting the whole
+// arrangement -- previously the only way to remove one blank was "Reset
+// arrangement", which discards every other manual change too.
+export function removeEntryAt(entries: BinderSlotEntry[], index: number): BinderSlotEntry[] {
+  const next = entries.slice();
+  next.splice(index, 1);
+  return next;
+}
+
 export function moveEntry(
   entries: BinderSlotEntry[],
   fromIndex: number,
@@ -72,4 +83,113 @@ export function moveEntry(
   const [moved] = next.splice(fromIndex, 1);
   next.splice(toIndex, 0, moved);
   return next;
+}
+
+// The exact inverse of BinderPage's own withinPage/slotIndex formula in
+// BinderView.tsx (`withinPage = fillDirection === 'horizontal' ? r *
+// columns + c : c * rows + r; slotIndex = pageIndex * rows * columns +
+// withinPage`) -- given a flat slotIndex into `sequence`, resolves which
+// page it's on and where within that page's rows x columns grid it falls.
+// Needed by the split-image feature (see computeSplitRange below) to turn
+// two clicked slot indices back into page-relative row/column coordinates
+// it can validate as a rectangle.
+export function slotIndexToPosition(
+  slotIndex: number,
+  config: BinderConfig
+): { pageIndex: number; row: number; col: number } {
+  const { rows, columns, fillDirection } = config;
+  const slotsPerPage = rows * columns;
+  const pageIndex = Math.floor(slotIndex / slotsPerPage);
+  const withinPage = slotIndex % slotsPerPage;
+  if (fillDirection === 'horizontal') {
+    return { pageIndex, row: Math.floor(withinPage / columns), col: withinPage % columns };
+  }
+  return { pageIndex, row: withinPage % rows, col: Math.floor(withinPage / rows) };
+}
+
+// The forward direction of slotIndexToPosition above -- given a resolved
+// page/row/col, recovers the flat slotIndex `sequence` itself is keyed by.
+// Used by the split-image feature to map each (row, col) piece of a
+// resolved SplitRange back to the one real slot it belongs to.
+export function positionToSlotIndex(
+  pageIndex: number,
+  row: number,
+  col: number,
+  config: BinderConfig
+): number {
+  const { rows, columns, fillDirection } = config;
+  const withinPage = fillDirection === 'horizontal' ? row * columns + col : col * rows + row;
+  return pageIndex * rows * columns + withinPage;
+}
+
+export interface SplitRange {
+  pageIndex: number;
+  rowStart: number;
+  rowEnd: number;
+  colStart: number;
+  colEnd: number;
+  rows: number;
+  cols: number;
+}
+
+// Validates and resolves a rectangular block of slots between two clicked
+// slot indices (click-then-shift-click) for the split-image feature -- the
+// feature that lets one uploaded image be sliced across several adjacent
+// blank slots so they show one continuous picture, like a jigsaw. Returns
+// null for a physically nonsensical range:
+//
+// - `anchorIndex`/`targetIndex` resolving to different pages: a single
+//   continuous image can never span two separate pages of a spread, even
+//   when they're displayed side by side -- confirmed explicitly by the
+//   user ("it can never be between 2 pages continuous"). Each page is a
+//   physically distinct sheet.
+// - a column range that includes the page's own spine-adjacent column: a
+//   real binder's rings/spine physically interrupts the page there, so a
+//   picture "spanning" it would visibly break in the middle. Which column
+//   is spine-adjacent depends on which side of a genuine two-page spread
+//   this page is on -- a LEFT page's spine column is its LAST column
+//   (`columns - 1`, nearest the spine on its right); a RIGHT page's spine
+//   column is its FIRST column (`0`, nearest the spine on its left). A
+//   lone/solo page (no partner to be spine-adjacent to at all) has no such
+//   restriction, which is why `hasLeftNeighbor`/`hasRightNeighbor` -- not
+//   just `side` alone -- gate each check.
+//
+// Rows have no restriction at all: any row range within the page is fine,
+// since a binder's spine only ever runs along a vertical edge between
+// pages, never across rows within one page.
+export function computeSplitRange(
+  anchorIndex: number,
+  targetIndex: number,
+  config: BinderConfig,
+  side: 'left' | 'right' | null,
+  hasLeftNeighbor: boolean,
+  hasRightNeighbor: boolean
+): SplitRange | null {
+  const anchor = slotIndexToPosition(anchorIndex, config);
+  const target = slotIndexToPosition(targetIndex, config);
+  if (anchor.pageIndex !== target.pageIndex) return null;
+
+  const rowStart = Math.min(anchor.row, target.row);
+  const rowEnd = Math.max(anchor.row, target.row);
+  const colStart = Math.min(anchor.col, target.col);
+  const colEnd = Math.max(anchor.col, target.col);
+
+  if (side === 'left' && hasRightNeighbor) {
+    const spineCol = config.columns - 1;
+    if (colStart <= spineCol && spineCol <= colEnd) return null;
+  }
+  if (side === 'right' && hasLeftNeighbor) {
+    const spineCol = 0;
+    if (colStart <= spineCol && spineCol <= colEnd) return null;
+  }
+
+  return {
+    pageIndex: anchor.pageIndex,
+    rowStart,
+    rowEnd,
+    colStart,
+    colEnd,
+    rows: rowEnd - rowStart + 1,
+    cols: colEnd - colStart + 1,
+  };
 }

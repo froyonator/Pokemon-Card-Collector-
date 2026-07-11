@@ -16,9 +16,16 @@
   cursor: pointer;
 }
 
+/* Fixed width, height derived from aspect-ratio (set inline by
+   SlotImageEditor.tsx via frameWidthUnits/frameHeightUnits) -- a single
+   card's default 5:7 ratio against this same 200px width resolves to
+   exactly the old hardcoded 280px height (200 * 7/5), so nothing changes
+   visually for the pre-existing single-slot case. max-height guards
+   against a very tall aggregate block (e.g. splitting across many rows)
+   growing the frame off-screen. */
 .frame {
   width: 200px;
-  height: 280px;
+  max-height: 70vh;
   border-radius: var(--radius-md);
   overflow: hidden;
   position: relative;

@@ -130,6 +130,7 @@ export default function App() {
           <DexGrid
             view={view}
             isManualArrangeActive={isManualArrangeActive}
+            onExitManualArrange={() => setIsManualArrangeActive(false)}
             onLoadingChange={setIsLoading}
             refreshRequestId={refreshRequestId}
           />

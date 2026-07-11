@@ -77,4 +77,10 @@ describe('BinderSettings', () => {
     expect(pageCountIndex).toBeGreaterThan(-1);
     expect(manualArrangeIndex).toBeLessThan(pageCountIndex);
   });
+
+  it('relabels the toggle to "Done arranging" while manual arrange is active, so the exit is obvious', () => {
+    render(<BinderSettings isManualArrangeActive onToggleManualArrange={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Manual arrange' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done arranging' })).toBeInTheDocument();
+  });
 });

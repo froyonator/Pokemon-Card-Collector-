@@ -97,4 +97,26 @@ describe('SlotImageEditor', () => {
       zoom: 1.5,
     });
   });
+
+  describe('a wider/taller aggregate frame (split-image feature)', () => {
+    it('still calls onSave with the plain {dataUri, offsetX, offsetY, zoom} shape, regardless of frameWidthUnits/frameHeightUnits', async () => {
+      const onSave = vi.fn();
+      render(
+        <SlotImageEditor
+          initialImage={{ dataUri: 'data:image/png;base64,ABC', offsetX: 0, offsetY: 0, zoom: 1 }}
+          onSave={onSave}
+          onCancel={() => {}}
+          frameWidthUnits={10}
+          frameHeightUnits={7}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(onSave).toHaveBeenCalledWith({
+        dataUri: 'data:image/png;base64,ABC',
+        offsetX: 0,
+        offsetY: 0,
+        zoom: 1,
+      });
+    });
+  });
 });

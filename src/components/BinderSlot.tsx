@@ -1,8 +1,27 @@
-import { useState } from 'react';
-import type { BinderSlotEntry } from '../types';
+import { useState, type CSSProperties } from 'react';
+import type { BinderSlotEntry, CustomSlotImage } from '../types';
 import { CardImage } from './CardImage';
 import { MagnifyIcon } from './icons/TabIcons';
 import styles from './BinderSlot.module.css';
+
+// Mirrors SlotImageEditor's own live preview transform exactly (see that
+// component's .previewImage CSS): object-fit: cover (set on .cardImage,
+// see BinderSlot.module.css) positions the image by default, then this
+// same translate-then-scale pans/zooms it. Uses percentage units, not
+// SlotImageEditor's hardcoded 200x280 pixel frame, so it's resolution-
+// independent: CSS `translate(X%, Y%)` is relative to THIS element's own
+// rendered box, which stays proportional to the editor's 5:7 frame at any
+// actual slot size (see slotImageExport.ts's canvas version of this same
+// math for the print-size export). A previous version used `objectPosition`
+// instead of `translate` -- a fundamentally different, non-equivalent
+// interpretation of offsetX/offsetY (object-position controls the cover
+// crop's own anchor point, not a pan applied after it), which is why a
+// saved crop never actually matched what the editor's own preview showed.
+function customImageStyle(customImage: CustomSlotImage): CSSProperties {
+  return {
+    transform: `translate(${customImage.offsetX * 100}%, ${customImage.offsetY * 100}%) scale(${customImage.zoom})`,
+  };
+}
 
 export interface BinderSlotProps {
   entry: BinderSlotEntry | undefined;
@@ -21,7 +40,14 @@ export interface BinderSlotProps {
   onClick: (dexNumber: number) => void;
   isManualArrangeActive?: boolean;
   isSelected?: boolean;
-  onSelect?: () => void;
+  // Takes the click event (not just a plain callback) so BinderView can
+  // read modifier keys off it -- specifically Shift, for the "click one
+  // blank slot then shift-click another to select a rectangular range for
+  // the split-image feature" flow (see BinderView.tsx's own
+  // handleSelectSlot). userEvent.click in tests still satisfies this: RTL
+  // always dispatches a real event, it just doesn't set shiftKey unless a
+  // test explicitly asks for it.
+  onSelect?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDragStart?: () => void;
   onDrop?: () => void;
   // Only relevant for a `blank` entry, and only outside manual-arrange mode
@@ -91,10 +117,7 @@ export function BinderSlot({
               src={customImage.dataUri}
               alt="Custom binder slot image"
               className={styles.cardImage}
-              style={{
-                objectPosition: `${50 + customImage.offsetX * 100}% ${50 + customImage.offsetY * 100}%`,
-                transform: `scale(${customImage.zoom})`,
-              }}
+              style={customImageStyle(customImage)}
             />
           )}
         </button>
@@ -115,10 +138,7 @@ export function BinderSlot({
               src={customImage.dataUri}
               alt="Custom binder slot image"
               className={styles.cardImage}
-              style={{
-                objectPosition: `${50 + customImage.offsetX * 100}% ${50 + customImage.offsetY * 100}%`,
-                transform: `scale(${customImage.zoom})`,
-              }}
+              style={customImageStyle(customImage)}
             />
           </button>
         </div>
@@ -165,7 +185,7 @@ export function BinderSlot({
           if (isManualArrangeActive) event.preventDefault();
         }}
         onDrop={onDrop}
-        onClick={() => (isManualArrangeActive ? onSelect?.() : onClick(entry.dexNumber))}
+        onClick={(event) => (isManualArrangeActive ? onSelect?.(event) : onClick(entry.dexNumber))}
         onMouseEnter={() => setIsRevealed(true)}
         onMouseLeave={() => setIsRevealed(false)}
         onFocus={() => setIsRevealed(true)}
