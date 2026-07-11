@@ -59,7 +59,15 @@ async function main(): Promise<void> {
   const { language, setId, delayMs } = parseArguments(process.argv.slice(2));
   const politeJson = withPoliteDelay(fetchJsonWithRetry, delayMs);
   const politeImage = withPoliteDelay(downloadAndValidateImage, delayMs);
-  const snapshotId = `tcgdex-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  // Includes `language`, not just the timestamp: run-full-sync.ps1 (and any
+  // manual multi-language launch) starts every language's process back to
+  // back in a tight loop, and two of them landing on the exact same
+  // millisecond is a real, confirmed-live collision -- both ended up
+  // sharing one staging directory and corrupted each other's writes (one's
+  // cleanup `rm`'d the tree out from under the other's still-in-progress
+  // one). `language` is always distinct across concurrent invocations of
+  // this script, so it deterministically rules the collision out.
+  const snapshotId = `tcgdex-${language}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const stagingRoot = path.join('data', `.${snapshotId}.staging`);
   const finalRoot = path.join('data', snapshotId);
   let published = false;
