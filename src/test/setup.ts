@@ -33,3 +33,27 @@ if (typeof Blob.prototype.text !== 'function') {
     });
   };
 }
+
+// jsdom does not implement ResizeObserver at all (unlike the gaps above,
+// there's no partial browser implementation to extend). BinderView measures
+// its .spread container with one to compute real pixel slot sizes (see
+// src/state/binderSlotSizing.ts), so every test that renders BinderView --
+// directly or via DexGrid's Binder view -- needs this stubbed with a
+// nonzero size, or the measurement effect throws.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class MockResizeObserver {
+    callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe() {
+      this.callback(
+        [{ contentRect: { width: 900, height: 600 } } as ResizeObserverEntry],
+        this as unknown as ResizeObserver
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}

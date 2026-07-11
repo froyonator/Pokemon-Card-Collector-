@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { spriteUrl } from '../api/pokeapi';
 import {
@@ -8,6 +8,7 @@ import {
   insertBlankAt,
   moveEntry,
 } from '../state/binderLayout';
+import { computeSlotSize } from '../state/binderSlotSizing';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
@@ -49,6 +50,12 @@ export interface BinderViewProps {
   isManualArrangeActive?: boolean;
 }
 
+// Must match .page's own `gap` in BinderView.module.css (currently
+// var(--space-2), defined as 8px in src/styles/global.css) -- kept as a
+// separate JS constant since computeSlotSize needs a plain number, not a CSS
+// custom property. If --space-2 is ever changed, this needs updating too.
+const GAP_PX = 8;
+
 export function BinderView({
   dexEntries,
   owned,
@@ -64,6 +71,18 @@ export function BinderView({
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const spreadRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const node = spreadRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     setSpreadIndex(0);
@@ -164,8 +183,16 @@ export function BinderView({
           </button>
         )}
       </div>
-      <div className={styles.spread}>
-        <AnimatePresence>
+      <div className={styles.spread} ref={spreadRef}>
+        {/* mode="popLayout": .spread is a plain flex row, so without this an
+            exiting page (kept mounted by AnimatePresence during its exit
+            animation) stays a normal flex sibling of the newly-entering
+            pages, shoving them sideways instead of both animating in place
+            over the same screen position -- exactly the "both pages slide
+            right" bug this fixes. popLayout takes an exiting element out of
+            flow (position: absolute) the moment it starts exiting, so it can
+            no longer affect its siblings' layout. */}
+        <AnimatePresence mode="popLayout">
           {currentSpread.map((pageIndex, i) => {
             // Only a genuine two-page spread has a "left" page to hinge
             // differently from a "right" page -- a lone first page
@@ -173,6 +200,20 @@ export function BinderView({
             // treated as the right/only page.
             const side: 'left' | 'right' =
               i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+            // Divides the measured .spread container evenly across however
+            // many pages share the current spread (1 for a lone first page,
+            // 2 for a genuine spread) -- Task 4 revisits this split to
+            // measure each page independently, but dividing by
+            // currentSpread.length here keeps this task's fix correct
+            // standalone.
+            const pagesInSpread = currentSpread.length || 1;
+            const slotSize = computeSlotSize({
+              containerWidth: containerSize.width / pagesInSpread - GAP_PX * 2,
+              containerHeight: containerSize.height - GAP_PX * 2,
+              rows: activeBinder.config.rows,
+              columns: activeBinder.config.columns,
+              gap: GAP_PX,
+            });
             return (
               <motion.div
                 key={pageIndex}
@@ -181,16 +222,8 @@ export function BinderView({
                 )}
                 aria-label={`Page ${pageIndex + 1}`}
                 style={{
-                  // minmax(0, 1fr), not a bare 1fr: a bare 1fr track's default
-                  // minimum is its content's intrinsic size, which let a
-                  // revealed sprite balloon the whole grid on hover before the
-                  // fixed pixel sizing in BinderSlot.module.css also capped
-                  // this at the image level. Both fixes address the same
-                  // underlying "grid track sized from unconstrained content"
-                  // problem, from different layers, since either alone would
-                  // leave a future slot-content change able to reintroduce it.
-                  gridTemplateColumns: `repeat(${activeBinder.config.columns}, minmax(0, 1fr))`,
-                  gridTemplateRows: `repeat(${activeBinder.config.rows}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `repeat(${activeBinder.config.columns}, ${slotSize.width}px)`,
+                  gridTemplateRows: `repeat(${activeBinder.config.rows}, ${slotSize.height}px)`,
                 }}
                 {...getPageMotion(side, shouldReduceMotion)}
               >

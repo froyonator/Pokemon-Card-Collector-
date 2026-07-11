@@ -6,6 +6,10 @@ import { useAppStore } from '../state/store';
 import { setCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
 
+// ResizeObserver is globally mocked in src/test/setup.ts (jsdom doesn't
+// implement it at all) -- BinderView measures its .spread container via one
+// to compute real pixel slot sizes (see src/state/binderSlotSizing.ts).
+
 const dexEntries: DexEntry[] = [
   { number: 1, name: 'Bulbasaur' },
   { number: 2, name: 'Ivysaur' },
