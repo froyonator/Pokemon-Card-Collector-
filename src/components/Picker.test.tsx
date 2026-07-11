@@ -50,6 +50,7 @@ function resetStore() {
     owned: {},
     wishlist: {},
     selectedGenerations: [1],
+    cardOverrides: {},
     uploadedImages: {},
     hasUnsavedChanges: false,
   });
@@ -411,6 +412,80 @@ describe('Picker', () => {
     await userEvent.upload(input, file);
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't use that image file/i);
     expect(useAppStore.getState().uploadedImages['no-image-card']).toBeUndefined();
+  });
+
+  it('shows a "Select cards" toggle that is off by default, with no select bar or bulk-assign control', () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA, cardB]} onClose={() => {}} />);
+    expect(screen.getByRole('button', { name: /select cards/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /mark as not usable/i })).not.toBeInTheDocument();
+  });
+
+  it('entering select mode replaces card-click-opens-condition-picker with toggling selection, and shows a running count', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA, cardB]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    expect(screen.getByRole('status')).toHaveTextContent('0 selected');
+
+    await userEvent.click(screen.getByAltText(/charizard ex from 151/i));
+    expect(screen.queryByText(/what condition/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+
+    const cardBody = screen.getByAltText(/charizard ex from 151/i).closest('[role="button"]');
+    expect(cardBody).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking a selected card again deselects it', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    const cardBody = screen.getByAltText(/charizard ex from 151/i).closest('[role="button"]') as HTMLElement;
+    await userEvent.click(cardBody);
+    expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    await userEvent.click(cardBody);
+    expect(screen.getByRole('status')).toHaveTextContent('0 selected');
+    expect(cardBody).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('"Mark as Not Usable" is disabled until at least one card is selected', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    expect(screen.getByRole('button', { name: /mark as not usable/i })).toBeDisabled();
+    await userEvent.click(screen.getByAltText(/charizard ex from 151/i));
+    expect(screen.getByRole('button', { name: /mark as not usable/i })).toBeEnabled();
+  });
+
+  it('bulk-assigns every selected card to the not-usable group, then exits select mode', async () => {
+    render(
+      <Picker dexNumber={6} pokemonName="Charizard" cards={[cardA, cardB]} onClose={() => {}} />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    await userEvent.click(screen.getByAltText(/charizard ex from 151/i));
+    await userEvent.click(screen.getByAltText(/charizard ex from obsidian flames/i));
+    await userEvent.click(screen.getByRole('button', { name: /mark as not usable/i }));
+
+    expect(useAppStore.getState().cardOverrides[cardA.id]).toBe('not-usable');
+    expect(useAppStore.getState().cardOverrides[cardB.id]).toBe('not-usable');
+    expect(screen.getByRole('button', { name: /select cards/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('canceling select mode clears the pending selection without assigning anything', async () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    await userEvent.click(screen.getByAltText(/charizard ex from 151/i));
+    await userEvent.click(screen.getByRole('button', { name: /cancel selection/i }));
+
+    expect(useAppStore.getState().cardOverrides[cardA.id]).toBeUndefined();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    // Re-entering select mode starts from a clean slate, not the old selection.
+    await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+    expect(screen.getByRole('status')).toHaveTextContent('0 selected');
   });
 
   it('uses languageOverride instead of the store language when provided, for the Show all cards fetch', async () => {

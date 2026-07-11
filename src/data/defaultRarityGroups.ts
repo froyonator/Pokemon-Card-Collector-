@@ -36,6 +36,17 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     // like any other rarity. There is no need to edit an exported JSON backup for this.
     rarities: [],
   },
+  {
+    id: 'not-usable',
+    name: 'Not Usable',
+    // Seeded empty and NOT included in the store's default activeGroupIds
+    // (see store.ts): this is purely a manual bucket for cards the user
+    // wants to hide from the Picker's available-card options -- e.g.
+    // duplicate reprints, damaged/unwanted variants, or misidentified scans
+    // -- via a per-card override or the Picker's multi-select bulk-assign
+    // action, not automatic rarity matching.
+    rarities: [],
+  },
 ];
 
 export function fetchRarityList(groups: RarityGroup[] = DEFAULT_RARITY_GROUPS): string[] {

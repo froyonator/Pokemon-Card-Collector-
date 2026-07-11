@@ -60,7 +60,7 @@ describe('ManageGroupsPanel', () => {
   it('adds a new group', async () => {
     render(<ManageGroupsPanel onClose={() => {}} />);
     await userEvent.click(screen.getByRole('button', { name: 'Add group' }));
-    expect(screen.getAllByLabelText('Group name')).toHaveLength(5);
+    expect(screen.getAllByLabelText('Group name')).toHaveLength(6);
   });
 
   it('deletes a group, leaving its rarities unassigned', async () => {
@@ -70,7 +70,7 @@ describe('ManageGroupsPanel', () => {
     });
     await userEvent.click(deleteButton);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(useAppStore.getState().groups).toHaveLength(3);
+    expect(useAppStore.getState().groups).toHaveLength(4);
   });
 
   it('surfaces a rarity that only exists on a cached card, not in any group, as unassigned', async () => {

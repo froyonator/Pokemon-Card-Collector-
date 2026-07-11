@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAppStore } from './store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 
@@ -155,6 +155,20 @@ describe('setGroups', () => {
   it('sets hasUnsavedChanges', () => {
     useAppStore.getState().setGroups([]);
     expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
+describe('default activeGroupIds seed (fresh install)', () => {
+  it('excludes not-usable, unlike every other default group', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const { useAppStore: freshStore } = await import('./store');
+    const seeded = freshStore.getState().activeGroupIds;
+    expect(seeded).not.toContain('not-usable');
+    for (const group of DEFAULT_RARITY_GROUPS) {
+      if (group.id === 'not-usable') continue;
+      expect(seeded).toContain(group.id);
+    }
   });
 });
 

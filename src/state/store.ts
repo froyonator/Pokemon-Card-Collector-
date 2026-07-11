@@ -101,7 +101,12 @@ export const useAppStore = create<AppState>()(
       return {
         language: 'en',
         currency: 'USD',
-        activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
+        // 'not-usable' is a manual-only bucket (see defaultRarityGroups.ts)
+        // and deliberately excluded here: a brand-new user should never have
+        // it silently active, since a card in that group is meant to
+        // disappear from the Picker's available options, not appear by
+        // default alongside the other groups.
+        activeGroupIds: DEFAULT_RARITY_GROUPS.filter((g) => g.id !== 'not-usable').map((g) => g.id),
         groups: DEFAULT_RARITY_GROUPS,
         owned: {},
         wishlist: {},

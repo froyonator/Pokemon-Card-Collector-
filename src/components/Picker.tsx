@@ -87,11 +87,38 @@ export function Picker({
   const [showAllCards, setShowAllCards] = useState(false);
   const [allCards, setAllCards] = useState<CardRecord[] | null>(null);
   const [isLoadingAllCards, setIsLoadingAllCards] = useState(false);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
 
   function handleStarClick(card: CardRecord, event: React.MouseEvent) {
     event.stopPropagation();
     const result = toggleWishlist(dexNumber, card.id);
     setWarning(result.ok ? null : (result.reason ?? 'That card could not be added.'));
+  }
+
+  function handleToggleSelectMode() {
+    setIsSelectMode((prev) => !prev);
+    setSelectedCardIds(new Set());
+  }
+
+  function toggleCardSelected(cardId: string) {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
+  }
+
+  function handleMarkSelectedNotUsable() {
+    for (const cardId of selectedCardIds) {
+      setCardOverride(cardId, 'not-usable');
+    }
+    setIsSelectMode(false);
+    setSelectedCardIds(new Set());
   }
 
   async function handleToggleShowAll() {
@@ -173,7 +200,22 @@ export function Picker({
           >
             {showAllCards ? 'Show curated cards' : 'Show all cards'}
           </button>
+          <button type="button" aria-pressed={isSelectMode} onClick={handleToggleSelectMode}>
+            {isSelectMode ? '✕ Cancel selection' : 'Select cards'}
+          </button>
         </div>
+        {isSelectMode && (
+          <div className={styles.selectBar} role="status">
+            <span>{selectedCardIds.size} selected</span>
+            <button
+              type="button"
+              disabled={selectedCardIds.size === 0}
+              onClick={handleMarkSelectedNotUsable}
+            >
+              Mark as Not Usable
+            </button>
+          </div>
+        )}
         {isLoadingAllCards && <p className={styles.loading}>Loading all cards...</p>}
         {owned && (
           <button type="button" className={styles.unmark} onClick={() => unmarkOwned(dexNumber)}>
@@ -221,8 +263,17 @@ export function Picker({
                   <div
                     role="button"
                     tabIndex={0}
-                    className={isOwned ? styles.cardBodySelected : styles.cardBody}
-                    onClick={() => setPendingCard(card)}
+                    aria-pressed={isSelectMode ? selectedCardIds.has(card.id) : undefined}
+                    className={
+                      isSelectMode
+                        ? selectedCardIds.has(card.id)
+                          ? styles.cardBodyMultiSelected
+                          : styles.cardBody
+                        : isOwned
+                          ? styles.cardBodySelected
+                          : styles.cardBody
+                    }
+                    onClick={() => (isSelectMode ? toggleCardSelected(card.id) : setPendingCard(card))}
                     onKeyDown={(event) => {
                       // A keydown event bubbles up from whatever element is
                       // actually focused, regardless of CardImage's own
@@ -237,7 +288,11 @@ export function Picker({
                       if (event.target !== event.currentTarget) return;
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        setPendingCard(card);
+                        if (isSelectMode) {
+                          toggleCardSelected(card.id);
+                        } else {
+                          setPendingCard(card);
+                        }
                       }
                     }}
                   >
