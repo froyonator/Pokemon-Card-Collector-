@@ -10,10 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - A "Search" button and an "Upload image" control on the "no image available" placeholder for cards TCGdex has no image for. Search opens a TCGplayer site search for the card in a new tab; an uploaded image is resized and saved into your export/backup file, so it survives across devices.
+- Binder view: a page-spread layout of your collection, sized and shaped like a real trading card binder. Supports multiple named binders, each with its own card language (e.g. a Japanese binder alongside an English one), independent grid size and page count, and horizontal or vertical fill order.
+- Manual arrange mode in Binder view: drag and drop to reorder Pokemon, or mark a slot "Keep empty" to leave a gap, matching how you've actually organized a physical binder.
+- A persistent sidebar holding every Dex Grid control (generation, rarity group, and language filters, view mode, Refresh Data) plus, while Binder view is active, all binder settings — replacing the old top toolbar.
+- A "Not Usable" rarity group, off by default, plus a multi-select mode in the picker ("Select cards") to bulk-assign several cards to it at once. Cards in this group are hidden from the picker's available options until you turn the group back on.
+- Cards from sets where TCGdex has no Pokedex-number link on record (e.g. Ascended Heroes) are now found by "Show all cards", via a name-based fallback search alongside the usual dex-number lookup.
 
 ### Changed
 
 - Renamed the app from "Pokemon Card Collector" to "Collector's Ledger".
+- The Dex Grid's "owned" and "no card released yet" tile colors were gold and red, which read as too similar at a glance. Owned is now a distinct green; unavailable is now a neutral grey.
+- Fixed the Manage Groups panel rendering behind the Dex Grid instead of on top of it after the sidebar was introduced.
+
+### Removed
+
+- Market price display and currency conversion (the "Refresh Market Prices" action, price columns, and the currency selector). May return in a future release; removed for now to focus on core collection-tracking features.
+
+### Fixed
+
+- A user-uploaded replacement image for a card with no real TCGdex image now shows up in Card view, not just inside the picker.
 
 ## [0.1.0] - 2026-07-11
 
