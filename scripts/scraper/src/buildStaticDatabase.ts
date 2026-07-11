@@ -1,6 +1,12 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  loadFallbackAssetIndexes,
+  resolveCardAssets,
+  type FallbackAssetIndexes,
+  type ResolvedAssets,
+} from './resolveCardAssets';
 
 // Mirrors src/types/index.ts's CardRecord in the main app EXACTLY -- this
 // script's whole purpose is to produce static JSON the app can parse
@@ -19,6 +25,13 @@ export interface CardRecord {
   rarity: string;
   imageBase: string;
   language: string;
+  // Optional: populated by resolveCardAssets when it found a better hosted
+  // image (or, for Japanese, a better name) than this card's own scraped
+  // data -- see that module for the full resolution rules. Left undefined
+  // (and so omitted from the written JSON, same as any other undefined
+  // property) whenever it had nothing better to offer.
+  hostedThumbUrl?: string;
+  hostedFullUrl?: string;
 }
 
 // The subset of a snapshot's record.json fields this script actually reads.
@@ -89,6 +102,21 @@ export function recordToCardRecords(record: TcgdexSnapshotRecord): CardRecord[] 
   return cards;
 }
 
+/**
+ * Pure transform: merges a resolveCardAssets result onto a CardRecord,
+ * producing the exact final shape written to public/data/cards/*.json.
+ * Every field ResolvedAssets left undefined passes `card` through
+ * unchanged -- this never introduces an explicit `undefined` value for a
+ * field the resolver had nothing better to offer for.
+ */
+export function mergeResolvedAssets(card: CardRecord, resolved: ResolvedAssets): CardRecord {
+  const merged: CardRecord = { ...card };
+  if (resolved.thumbUrl !== undefined) merged.hostedThumbUrl = resolved.thumbUrl;
+  if (resolved.fullUrl !== undefined) merged.hostedFullUrl = resolved.fullUrl;
+  if (resolved.resolvedName !== undefined) merged.name = resolved.resolvedName;
+  return merged;
+}
+
 /** Recursively collects every `record.json` path under `dir`. */
 async function findRecordFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -120,7 +148,8 @@ export interface LanguageBuildStats {
 async function buildLanguage(
   language: string,
   snapshotDirName: string,
-  outputDir: string
+  outputDir: string,
+  fallbackIndexes: FallbackAssetIndexes
 ): Promise<LanguageBuildStats> {
   const languageDir = path.join('data', snapshotDirName, language);
   const recordFiles = await findRecordFiles(languageDir);
@@ -144,7 +173,11 @@ async function buildLanguage(
 
     const cards = recordToCardRecords(raw as TcgdexSnapshotRecord);
     for (const card of cards) {
-      (grouped[card.dexNumber] ??= []).push(card);
+      // Merges in a better hosted image (and, for Japanese, a better name)
+      // when one is available -- see resolveCardAssets.ts and
+      // mergeResolvedAssets above.
+      const resolvedCard = mergeResolvedAssets(card, resolveCardAssets(card, fallbackIndexes));
+      (grouped[resolvedCard.dexNumber] ??= []).push(resolvedCard);
       cardsEmitted++;
     }
   }
@@ -192,9 +225,14 @@ async function main(): Promise<void> {
   const outputDir = path.resolve(process.cwd(), '..', '..', 'public', 'data', 'cards');
   await mkdir(outputDir, { recursive: true });
 
+  // Loaded once for the whole run, not once per card -- every language's
+  // build below shares these same two indexes.
+  console.log('Loading cross-source fallback asset indexes...');
+  const fallbackIndexes = await loadFallbackAssetIndexes(path.resolve(process.cwd(), 'data'));
+
   let grandTotalBytes = 0;
   for (const { language, snapshotDirName } of LANGUAGE_SNAPSHOTS) {
-    const stats = await buildLanguage(language, snapshotDirName, outputDir);
+    const stats = await buildLanguage(language, snapshotDirName, outputDir, fallbackIndexes);
     grandTotalBytes += stats.outputBytes;
   }
 

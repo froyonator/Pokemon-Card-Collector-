@@ -128,7 +128,7 @@ async function findRecordFiles(dir: string): Promise<string[]> {
 }
 
 /** Finds the most recently created snapshot directory (by name, which embeds an ISO timestamp) matching a prefix. */
-async function findLatestSnapshotDir(dataDir: string, prefix: string): Promise<string> {
+export async function findLatestSnapshotDir(dataDir: string, prefix: string): Promise<string> {
   const entries = await readdir(dataDir, { withFileTypes: true });
   const matches = entries
     .filter((e) => e.isDirectory() && e.name.startsWith(prefix))
@@ -145,12 +145,12 @@ async function findLatestSnapshotDir(dataDir: string, prefix: string): Promise<s
   return path.join(dataDir, matches[matches.length - 1]);
 }
 
-interface PkmnCardsIndex {
+export interface PkmnCardsIndex {
   bySetAndLocal: Map<string, Map<string, PkmnCardsRecord[]>>;
   setKeys: Set<string>;
 }
 
-async function buildPkmncardsIndex(snapshotDir: string): Promise<PkmnCardsIndex> {
+export async function buildPkmncardsIndex(snapshotDir: string): Promise<PkmnCardsIndex> {
   const languageDir = path.join(snapshotDir, 'en');
   const files = await findRecordFiles(languageDir);
   const bySetAndLocal: Map<string, Map<string, PkmnCardsRecord[]>> = new Map();
@@ -172,12 +172,12 @@ async function buildPkmncardsIndex(snapshotDir: string): Promise<PkmnCardsIndex>
   return { bySetAndLocal, setKeys };
 }
 
-interface ArtofpkmIndex {
+export interface ArtofpkmIndex {
   bySet: Map<string, ArtOfPkmRecord[]>;
   setKeys: Set<string>;
 }
 
-async function buildArtofpkmIndex(snapshotDir: string): Promise<ArtofpkmIndex> {
+export async function buildArtofpkmIndex(snapshotDir: string): Promise<ArtofpkmIndex> {
   const languageDir = path.join(snapshotDir, 'ja');
   const files = await findRecordFiles(languageDir);
   const bySet: Map<string, ArtOfPkmRecord[]> = new Map();
@@ -205,7 +205,7 @@ interface MatchResult<TRecord> {
   record: TRecord | null;
 }
 
-function findPkmncardsMatch(index: PkmnCardsIndex, card: CardRecord): MatchResult<PkmnCardsRecord> {
+export function findPkmncardsMatch(index: PkmnCardsIndex, card: CardRecord): MatchResult<PkmnCardsRecord> {
   const normSet = normalizeAscii(card.setName);
   const setKey = resolveSetKey(index.setKeys, normSet);
   if (!setKey) return { kind: 'none', record: null };
@@ -235,7 +235,7 @@ function findPkmncardsMatch(index: PkmnCardsIndex, card: CardRecord): MatchResul
   return { kind: 'ambiguous', record: null };
 }
 
-function findArtofpkmMatch(
+export function findArtofpkmMatch(
   index: ArtofpkmIndex,
   card: CardRecord,
   dexNumber: number
@@ -309,7 +309,7 @@ function compareNamesJa(tcgdexName: string, artRecord: ArtOfPkmRecord): NameAgre
 }
 
 /** True if the name contains Latin/ASCII letters -- a strong signal our stored "Japanese" name is actually untranslated English. */
-function containsLatinLetters(value: string): boolean {
+export function containsLatinLetters(value: string): boolean {
   return /[A-Za-z]/.test(value);
 }
 

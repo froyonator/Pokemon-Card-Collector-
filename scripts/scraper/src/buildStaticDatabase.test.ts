@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { recordToCardRecords, type TcgdexSnapshotRecord } from './buildStaticDatabase';
+import { mergeResolvedAssets, recordToCardRecords, type CardRecord, type TcgdexSnapshotRecord } from './buildStaticDatabase';
+import type { ResolvedAssets } from './resolveCardAssets';
 
 const baseRecord: TcgdexSnapshotRecord = {
   id: 'me01-001',
@@ -73,5 +74,36 @@ describe('recordToCardRecords', () => {
     const mixedRecord: TcgdexSnapshotRecord = { ...baseRecord, dexId: [0, 151, 152, 999] };
     const cards = recordToCardRecords(mixedRecord);
     expect(cards.map((card) => card.dexNumber)).toEqual([151]);
+  });
+});
+
+describe('mergeResolvedAssets', () => {
+  const card: CardRecord = recordToCardRecords(baseRecord)[0];
+
+  it('leaves the card completely unchanged when the resolver found nothing better', () => {
+    expect(mergeResolvedAssets(card, {})).toEqual(card);
+  });
+
+  it('adds hostedThumbUrl and hostedFullUrl onto the final CardRecord shape when the resolver found a hosted image', () => {
+    const resolved: ResolvedAssets = {
+      thumbUrl: 'https://raw.githubusercontent.com/froyonator/pcc-assets-a/main/en/me01/me01-001/thumb.webp',
+      fullUrl: 'https://raw.githubusercontent.com/froyonator/pcc-assets-a/main/en/me01/me01-001/original.webp',
+    };
+    expect(mergeResolvedAssets(card, resolved)).toEqual({
+      ...card,
+      hostedThumbUrl: resolved.thumbUrl,
+      hostedFullUrl: resolved.fullUrl,
+    });
+  });
+
+  it('overrides name when the resolver supplied a resolvedName, leaving every other field untouched', () => {
+    const resolved: ResolvedAssets = { resolvedName: 'トランセル' };
+    expect(mergeResolvedAssets(card, resolved)).toEqual({ ...card, name: 'トランセル' });
+  });
+
+  it('does not mutate the original card passed in', () => {
+    const original = { ...card };
+    mergeResolvedAssets(card, { thumbUrl: 'https://example.invalid/thumb.webp' });
+    expect(card).toEqual(original);
   });
 });

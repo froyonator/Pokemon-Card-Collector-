@@ -10,6 +10,14 @@ export interface CardRecord {
   rarity: RarityTier;
   imageBase: string;
   language: string;
+  // Optional: only present when the static database build resolved a better
+  // hosted image than imageBase's own live-API-derived one (see the card
+  // asset resolver used by that build step). Undefined for every card built
+  // before this field existed, and for every card the resolver had nothing
+  // better to offer, so any existing caller ignoring these two fields keeps
+  // working unchanged.
+  hostedThumbUrl?: string;
+  hostedFullUrl?: string;
 }
 
 export type Condition =
