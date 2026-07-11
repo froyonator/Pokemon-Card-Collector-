@@ -10,7 +10,8 @@
     "snapshot-tcgdex": "tsx src/snapshotTcgdex.ts",
     "snapshot-pkmncards": "tsx src/snapshotPkmnCards.ts",
     "snapshot-artofpkm": "tsx src/snapshotArtOfPkm.ts",
-    "scrape-set": "tsx src/scrapeSet.ts"
+    "scrape-set": "tsx src/scrapeSet.ts",
+    "build-database": "tsx src/buildStaticDatabase.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
