@@ -7,6 +7,16 @@
   background: var(--color-surface-sunken);
 }
 
+.heading {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
 .row {
   display: flex;
   align-items: center;

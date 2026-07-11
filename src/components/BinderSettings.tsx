@@ -24,8 +24,8 @@ export function BinderSettings({
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
 
   return (
-    <fieldset className={styles.settings}>
-      <legend>Binder settings</legend>
+    <div className={styles.settings} role="group" aria-label="Binder settings">
+      <h3 className={styles.heading}>Binder settings</h3>
       <label className={styles.row}>
         Switch binder
         <select
@@ -108,6 +108,6 @@ export function BinderSettings({
           Reset arrangement
         </button>
       )}
-    </fieldset>
+    </div>
   );
 }
