@@ -2,8 +2,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 0 var(--space-1);
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
 }
 
 .ratioRow {
@@ -38,9 +38,13 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
+/* Shrunk from a 160px cap: with Binder Settings also open in the sidebar,
+   the sidebar's total content height was tall enough to push the whole
+   page into a body-level scrollbar (the sidebar has no scroll region of
+   its own -- it's position: sticky, sized to its content). */
 .gauge {
   width: 100%;
-  max-width: 160px;
+  max-width: 108px;
   height: auto;
 }
 

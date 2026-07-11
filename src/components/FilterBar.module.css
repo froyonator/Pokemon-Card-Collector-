@@ -1,8 +1,22 @@
+.filtersSection {
+  border: none;
+}
+
+.filtersSection > summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
 .bar {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6);
   align-items: flex-start;
+  margin-top: var(--space-2);
   margin-bottom: var(--space-6);
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-lg);

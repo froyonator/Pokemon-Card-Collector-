@@ -98,6 +98,10 @@ export function CollectionStats() {
         role="img"
         aria-label={`Collection progress gauge: ${Math.round(percent)} percent`}
       >
+        {/* A `title` HTML attribute on `<svg>` itself is not reliably shown
+            as a hover tooltip across browsers -- an SVG `<title>` child
+            element is the standard, cross-browser way to get one. */}
+        <title>{`Collection progress: ${Math.round(percent)}% (${stats.ownedCount} of ${stats.totalCount} owned)`}</title>
         <path d={backgroundArc} className={styles.gaugeTrack} fill="none" />
         {showProgressArc && <path d={progressArc} className={styles.gaugeFill} fill="none" />}
         <line

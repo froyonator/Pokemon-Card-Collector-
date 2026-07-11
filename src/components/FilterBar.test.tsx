@@ -22,14 +22,16 @@ beforeEach(() => {
 });
 
 describe('FilterBar', () => {
-  it('collapses the Generations and Card rarity groups sections by default', () => {
+  it('collapses the whole Filters section, and its Generations/Card rarity groups subsections, by default', () => {
     render(<FilterBar />);
+    expect(screen.getByText('Filters').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByText('Generations').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByText('Card rarity groups').closest('details')).not.toHaveAttribute('open');
   });
 
   it('toggles a rarity group off and on', async () => {
     render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
     await userEvent.click(screen.getByText('Card rarity groups'));
     const checkbox = screen.getByLabelText('Full Art');
     await userEvent.click(checkbox);
@@ -40,12 +42,14 @@ describe('FilterBar', () => {
 
   it('changes the language', async () => {
     render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'ja');
     expect(useAppStore.getState().language).toBe('ja');
   });
 
   it('opens the Manage Groups panel', async () => {
     render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
     await userEvent.click(screen.getByText('Card rarity groups'));
     await userEvent.click(screen.getByRole('button', { name: 'Manage groups' }));
     expect(screen.getByRole('dialog', { name: 'Manage rarity groups' })).toBeInTheDocument();
@@ -53,6 +57,7 @@ describe('FilterBar', () => {
 
   it('toggles a generation off and on', async () => {
     render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
     await userEvent.click(screen.getByText('Generations'));
     const checkbox = screen.getByLabelText('Generation 1 (Kanto)');
     expect(checkbox).toBeChecked();

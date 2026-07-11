@@ -11,6 +11,16 @@
   position: sticky;
   top: var(--space-4);
   align-self: flex-start;
+  /* Binder Settings (grid size picker, manual arrange, etc.) alongside
+     Filters/View can add up to more than a typical viewport's height. This
+     sidebar has no scroll region of its own by default, so that overflow
+     used to push the whole PAGE taller instead, creating a body-level
+     scrollbar. Bounding height to the viewport (minus this sticky element's
+     own top offset and a matching bottom margin) and scrolling internally
+     keeps the overflow contained to the sidebar, regardless of how tall any
+     future section grows. */
+  max-height: calc(100vh - var(--space-4) * 2);
+  overflow-y: auto;
   transition:
     width var(--transition-base),
     padding var(--transition-base);
