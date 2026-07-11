@@ -355,7 +355,7 @@ export const useAppStore = create<AppState>()(
       // -- but it exists so the *next* breaking change has a real hook to
       // extend instead of relying on shallow-merge luck again.
       version: 1,
-      migrate: (persistedState, _version): ReturnType<typeof partializeUserData> =>
+      migrate: (persistedState): ReturnType<typeof partializeUserData> =>
         persistedState as ReturnType<typeof partializeUserData>,
       // Wraps localStorage.setItem so a failed write (e.g. QuotaExceededError
       // from a large uploaded image) is logged instead of throwing uncaught.
