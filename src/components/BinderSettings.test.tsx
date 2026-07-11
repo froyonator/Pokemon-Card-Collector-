@@ -64,4 +64,17 @@ describe('BinderSettings', () => {
     expect(state.binders).toHaveLength(2);
     expect(state.activeBinderId).toBe(state.binders[1].id);
   });
+
+  it('places the Manual arrange toggle before the grid size / page count / fill direction controls', () => {
+    render(
+      <BinderSettings isManualArrangeActive={false} onToggleManualArrange={() => {}} />
+    );
+    const settingsRoot = screen.getByRole('group', { name: /binder settings/i }) ?? document.body;
+    const allText = settingsRoot.textContent ?? '';
+    const manualArrangeIndex = allText.indexOf('Manual arrange');
+    const pageCountIndex = allText.indexOf('Page count');
+    expect(manualArrangeIndex).toBeGreaterThan(-1);
+    expect(pageCountIndex).toBeGreaterThan(-1);
+    expect(manualArrangeIndex).toBeLessThan(pageCountIndex);
+  });
 });

@@ -43,6 +43,14 @@ export function BinderSettings({
       <button type="button" onClick={() => createBinder('New Binder', activeBinder.language)}>
         New binder
       </button>
+      <button type="button" aria-pressed={isManualArrangeActive} onClick={onToggleManualArrange}>
+        Manual arrange
+      </button>
+      {activeBinder.customOrder !== null && (
+        <button type="button" onClick={() => setBinderCustomOrder(activeBinder.id, null)}>
+          Reset arrangement
+        </button>
+      )}
       <label className={styles.row}>
         Binder name
         <input
@@ -100,14 +108,6 @@ export function BinderSettings({
           Vertical
         </button>
       </div>
-      <button type="button" aria-pressed={isManualArrangeActive} onClick={onToggleManualArrange}>
-        Manual arrange
-      </button>
-      {activeBinder.customOrder !== null && (
-        <button type="button" onClick={() => setBinderCustomOrder(activeBinder.id, null)}>
-          Reset arrangement
-        </button>
-      )}
     </div>
   );
 }
