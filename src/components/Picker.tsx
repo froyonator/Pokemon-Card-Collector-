@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { loadAllPrintingsForDex } from '../state/loadCardData';
 import { resizeImageForUpload } from '../state/imageResize';
 import { buildTcgplayerSearchUrl } from '../state/tcgplayerSearch';
@@ -95,6 +95,13 @@ export function Picker({
   const toggleWishlist = useAppStore((s) => s.toggleWishlist);
   const storeLanguage = useAppStore((s) => s.language);
   const language = languageOverride ?? storeLanguage;
+  // Kept in sync with `language` on every render (a plain assignment during
+  // render, not a useEffect, so it's never a tick behind) so the "Show all
+  // cards" fetch continuation in handleToggleShowAll below can tell, at the
+  // exact moment it resolves no matter how much later, whether the language
+  // it was fetched for is still the one currently in effect.
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const groups = useAppStore((s) => s.groups);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const setCardOverride = useAppStore((s) => s.setCardOverride);
@@ -154,13 +161,38 @@ export function Picker({
     const next = !showAllCards;
     setShowAllCards(next);
     if (next && allCards === null) {
+      const requestedLanguage = language;
       setIsLoadingAllCards(true);
-      const fetched = await loadAllPrintingsForDex(language, dexNumber, pokemonName);
+      const fetched = await loadAllPrintingsForDex(requestedLanguage, dexNumber, pokemonName);
+      // The effective language can change while this fetch is in flight --
+      // e.g. opened from the ordinary Dex Grid (no languageOverride), so
+      // `language` tracks the global store, and the user changes it via the
+      // sidebar before this resolves (nothing traps focus inside the Picker
+      // overlay). The language-change effect below already reset local
+      // state back to "not yet shown all" for whatever language is now
+      // current; applying this stale result on top of that would merge
+      // full-print-history cards fetched under the OLD language with the
+      // `cards` prop's now-current-language curated cards into one
+      // mixed-language list. Discard it instead.
+      if (languageRef.current !== requestedLanguage) return;
       setAllCards(fetched);
       onAllCardsLoaded?.();
       setIsLoadingAllCards(false);
     }
   }
+
+  // If the effective language changes (the store's global language, or a
+  // binder's languageOverride) while "Show all cards" is on or its fetch is
+  // still in flight, any full-print-history results already merged in (or
+  // about to be merged in, by the stale-fetch guard above) belong to the OLD
+  // language. Reset back to the initial "not yet shown all" state so the
+  // grid never displays a language-mismatched merge, even before any new
+  // fetch for the new language is requested.
+  useEffect(() => {
+    setShowAllCards(false);
+    setAllCards(null);
+    setIsLoadingAllCards(false);
+  }, [language]);
 
   // "Show all cards" must never make a card the user could already see
   // disappear: the curated `cards` prop and the fetched full print history

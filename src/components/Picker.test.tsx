@@ -510,6 +510,87 @@ describe('Picker', () => {
     expect(fetchImpl.mock.calls.every(([url]) => url.includes('/ja/'))).toBe(true);
   });
 
+  // Regression test for a confirmed bug: opened from the ordinary Dex Grid
+  // (no languageOverride), `language` tracks the global store reactively.
+  // Nothing traps focus inside the Picker overlay, so the language selector
+  // is reachable (e.g. via keyboard Tab) while a "Show all cards" fetch is
+  // still in flight. Before the fix, handleToggleShowAll's closure captured
+  // the OLD language and unconditionally applied the fetch result on
+  // resolution, merging full-print-history cards fetched under the OLD
+  // language with the curated `cards` prop's NEW-language cards into one
+  // mixed-language list.
+  it('discards a "Show all cards" fetch result if the language changes before it resolves, instead of merging it into the new language\'s cards', async () => {
+    useAppStore.setState({ language: 'en' });
+    let resolveDexList: (value: Response) => void = () => {};
+    const fetchImpl = vi.fn((url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return Promise.resolve(
+          jsonResponse({
+            id: 'svp-044',
+            localId: '044',
+            name: 'Charizard',
+            rarity: 'Promo',
+            set: { id: 'svp', name: 'SVP Black Star Promos' },
+          })
+        );
+      }
+      if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+        return new Promise<Response>((resolve) => {
+          resolveDexList = resolve;
+        });
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
+    expect(screen.getByText(/loading all cards/i)).toBeInTheDocument();
+
+    // The language selector changes (e.g. via the sidebar, still reachable
+    // by keyboard while this overlay is open) while the 'en' fetch above is
+    // still unresolved.
+    useAppStore.setState({ language: 'ja' });
+    await waitFor(() => {
+      expect(screen.queryByText(/loading all cards/i)).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /show all cards/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+
+    // Only now does the stale 'en' fetch resolve, and its detail fan-out run.
+    resolveDexList(
+      jsonResponse([
+        {
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charizard',
+          image: 'https://assets.tcgdex.net/en/sv/svp/044',
+        },
+      ])
+    );
+    await waitFor(() => {
+      expect(fetchImpl.mock.calls.some(([url]) => url.includes('/cards/svp-044'))).toBe(true);
+    });
+    // Flush the rest of the stale fetch's continuation so that, if the bug
+    // were present, its (incorrect) setAllCards call would have landed by now.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The stale 'en' full-print-history card must never appear...
+    expect(screen.queryByAltText(/charizard from svp/i)).not.toBeInTheDocument();
+    // ...the toggle must still read as off rather than falsely claiming all
+    // cards are shown for a fetch that was actually for a different
+    // language...
+    expect(screen.getByRole('button', { name: /show all cards/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    // ...and no mixed-language merge is displayed: only the curated 'en'
+    // card the Picker was opened with is visible.
+    expect(screen.getByAltText(/charizard ex from 151/i)).toBeInTheDocument();
+  });
+
   describe('enlarge / zoom overlay', () => {
     it('clicking Enlarge opens the overlay showing that card', async () => {
       render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
