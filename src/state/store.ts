@@ -190,19 +190,22 @@ export const useAppStore = create<AppState>()(
             hasUnsavedChanges: true,
           })),
         setBinderSlotCustomImage: (binderId, slotIndex, customImage) =>
-          set((state) => ({
-            binders: state.binders.map((binder) => {
-              if (binder.id !== binderId) return binder;
-              const order = binder.customOrder;
-              if (!order || !order[slotIndex] || order[slotIndex].type !== 'blank') return binder;
-              const nextOrder = [...order];
-              nextOrder[slotIndex] = customImage
-                ? { type: 'blank', customImage }
-                : { type: 'blank' };
-              return { ...binder, customOrder: nextOrder };
-            }),
-            hasUnsavedChanges: true,
-          })),
+          set((state) => {
+            const binder = state.binders.find((b) => b.id === binderId);
+            const order = binder?.customOrder;
+            if (!order || !order[slotIndex] || order[slotIndex].type !== 'blank') return {};
+            return {
+              binders: state.binders.map((b) => {
+                if (b.id !== binderId || !b.customOrder) return b;
+                const nextOrder = [...b.customOrder];
+                nextOrder[slotIndex] = customImage
+                  ? { type: 'blank', customImage }
+                  : { type: 'blank' };
+                return { ...b, customOrder: nextOrder };
+              }),
+              hasUnsavedChanges: true,
+            };
+          }),
 
         setUploadedImage: (cardId, dataUri) =>
           set((state) => {

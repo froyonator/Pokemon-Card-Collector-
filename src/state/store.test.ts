@@ -419,7 +419,7 @@ describe('binders', () => {
 });
 
 describe('setBinderSlotCustomImage', () => {
-  it('sets a custom image on the blank slot at the given sequence index in a binder\'s customOrder', () => {
+  it("sets a custom image on the blank slot at the given sequence index in a binder's customOrder", () => {
     useAppStore.setState({
       binders: [
         {
@@ -491,6 +491,32 @@ describe('setBinderSlotCustomImage', () => {
       zoom: 1,
     });
     expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+
+  it('does not set hasUnsavedChanges for a no-op call (bad binderId, out-of-range slotIndex, or a non-blank slot)', () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [{ type: 'pokemon', dexNumber: 1 }, { type: 'blank' }],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    const image = { dataUri: 'data:image/jpeg;base64,ABC', offsetX: 0, offsetY: 0, zoom: 1 };
+
+    useAppStore.getState().setBinderSlotCustomImage('nonexistent', 1, image);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+
+    useAppStore.getState().setBinderSlotCustomImage('a', 99, image);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+
+    useAppStore.getState().setBinderSlotCustomImage('a', 0, image);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
 });
 
