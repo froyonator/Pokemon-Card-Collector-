@@ -1,8 +1,22 @@
+/* height: 100% + align-items: stretch (not the previous center) is required
+   for BinderView.tsx's ResizeObserver-driven measured slot sizing
+   (src/state/binderSlotSizing.ts) to actually work: .spread below is what
+   gets measured, and both its width AND height need to come from something
+   OTHER than its own children's rendered size, or the measurement is
+   circular (children's size depends on the measurement, which depends on
+   the children's size) and collapses toward zero instead of settling on a
+   true 5:7 card. align-items: stretch gives .spread a real width (the full
+   width of .binder, itself the full width of its ancestor chain -- see
+   App.module.css's .dexGridPanel and DexGrid.module.css's .panel); height:
+   100% (resolved against that same ancestor chain) gives .spread's own
+   flex: 1 below something real to grow into for height. */
 .binder {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
 }
 
 .spread {
@@ -11,6 +25,21 @@
   max-width: 100%;
   overflow-x: auto;
   perspective: 2400px;
+  /* flex: 1 (not an intrinsic/content height) is the other half of the
+     height fix described above .binder -- it claims the remaining vertical
+     space in .binder after .nav, instead of shrinking to fit its own
+     (measurement-dependent) children. min-height: 0 lets it actually shrink
+     below its children's hypothetical content size, which a flex item's
+     default min-height: auto would otherwise prevent. align-items/
+     justify-content: center keep pages vertically centered (a .page's own
+     height stays exactly its computed grid tracks, not stretched to fill
+     .spread) and horizontally centered when .spread is wider than its
+     pages' combined content (e.g. a single first page, or any spread
+     narrower than the available width). */
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
 }
 
 .page {

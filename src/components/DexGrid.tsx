@@ -246,7 +246,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
     : [];
 
   return (
-    <div>
+    <div className={styles.panel}>
       {dexEntries.length === 0 ? (
         <p className={styles.emptyState}>
           Select at least one generation in the filter bar to see Pokémon here.

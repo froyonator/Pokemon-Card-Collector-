@@ -17,6 +17,23 @@
   min-height: 0;
 }
 
+/* Gives the Dex Grid panel (and, through it, BinderView's own .binder/.spread
+   chain) a real, non-auto height to resolve percentage heights against.
+   .main above already has a definite height (stretched to match .shell's
+   own height by .shell's align-items: stretch), but a plain block child
+   with no height set does NOT automatically inherit that -- CSS only
+   propagates a percentage height down through a chain of elements that each
+   explicitly opt in. Without this, BinderView's measured-slot-sizing
+   (src/state/binderSlotSizing.ts) has nothing stable to measure: .spread's
+   height would still be driven by its own content, which is itself driven
+   by the measurement -- a circular content<->measurement loop that
+   collapses to a near-zero degenerate size instead of a true 5:7 card.
+   See DexGrid.module.css's matching .panel rule and
+   BinderView.module.css's .binder/.spread for the rest of this chain. */
+.dexGridPanel {
+  height: 100%;
+}
+
 .floatingControls {
   position: fixed;
   right: var(--space-5);

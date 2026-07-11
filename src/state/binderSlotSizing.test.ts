@@ -17,6 +17,16 @@ describe('computeSlotSize', () => {
     // Width-constrained: (600 - 8) / 2 = 296 wide -> height = 296 * 7/5 = 414.4
     // Height-constrained: (900 - 8) / 2 = 446 tall -> width = 446 * 5/7 = 318.57
     // Width-constrained wins here (smaller).
+    //
+    // Deliberately NOT the plan's literal rows: 3, columns: 2 fixture: with
+    // that input, widthConstrainedHeight (414.4) is NOT <= heightConstrainedHeight
+    // (294.67), so computeSlotSize's own reference implementation returns the
+    // HEIGHT-constrained candidate (~210.48 x ~294.67), not the (296, 414.4)
+    // the plan's test asserts -- the plan's own fixture is internally
+    // inconsistent with its own reference implementation. rows/columns here
+    // were changed to 2/2 (the smallest input that actually exercises the
+    // "width-constrained wins" branch this test's name describes) rather than
+    // reproducing the plan's bug.
     const size = computeSlotSize({ containerWidth: 600, containerHeight: 900, rows: 2, columns: 2, gap: 8 });
     expect(size.width).toBeCloseTo(296, 1);
     expect(size.height).toBeCloseTo(414.4, 1);

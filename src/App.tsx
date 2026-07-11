@@ -122,7 +122,7 @@ export default function App() {
             effect (and re-parsing the full card cache blob) on every tab
             round-trip, and preserves its own local UI state (the open
             Picker) across tab switches instead of resetting it every time. */}
-        <div hidden={activeTab !== 'grid'}>
+        <div hidden={activeTab !== 'grid'} className={styles.dexGridPanel}>
           <DexGrid
             view={view}
             isManualArrangeActive={isManualArrangeActive}

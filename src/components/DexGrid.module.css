@@ -37,6 +37,16 @@
   color: var(--color-accent-contrast);
 }
 
+/* Continues the height chain from App.module.css's .dexGridPanel down to
+   BinderView's own .binder/.spread, so BinderView's ResizeObserver has a
+   real, externally-derived size to measure instead of a circular
+   content<->measurement loop. Harmless on the sprite/card grid (non-binder)
+   view -- that view's content scrolls normally and doesn't care whether its
+   parent is taller than its own content. */
+.panel {
+  height: 100%;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
