@@ -1109,8 +1109,6 @@ class MockResizeObserver {
 vi.stubGlobal('ResizeObserver', MockResizeObserver);
 ```
 
-**Also fix a separate, real page-turn bug while you're in this file (in scope for this task, not extra work to strip out):** user-reported that clicking "Next page" makes both the old and new pages visibly shift sideways as well as flip, instead of the pages simply overlapping in place while they rotate. Root cause: `.spread` is `display: flex` with no `position: relative`, and `<AnimatePresence>` (wrapping the `currentSpread.map(...)`) keeps an exiting page mounted as a normal flex sibling for the duration of its exit animation — since `computeSpreadPageIndices` produces non-overlapping spreads, advancing pages means all the old page(s) and all the new page(s) briefly coexist as flex siblings, shoving each other sideways. Fix: change `<AnimatePresence>` to `<AnimatePresence mode="popLayout">` (the one line in the JSX right above `{currentSpread.map((pageIndex, i) => {`) — this takes an exiting child out of normal flex flow the instant it starts exiting, so it can no longer push its siblings. No CSS changes needed for this part; `mode="popLayout"` is a `framer-motion` built-in specifically for this "exiting item shifts its siblings" problem, and it doesn't conflict with Task 4's later `flex: 1` sizing since it only changes how *exiting* elements behave, not layout of elements that are entering/staying. If this change is already present in the working tree when you start, keep it — do not revert it as unrequested.
-
 - [ ] **Step 9: Run the full test suite, typecheck, and lint; fix anything that breaks**
 
 Run: `npm test -- --run`, `npm run typecheck`, `npm run lint`
