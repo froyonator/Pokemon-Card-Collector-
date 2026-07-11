@@ -51,4 +51,28 @@ describe('WishlistTable', () => {
     render(<WishlistTable />);
     expect(screen.getByText(/wishlist is empty/i)).toBeInTheDocument();
   });
+
+  it("renders a card's hostedThumbUrl instead of the live-API-constructed URL when present", async () => {
+    setCachedCards('en', 6, [
+      {
+        ...charizardCard,
+        hostedThumbUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp',
+      },
+    ]);
+    render(<WishlistTable />);
+    await screen.findByText('Charizard');
+    expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+    );
+  });
+
+  it('renders exactly as before (the live-API-constructed URL) when a card has no hostedThumbUrl', async () => {
+    render(<WishlistTable />);
+    await screen.findByText('Charizard');
+    expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+    );
+  });
 });

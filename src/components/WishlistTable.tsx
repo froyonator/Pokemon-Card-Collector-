@@ -66,7 +66,12 @@ export function WishlistTable() {
             <td>{row.pokemonName}</td>
             <td>
               {row.card && (
-                <CardImage imageBase={row.card.imageBase} alt={row.card.name} width={48} />
+                <CardImage
+                  imageBase={row.card.imageBase}
+                  hostedThumbUrl={row.card.hostedThumbUrl}
+                  alt={row.card.name}
+                  width={48}
+                />
               )}
             </td>
             <td>

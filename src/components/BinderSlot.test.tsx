@@ -83,6 +83,39 @@ describe('BinderSlot', () => {
     expect(screen.getByAltText('Bulbasaur card')).toBeInTheDocument();
   });
 
+  it('renders ownedCardHostedFullUrl instead of the live-API-constructed URL when present', () => {
+    render(
+      <BinderSlot
+        entry={{ type: 'pokemon', dexNumber: 1 }}
+        pokemonName="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        ownedCardHostedFullUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur card')).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp'
+    );
+  });
+
+  it('renders exactly as before (the live-API-constructed URL) when ownedCardHostedFullUrl is absent', () => {
+    render(
+      <BinderSlot
+        entry={{ type: 'pokemon', dexNumber: 1 }}
+        pokemonName="Bulbasaur"
+        spriteUrl="https://example.com/1.png"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur card')).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
+    );
+  });
+
   it('shows a user-uploaded replacement image for an owned card with no real image', () => {
     render(
       <BinderSlot

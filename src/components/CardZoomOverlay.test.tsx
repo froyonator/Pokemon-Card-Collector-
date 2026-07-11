@@ -23,6 +23,26 @@ const noImageCard: CardRecord = {
 };
 
 describe('CardZoomOverlay', () => {
+  it('renders card.hostedFullUrl instead of the live-API-constructed URL when present', () => {
+    const hostedCard: CardRecord = {
+      ...card,
+      hostedFullUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp',
+    };
+    render(<CardZoomOverlay card={hostedCard} uploadedImageUri={undefined} onClose={() => {}} />);
+    expect(screen.getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp'
+    );
+  });
+
+  it('renders exactly as before (the live-API-constructed URL) when a card has no hostedFullUrl', () => {
+    render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+    expect(screen.getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
+    );
+  });
+
   it('renders the card image large', () => {
     render(
       <CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />

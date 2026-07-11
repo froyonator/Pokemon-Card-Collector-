@@ -267,6 +267,7 @@ const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function Bin
               pokemonName={entry?.type === 'pokemon' ? nameByDexNumber.get(entry.dexNumber) : undefined}
               spriteUrl={entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined}
               ownedCardImageBase={ownedCard?.imageBase}
+              ownedCardHostedFullUrl={ownedCard?.hostedFullUrl}
               uploadedImageUri={
                 entry?.type === 'pokemon' ? uploadedImageUriByDexNumber.get(entry.dexNumber) : undefined
               }

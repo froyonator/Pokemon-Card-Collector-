@@ -306,7 +306,7 @@ export function Picker({
               // load after the fact) is runtime-only state private to
               // CardImage, not tracked here, since it'd need new plumbing
               // for what's otherwise a rare CDN-failure edge case.
-              const hasNoImage = !card.imageBase;
+              const hasNoImage = !card.imageBase && !card.hostedThumbUrl;
               const baseCardBodyClass = isSelectMode
                 ? selectedCardIds.has(card.id)
                   ? styles.cardBodyMultiSelected
@@ -389,6 +389,7 @@ export function Picker({
                       >
                         <CardImage
                           imageBase={card.imageBase}
+                          hostedThumbUrl={card.hostedThumbUrl}
                           uploadedImageUri={uploadedImages[card.id]}
                           alt={`${card.name} from ${card.setName}`}
                           className={styles.cardImage}

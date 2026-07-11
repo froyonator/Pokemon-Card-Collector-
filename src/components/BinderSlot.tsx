@@ -32,6 +32,12 @@ export interface BinderSlotProps {
   // card instead of the black/hover-reveal-sprite placeholder -- a binder
   // slot's whole point is to look like the real card once you've filled it.
   ownedCardImageBase?: string;
+  // A pre-resolved hosted full-resolution URL for the owned card, taking
+  // priority over the live-API imageBase construction whenever it's
+  // present -- see CardImage's own hostedFullUrl prop, which this passes
+  // straight through (full-resolution, matching the preferHighQuality this
+  // slot's own CardImage call already uses).
+  ownedCardHostedFullUrl?: string;
   // A user-uploaded replacement image for the owned card (see CardImage's
   // own uploadedImageUri prop) -- only relevant when isOwned; unrelated to
   // a blank slot's own `customImage` (that's the crop-editor filler-image
@@ -77,6 +83,7 @@ export const BinderSlot = memo(function BinderSlot({
   pokemonName,
   spriteUrl,
   ownedCardImageBase,
+  ownedCardHostedFullUrl,
   uploadedImageUri,
   onClick,
   isManualArrangeActive = false,
@@ -204,6 +211,7 @@ export const BinderSlot = memo(function BinderSlot({
         {isOwned ? (
           <CardImage
             imageBase={ownedCardImageBase}
+            hostedFullUrl={ownedCardHostedFullUrl}
             uploadedImageUri={uploadedImageUri}
             alt={`${pokemonName} card`}
             className={styles.cardImage}

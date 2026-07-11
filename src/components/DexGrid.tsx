@@ -468,6 +468,7 @@ export function DexGrid({
                   state={state}
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}
+                  ownedCardHostedThumbUrl={ownedCard?.hostedThumbUrl}
                   uploadedImageUri={ownedCard ? uploadedImages[ownedCard.id] : undefined}
                   onEnlarge={ownedCard ? handleTileEnlarge : undefined}
                   onClick={handleTileClick}

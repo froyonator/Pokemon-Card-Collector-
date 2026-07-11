@@ -503,6 +503,37 @@ describe('DexGrid', () => {
     expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,UPLOADED');
   });
 
+  it("renders an owned card's hostedThumbUrl on the Card-view tile instead of the live-API-constructed URL when present", async () => {
+    setCachedCards('en', 6, [
+      {
+        id: 'sv03.5-199',
+        name: 'Charizard ex',
+        dexNumber: 6,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Special illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        hostedThumbUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({
+      owned: {
+        6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '2024-01-01' },
+      },
+    });
+
+    render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /^#\d+ .*charizard/i });
+    const img = within(tile).getByRole('img', { name: /charizard card/i });
+    expect(img).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+    );
+  });
+
   it('clicking Enlarge on an owned Card-view tile opens the zoom overlay for that card, without also opening the Picker', async () => {
     setCachedCards('en', 6, [
       {

@@ -136,6 +136,43 @@ describe('Tile', () => {
     expect(cardImg.className).not.toContain('spriteImg');
   });
 
+  it('renders ownedCardHostedThumbUrl instead of the live-API-constructed URL when present', () => {
+    render(
+      <Tile
+        dexNumber={6}
+        name="Charizard"
+        spriteUrl="https://example.com/6.png"
+        state="owned"
+        view="card"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        ownedCardHostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Charizard card')).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+    );
+  });
+
+  it('renders exactly as before (the live-API-constructed URL) when ownedCardHostedThumbUrl is absent', () => {
+    render(
+      <Tile
+        dexNumber={6}
+        name="Charizard"
+        spriteUrl="https://example.com/6.png"
+        state="owned"
+        view="card"
+        ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Charizard card')).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+    );
+  });
+
   it('falls back to the sprite image in card view when no owned card image is provided', () => {
     render(
       <Tile

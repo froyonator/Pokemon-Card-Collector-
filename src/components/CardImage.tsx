@@ -30,6 +30,18 @@ export interface CardImageProps {
    *  if a stale value happens to still be set for this card id (e.g.
    *  TCGdex later gained a real image after the user had uploaded one). */
   uploadedImageUri?: string;
+  /** A pre-resolved hosted thumbnail URL for this card, taking priority over
+   *  the imageBase-based construction below whenever it's present (see the
+   *  card asset resolver used by the static database build step, which
+   *  supplies this for a card that step found a better hosted copy for).
+   *  Ignored when preferHighQuality is set (hostedFullUrl takes over
+   *  instead). Undefined for a card the build step had nothing better to
+   *  offer, in which case rendering falls back to the imageBase-based
+   *  construction exactly as it did before this prop existed. */
+  hostedThumbUrl?: string;
+  /** Same as hostedThumbUrl, but for the full-resolution variant used when
+   *  preferHighQuality is set. */
+  hostedFullUrl?: string;
   // When provided, the "no image available" placeholder also renders a
   // "Search" button (calling this) and an "Upload image" file control. When
   // omitted, the placeholder renders exactly as it does today -- callers
@@ -73,24 +85,33 @@ export function CardImage({
   onUploadImage,
   onRemoveUploadedImage,
   preferHighQuality = false,
+  hostedThumbUrl,
+  hostedFullUrl,
 }: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // A mounted CardImage instance can be handed a different imageBase later
-  // (e.g. DexGrid keeps its Tile components mounted across tab switches, and
-  // a user can mark a different card owned for the same Pokemon). Without
-  // this reset, retry/exhausted state from the PREVIOUS card would leak into
-  // the new one: an image that would have loaded fine at low/webp could
-  // stay stuck on a stale "high/png" variant, or worse, on the placeholder
-  // forever, even though the new card has a perfectly good image.
+  // The one hosted URL relevant to this render, matching whichever variant
+  // set preferHighQuality selects below -- undefined (falling through to
+  // the imageBase-based construction) unless the resolver actually found a
+  // better hosted copy for this exact quality tier.
+  const hostedUrl = preferHighQuality ? hostedFullUrl : hostedThumbUrl;
+
+  // A mounted CardImage instance can be handed a different imageBase (or
+  // hostedUrl) later (e.g. DexGrid keeps its Tile components mounted across
+  // tab switches, and a user can mark a different card owned for the same
+  // Pokemon). Without this reset, retry/exhausted state from the PREVIOUS
+  // card would leak into the new one: an image that would have loaded fine
+  // at low/webp could stay stuck on a stale "high/png" variant, or worse, on
+  // the placeholder forever, even though the new card has a perfectly good
+  // image.
   useEffect(() => {
     setVariantIndex(0);
     setExhausted(false);
-  }, [imageBase]);
+  }, [imageBase, hostedUrl]);
 
-  const hasNoImage = !imageBase || exhausted;
+  const hasNoImage = (!imageBase && !hostedUrl) || exhausted;
 
   function handleUploadButtonClick() {
     fileInputRef.current?.click();
@@ -190,6 +211,24 @@ export function CardImage({
           )}
         </div>
       </div>
+    );
+  }
+
+  // A resolved hosted URL is preferred outright over the imageBase-based
+  // construction below -- there's only one hosted candidate per quality
+  // tier (no further hosted variant to retry into), so a load failure here
+  // falls straight through to the same placeholder/uploaded-image handling
+  // as an exhausted imageBase, rather than into the variant chain below.
+  if (hostedUrl) {
+    return (
+      <img
+        src={hostedUrl}
+        alt={alt}
+        className={className}
+        width={width}
+        loading={loading}
+        onError={() => setExhausted(true)}
+      />
     );
   }
 

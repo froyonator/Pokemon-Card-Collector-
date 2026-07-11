@@ -225,4 +225,116 @@ describe('CardImage', () => {
     await userEvent.keyboard(' ');
     expect(onSearchImage).toHaveBeenCalledTimes(2);
   });
+
+  describe('hosted image URLs', () => {
+    it('renders hostedThumbUrl instead of the imageBase-constructed URL when both are present', () => {
+      render(
+        <CardImage
+          imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      const img = screen.getByAltText('Charizard ex');
+      expect(img).toHaveAttribute(
+        'src',
+        'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+      );
+    });
+
+    it('renders hostedThumbUrl even when imageBase is empty (a fallback-only match with no primary image)', () => {
+      render(
+        <CardImage
+          imageBase=""
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+        'src',
+        'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+      );
+      expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
+    });
+
+    it('falls back to the imageBase-constructed URL, completely unchanged, when no hosted URL is present', () => {
+      render(
+        <CardImage imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199" alt="Charizard ex" />
+      );
+      expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+        'src',
+        'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+      );
+    });
+
+    it('prefers hostedFullUrl (not hostedThumbUrl) when preferHighQuality is set', () => {
+      render(
+        <CardImage
+          imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          hostedFullUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp"
+          alt="Charizard ex"
+          preferHighQuality
+        />
+      );
+      expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+        'src',
+        'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp'
+      );
+    });
+
+    it('ignores hostedThumbUrl when preferHighQuality is set and hostedFullUrl is absent, falling back to the imageBase construction', () => {
+      render(
+        <CardImage
+          imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+          preferHighQuality
+        />
+      );
+      expect(screen.getByAltText('Charizard ex')).toHaveAttribute(
+        'src',
+        'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
+      );
+    });
+
+    it('falls to the placeholder (not the imageBase variant chain) when the hosted image itself fails to load', () => {
+      render(
+        <CardImage
+          imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      const img = screen.getByAltText('Charizard ex');
+      fireEvent.error(img);
+      expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+      expect(screen.queryByAltText('Charizard ex')).not.toBeInTheDocument();
+    });
+
+    it('resets stale exhausted state when hostedThumbUrl changes on an already-mounted instance', () => {
+      const { rerender } = render(
+        <CardImage
+          imageBase=""
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      fireEvent.error(screen.getByAltText('Charizard ex'));
+      expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+
+      rerender(
+        <CardImage
+          imageBase=""
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/ja12/74/thumb.webp"
+          alt="Pikachu"
+        />
+      );
+      expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
+      expect(screen.getByAltText('Pikachu')).toHaveAttribute(
+        'src',
+        'https://raw.githubusercontent.com/example/repo/main/en/ja12/74/thumb.webp'
+      );
+    });
+  });
 });

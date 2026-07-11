@@ -18,7 +18,7 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // and no uploaded fallback is just "No image available" text, not
   // something worth tilting. An uploaded image, once it's the thing being
   // shown, is real card art from the tilt effect's point of view.
-  const hasNoImage = !card.imageBase && !uploadedImageUri;
+  const hasNoImage = !card.imageBase && !card.hostedFullUrl && !uploadedImageUri;
   const tilt = useCardTilt({ disabled: hasNoImage });
 
   useEffect(() => {
@@ -88,6 +88,7 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
         >
           <CardImage
             imageBase={card.imageBase}
+            hostedFullUrl={card.hostedFullUrl}
             uploadedImageUri={uploadedImageUri}
             alt={`${card.name} from ${card.setName}`}
             className={styles.cardImage}

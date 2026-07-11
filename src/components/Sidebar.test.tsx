@@ -95,6 +95,30 @@ describe('Sidebar', () => {
     expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/sv03.5/236/low.webp');
   });
 
+  it("prefers the cached Pikachu card's hostedThumbUrl over the live-API-constructed URL when present", () => {
+    setCachedCards('en', 25, [
+      {
+        id: 'sv03.5-236',
+        name: 'Pikachu',
+        dexNumber: 25,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '236',
+        rarity: 'Illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/236',
+        hostedThumbUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/236/thumb.webp',
+        language: 'en',
+      },
+    ]);
+    renderSidebar();
+    const cardButton = screen.getByRole('button', { name: 'Card' });
+    const img = cardButton.querySelector('img');
+    expect(img).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/236/thumb.webp'
+    );
+  });
+
   it('shows a disabled, in-flight state on the refresh button while loading, and calls onRefresh when clicked', async () => {
     const onRefresh = vi.fn();
     renderSidebar({ onRefresh });

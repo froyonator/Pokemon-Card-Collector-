@@ -194,6 +194,35 @@ describe('BinderView', () => {
     );
   });
 
+  it("renders an owned card's hostedFullUrl on the slot instead of the live-API-constructed URL when present", () => {
+    setCachedCards('en', 1, [
+      {
+        id: 'sv03.5-199',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        hostedFullUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp',
+        language: 'en',
+      },
+    ]);
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{ 1: { dexNumber: 1, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } }}
+        dataVersion={0}
+        onSlotClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur card')).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp'
+    );
+  });
+
   it('clicking Enlarge on an owned slot opens the zoom overlay for that card', async () => {
     setCachedCards('en', 1, [
       {

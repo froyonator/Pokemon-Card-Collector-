@@ -112,6 +112,26 @@ describe('Picker', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('renders a card\'s hostedThumbUrl instead of the live-API-constructed URL when present', () => {
+    const hostedCard: CardRecord = {
+      ...cardA,
+      hostedThumbUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp',
+    };
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[hostedCard]} onClose={() => {}} />);
+    expect(screen.getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+      'src',
+      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp'
+    );
+  });
+
+  it('renders exactly as before (the live-API-constructed URL) when a card has no hostedThumbUrl', () => {
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    expect(screen.getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+    );
+  });
+
   it('clicking inside the panel does not close the picker', async () => {
     const onClose = vi.fn();
     render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={onClose} />);

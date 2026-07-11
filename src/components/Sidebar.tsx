@@ -71,7 +71,14 @@ export function Sidebar<TabId extends string = string>({
   // whatever's already cached for the current language -- not a fetch of
   // its own, so it stays undefined (falling back to the sprite below) until
   // Pikachu's own card data happens to already be cached.
-  const pikachuCardImageBase = getCachedCards(language, VIEW_ICON_DEX_NUMBER)?.[0]?.imageBase;
+  const pikachuCard = getCachedCards(language, VIEW_ICON_DEX_NUMBER)?.[0];
+  const pikachuCardImageBase = pikachuCard?.imageBase;
+  // A pre-resolved hosted thumbnail, preferred over the live-API imageBase
+  // construction below whenever it's present -- see CardImage's own
+  // hostedThumbUrl prop, which this icon has no CardImage instance to route
+  // through (it's a plain <img>), so the same preference is applied here
+  // directly instead.
+  const pikachuCardHostedThumbUrl = pikachuCard?.hostedThumbUrl;
 
   return (
     <aside
@@ -147,9 +154,11 @@ export function Sidebar<TabId extends string = string>({
               >
                 <img
                   src={
-                    pikachuCardImageBase
-                      ? cardImageUrl(pikachuCardImageBase)
-                      : spriteUrl(VIEW_ICON_DEX_NUMBER)
+                    pikachuCardHostedThumbUrl
+                      ? pikachuCardHostedThumbUrl
+                      : pikachuCardImageBase
+                        ? cardImageUrl(pikachuCardImageBase)
+                        : spriteUrl(VIEW_ICON_DEX_NUMBER)
                   }
                   alt=""
                 />

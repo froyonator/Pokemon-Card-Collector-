@@ -12,6 +12,11 @@ export interface TileProps {
   state: TileState;
   view: 'sprite' | 'card';
   ownedCardImageBase?: string;
+  // A pre-resolved hosted thumbnail URL for the owned card, taking priority
+  // over the live-API imageBase construction whenever it's present -- see
+  // CardImage's own hostedThumbUrl prop, which this passes straight
+  // through.
+  ownedCardHostedThumbUrl?: string;
   // A user-uploaded replacement image for the owned card (see CardImage's
   // own uploadedImageUri prop) -- only ever shown as a fallback when
   // ownedCardImageBase has no usable real image, never as an override of one
@@ -51,6 +56,7 @@ export const Tile = memo(function Tile({
   state,
   view,
   ownedCardImageBase,
+  ownedCardHostedThumbUrl,
   uploadedImageUri,
   onEnlarge,
   onClick,
@@ -102,6 +108,7 @@ export const Tile = memo(function Tile({
         {view === 'card' && ownedCardImageBase !== undefined ? (
           <CardImage
             imageBase={ownedCardImageBase}
+            hostedThumbUrl={ownedCardHostedThumbUrl}
             uploadedImageUri={uploadedImageUri}
             alt={`${name} card`}
             loading="lazy"
