@@ -81,6 +81,32 @@ export function highResolutionImageUrl(imageBase: string): string {
   return `${imageBase}/high.webp`;
 }
 
+// snapshotTcgdex.ts uses `set.id`/`card.id` verbatim as filesystem path
+// segments (`path.join(stagingRoot, language, set.id, card.id)`). Both ids
+// come straight from TCGdex's JSON API response with no character-class
+// validation elsewhere in this module -- `validateTcgdexCard` only checks
+// equality against the requested id, which is no safety net since that
+// expected value is itself taken from the same unsanitized response.
+// `tcgdexUrl` above does `encodeURIComponent` the id, but only for the
+// outbound HTTP request URL, never before the raw id reaches a local
+// `path.join`. Every other scraper source in this codebase already
+// constrains its equivalent identifier to a safe character class before
+// using it as a path segment; this closes the same gap for TCGdex.
+//
+// Real TCGdex ids are mixed-case and contain periods (e.g. "sv03.5-001",
+// "swsh4.5sv-SV018"), so the allow-list can't be the narrower `[a-z0-9-]+`
+// used by the other sources. Letters/digits/dot/hyphen excludes `/`, `\`,
+// and null bytes outright. It does NOT by itself exclude ".." (a dot-only
+// id is still made up of allowed characters), and ".." as a single path
+// segment walks up one directory when passed to `path.join` with no slash
+// involved at all -- so a dot-only id is rejected explicitly as well.
+const SAFE_ID_PATTERN = /^[A-Za-z0-9.-]+$/;
+const DOT_ONLY_PATTERN = /^\.+$/;
+
+export function isSafeTcgdexId(id: string): boolean {
+  return SAFE_ID_PATTERN.test(id) && !DOT_ONLY_PATTERN.test(id);
+}
+
 // TCGdex localizes the category field per language, not just the card name:
 // fr/de/es/it/pt all render it as "Pokémon" (with the accent) rather than
 // English's "Pokemon" -- confirmed live across all 15 supported languages,

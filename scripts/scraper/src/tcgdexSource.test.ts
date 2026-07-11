@@ -3,6 +3,7 @@ import {
   fetchJsonWithRetry,
   highResolutionImageUrl,
   isPokemonCard,
+  isSafeTcgdexId,
   tcgdexUrl,
   validateTcgdexCard,
   type TcgdexCardDetail,
@@ -62,6 +63,27 @@ describe('TCGdex source adapter', () => {
     expect(isPokemonCard({ ...card, category: 'Dresseur' })).toBe(false);
     expect(isPokemonCard({ ...card, category: 'Allenatore' })).toBe(false);
     expect(isPokemonCard({ ...card, category: 'Énergie' })).toBe(false);
+  });
+
+  it('accepts real observed TCGdex id formats, including mixed case and periods', () => {
+    expect(isSafeTcgdexId('sv03.5-001')).toBe(true);
+    expect(isSafeTcgdexId('sv03.5')).toBe(true);
+    expect(isSafeTcgdexId('swsh4.5sv-SV018')).toBe(true);
+    expect(isSafeTcgdexId('SC2b-001')).toBe(true);
+  });
+
+  it('rejects a path-traversal id before it could ever reach path.join', () => {
+    expect(isSafeTcgdexId('../../evil')).toBe(false);
+    expect(isSafeTcgdexId('..\\..\\evil')).toBe(false);
+    // No slashes at all, but ".." alone as a single path segment still walks
+    // up one directory when passed to path.join -- the character-class check
+    // alone would let this through since dots and hyphens are both allowed
+    // in real ids (e.g. "sv03.5-001"), so it needs its own explicit check.
+    expect(isSafeTcgdexId('..')).toBe(false);
+    expect(isSafeTcgdexId('.')).toBe(false);
+    expect(isSafeTcgdexId('a/b')).toBe(false);
+    expect(isSafeTcgdexId('a\0b')).toBe(false);
+    expect(isSafeTcgdexId('')).toBe(false);
   });
 
   it('retries transient HTTP failures', async () => {

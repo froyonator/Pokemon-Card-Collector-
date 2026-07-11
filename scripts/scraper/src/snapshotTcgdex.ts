@@ -6,6 +6,7 @@ import {
   fetchJsonWithRetry,
   highResolutionImageUrl,
   isPokemonCard,
+  isSafeTcgdexId,
   tcgdexUrl,
   validateTcgdexCard,
   type TcgdexCardDetail,
@@ -94,6 +95,15 @@ async function main(): Promise<void> {
         if (set.id !== setBrief.id || !Array.isArray(set.cards)) {
           throw new Error(`Invalid set response for ${setBrief.id}.`);
         }
+        // Must happen before `set.id` is ever used in path.join below -- see
+        // isSafeTcgdexId's own comment for why the character-class check
+        // can't be skipped even though the id already passed the equality
+        // check above.
+        if (!isSafeTcgdexId(set.id)) {
+          throw new Error(
+            `Unsafe set id, refusing to use it as a path segment: ${JSON.stringify(set.id)}`
+          );
+        }
       } catch (error) {
         // One unreachable/malformed set response must not discard every
         // other set already scraped in this run -- same reasoning as the
@@ -117,6 +127,14 @@ async function main(): Promise<void> {
           }
           const errors = validateTcgdexCard(card, { cardId: brief.id, setId: set.id });
           if (errors.length > 0) throw new Error(`Invalid ${brief.id}: ${errors.join('; ')}`);
+          // Must happen before `card.id` is ever used in path.join below --
+          // validateTcgdexCard only checks id equality, not character class,
+          // so it is not a safety net for this.
+          if (!isSafeTcgdexId(card.id)) {
+            throw new Error(
+              `Unsafe card id, refusing to use it as a path segment: ${JSON.stringify(card.id)}`
+            );
+          }
 
           const cardDir = path.join(setDir, card.id);
           await mkdir(cardDir, { recursive: false });
