@@ -1,5 +1,6 @@
 // scripts/scraper/src/parseCardDetail.ts
 import * as cheerio from 'cheerio';
+import type { AnyNode } from 'domhandler';
 
 export interface CardAttack {
   name: string;
@@ -38,7 +39,7 @@ export interface CardRecord {
 // space-separated "url widthw, url widthw, ..." list) rather than its
 // plain `src`, which tcgcollector serves at a smaller default size intended
 // for the page's own inline display, not for archival.
-function highestResolutionSrc($img: ReturnType<ReturnType<typeof cheerio.load>>): string {
+function highestResolutionSrc($img: cheerio.Cheerio<AnyNode>): string {
   const srcset = $img.attr('srcset');
   const src = $img.attr('src') ?? '';
   if (!srcset) return src;
@@ -50,7 +51,7 @@ function highestResolutionSrc($img: ReturnType<ReturnType<typeof cheerio.load>>)
   return candidates[0]?.url ?? src;
 }
 
-function footerItemText($: ReturnType<typeof cheerio.load>, title: string): ReturnType<typeof cheerio.load> | null {
+function footerItemText($: cheerio.CheerioAPI, title: string): cheerio.Cheerio<AnyNode> | null {
   const item = $('.card-info-footer-item')
     .filter((_, el) => $(el).find('.card-info-footer-item-title').text().trim() === title)
     .first();

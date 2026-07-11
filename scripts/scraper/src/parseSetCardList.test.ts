@@ -12,7 +12,7 @@ const fixtureHtml = readFileSync(
 describe('parseSetCardList', () => {
   it('extracts every card id/slug link on the page, deduplicated', () => {
     const cards = parseSetCardList(fixtureHtml);
-    expect(cards.length).toBeGreaterThan(0);
+    expect(cards).toHaveLength(238);
     const ids = cards.map((c) => c.cardId);
     expect(new Set(ids).size).toBe(ids.length); // no duplicates
   });

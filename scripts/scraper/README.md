@@ -3,11 +3,26 @@
 ## Running everything automatically, without an AI agent
 
 `run-full-sync.ps1` runs all three snapshot sources below (TCGdex, PkmnCards,
-Art of Pokémon) as parallel background jobs, retries a source that fails
-(up to 3 times by default, since none of these scripts can resume mid-crawl --
-a failure always restarts that source from scratch), logs everything under
-`data\run-logs\`, and writes one JSON summary per run. It needs nothing but
-plain PowerShell -- no AI/agent session has to be running or watching it.
+Art of Pokémon) as parallel detached processes, retries a source that fails
+outright (up to 3 times by default), logs everything under `data\run-logs\`,
+and writes one JSON summary per run. It needs nothing but plain PowerShell --
+no AI/agent session has to be running or watching it.
+
+Only Pokémon cards are kept -- Trainer, Item, and Energy cards are detected
+and skipped before their image is even downloaded, since this app organizes
+everything by Pokédex number and has nowhere to attach a non-Pokémon card.
+Check a completed run's `manifest.json` for `skippedCount` (expected, not an
+error) versus `failureCount`/`failures` (a real problem worth re-checking).
+
+A single bad card or set no longer discards an entire run either: each
+snapshot script catches per-card/per-set failures, logs them, and keeps
+going, still publishing everything else it collected.
+
+Each source runs as its own `Start-Process`, polled for completion rather
+than launched via `Start-Job`. An earlier version used `Start-Job` for
+parallelism; that was confirmed live to hang indefinitely (every job stuck
+at ~0.1s CPU time, never reaching its first network call) because a
+`Start-Job` worker has no console for a nested `Start-Process` to attach to.
 
 ```powershell
 cd "scripts\scraper"
@@ -58,20 +73,22 @@ with `Unregister-ScheduledTask -TaskName 'PokemonCardCollector-DataSync' -Confir
 
 ### Known limitations (left for a later AI-assisted pass, not fixed here)
 
-- **No mid-crawl resume.** A single bad page anywhere in a source's catalog
-  discards that entire run (by design -- an immutable snapshot is only
-  published once every card in it succeeded) and `run-full-sync.ps1`'s retry
-  just restarts the whole source from scratch. For a source with hundreds of
-  sets this can mean re-fetching everything after one flaky page near the end.
-  A checkpoint/resume mechanism would help but isn't implemented.
-- **`Invalid Art of Pokémon detail page` errors** have shown up on at least
-  one set page during testing -- likely a page-structure edge case
-  `parseArtOfPkm.ts` doesn't handle yet. Worth triaging from the `.err.log`
-  of a failed `artofpkm-ja` run.
+- **No mid-crawl resume for a source that fails outright** (e.g. its initial
+  catalog fetch fails, or the process itself is killed/crashes). Per-card and
+  per-set failures are now resilient (see above) and don't trigger this, but
+  a harder failure still means `run-full-sync.ps1`'s retry restarts that
+  source's whole crawl from scratch. A checkpoint/resume mechanism would help
+  but isn't implemented.
 - **The TCG Collector source below is not included in this automatic sync**
   (see its own section) -- it sits behind a Cloudflare Turnstile challenge
   that requires a human to clear it once and export a session; it can't run
   unattended.
+- **The scheduled task (`register-scheduled-task.ps1`) has not been
+  successfully registered on this machine** -- it needs an elevated ("Run as
+  Administrator") PowerShell prompt, which wasn't available when this was
+  last attempted. Run it yourself from an elevated prompt to actually
+  schedule recurring syncs; until then, `run-full-sync.ps1` has to be started
+  by hand each time.
 
 ## Recommended bulk source: TCGdex
 
