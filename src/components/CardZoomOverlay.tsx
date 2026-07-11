@@ -91,6 +91,7 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
             uploadedImageUri={uploadedImageUri}
             alt={`${card.name} from ${card.setName}`}
             className={styles.cardImage}
+            preferHighQuality
           />
         </div>
       </motion.div>

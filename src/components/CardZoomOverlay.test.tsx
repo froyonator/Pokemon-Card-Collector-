@@ -30,7 +30,7 @@ describe('CardZoomOverlay', () => {
     const img = screen.getByAltText(/charizard ex from 151/i);
     expect(img).toHaveAttribute(
       'src',
-      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
     );
   });
 
