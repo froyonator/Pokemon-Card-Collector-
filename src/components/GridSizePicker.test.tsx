@@ -18,8 +18,8 @@ describe('GridSizePicker', () => {
     expect(onChange).toHaveBeenCalledWith({ rows: 5, columns: 2 });
   });
 
-  it('caps the grid at 10x10', () => {
+  it('caps the grid at 6x6', () => {
     render(<GridSizePicker rows={3} columns={3} onChange={() => {}} />);
-    expect(screen.getAllByRole('button')).toHaveLength(100);
+    expect(screen.getAllByRole('button')).toHaveLength(36);
   });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import styles from './GridSizePicker.module.css';
 
-const MAX_SIZE = 10;
+const MAX_SIZE = 6;
 
 export interface GridSizePickerProps {
   rows: number;
