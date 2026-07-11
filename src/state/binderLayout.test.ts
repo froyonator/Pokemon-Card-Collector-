@@ -177,6 +177,27 @@ describe('insertBlankAt', () => {
     insertBlankAt(entries, 0);
     expect(entries).toEqual([{ type: 'pokemon', dexNumber: 1 }]);
   });
+
+  // An index >= entries.length is one of the spare, past-capacity slots
+  // computeBinderPages pads out with `undefined` -- not a real element of
+  // `entries` at all, so it's already implicitly blank. Without this guard,
+  // Array.prototype.splice silently clamps the index down to entries.length,
+  // inserting the new blank right after the LAST real entry instead of
+  // leaving the (already-empty) selected slot alone.
+  it('is a no-op when index equals entries.length (an out-of-capacity slot)', () => {
+    const entries = [
+      { type: 'pokemon' as const, dexNumber: 1 },
+      { type: 'pokemon' as const, dexNumber: 2 },
+    ];
+    const result = insertBlankAt(entries, 2);
+    expect(result).toEqual(entries);
+  });
+
+  it('is a no-op when index is well beyond entries.length', () => {
+    const entries = [{ type: 'pokemon' as const, dexNumber: 1 }];
+    const result = insertBlankAt(entries, 50);
+    expect(result).toEqual(entries);
+  });
 });
 
 describe('removeEntryAt', () => {

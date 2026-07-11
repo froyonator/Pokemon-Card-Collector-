@@ -401,6 +401,29 @@ export function BinderView({
     setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 20) / 20)));
   }
 
+  // Manual arrange can turn off through more than one path -- Escape (which
+  // already clears this same state inline, see the keydown handler above),
+  // but also Binder Settings' own "Done arranging" button, which calls
+  // onToggleManualArrange directly and has no idea any of this
+  // BinderView-local state even exists. Without this effect, a selection
+  // (and its sticky highlight), a pending split range, or -- worst of all --
+  // a still-open SlotImageEditor overlay (editingSlotIndex !== null) would
+  // all silently survive past the moment arrange mode nominally ended, since
+  // the editor overlay's own render condition below never checks
+  // isManualArrangeActive at all. Keyed only on isManualArrangeActive so it
+  // runs exactly once per on->off transition (and harmlessly on mount, when
+  // everything's already null/false).
+  useEffect(() => {
+    if (isManualArrangeActive) return;
+    setSelectedIndex(null);
+    setRangeAnchorIndex(null);
+    setSplitRange(null);
+    setRangeRejectionMessage(null);
+    setDragFromIndex(null);
+    setEditingSlotIndex(null);
+    setIsSplitEditorOpen(false);
+  }, [isManualArrangeActive]);
+
   useEffect(() => {
     setSpreadIndex(0);
     setDirection(null);
@@ -674,6 +697,16 @@ export function BinderView({
             onClick={() => {
               setDirection('backward');
               setSpreadIndex((i) => Math.max(0, i - 1));
+              // A selection (or pending range) is a position on the page(s)
+              // just left behind -- without this, the nav bar's "Keep
+              // empty"/etc. buttons kept referencing the OLD page's
+              // selectedIndex after the new page was already on screen,
+              // silently acting on the wrong slot if clicked.
+              setSelectedIndex(null);
+              setRangeAnchorIndex(null);
+              setSplitRange(null);
+              setRangeRejectionMessage(null);
+              setDragFromIndex(null);
             }}
           >
             &larr;
@@ -685,6 +718,12 @@ export function BinderView({
             onClick={() => {
               setDirection('forward');
               setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1));
+              // See the Previous button's own comment just above.
+              setSelectedIndex(null);
+              setRangeAnchorIndex(null);
+              setSplitRange(null);
+              setRangeRejectionMessage(null);
+              setDragFromIndex(null);
             }}
           >
             &rarr;

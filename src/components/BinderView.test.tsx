@@ -579,6 +579,150 @@ describe('BinderView manual arrange', () => {
     await userEvent.keyboard('{Escape}');
     expect(onExitManualArrange).toHaveBeenCalledTimes(1);
   });
+
+  it('clicking Next page clears a pending selection, so the nav bar no longer offers an action for the page just left behind', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /select ivysaur/i }));
+    expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /next page/i }));
+
+    expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
+    // The underlying selectedIndex (not just some other gating condition)
+    // was actually cleared -- customOrder is still untouched, since there's
+    // no more selection left for anything to act on.
+    expect(activeBinderCustomOrder()).toBeNull();
+  });
+
+  it('clicking Previous page also clears a pending selection', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: null,
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1, 2]
+    await userEvent.click(screen.getByRole('button', { name: /select charmander/i }));
+    expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /previous page/i }));
+
+    expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
+  });
+
+  // Binder Settings' "Done arranging" button calls onToggleManualArrange
+  // directly (see BinderSettings.tsx), which flips isManualArrangeActive off
+  // WITHOUT going through the Escape keydown handler or a binder switch --
+  // the two other paths that already clear this state inline. Simulated
+  // here via rerender with isManualArrangeActive=false, exactly like App.tsx
+  // itself would re-render BinderView once its lifted isManualArrangeActive
+  // state flips.
+  it('turning off manual arrange (e.g. via "Done arranging") clears a pending selection, even though that path never touches Escape or a binder switch', async () => {
+    const { rerender } = render(
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /select ivysaur/i }));
+    expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
+
+    rerender(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    // Back into manual arrange with the selection now gone -- if the bug
+    // were present, the previously-selected slot would still show as
+    // selected and "Keep empty" would reappear without clicking anything.
+    rerender(
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />
+    );
+
+    expect(screen.queryByRole('button', { name: /keep empty/i })).not.toBeInTheDocument();
+  });
+
+  it('turning off manual arrange closes a still-open custom-image editor overlay instead of leaving it functional', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 1, columns: 3, pageCount: 1, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'blank' },
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'pokemon', dexNumber: 2 },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    const { rerender } = render(
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /select this empty slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit image$/i }));
+    expect(screen.getByRole('dialog', { name: /edit custom binder slot image/i })).toBeInTheDocument();
+
+    rerender(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+
+    expect(
+      screen.queryByRole('dialog', { name: /edit custom binder slot image/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('"Keep empty" on an out-of-capacity spare slot (beyond the last real entry) is a no-op, since that slot is already implicitly blank', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          // 2x2 = 4 slots of capacity for only 3 real entries -- slot index 3
+          // is a spare, past-capacity slot with entry === undefined.
+          config: { rows: 2, columns: 2, pageCount: 1, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'pokemon', dexNumber: 2 },
+            { type: 'pokemon', dexNumber: 3 },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
+    // The one remaining spare slot renders the same "Select this empty
+    // slot" affordance as a real kept-empty blank (see BinderSlot.tsx).
+    await userEvent.click(screen.getByRole('button', { name: /select this empty slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /keep empty/i }));
+
+    // If the bug were present, this would have inserted a new blank right
+    // after dexNumber 3 (entries.length) instead of doing nothing, shifting
+    // no real entries but still writing a spurious customOrder.
+    expect(activeBinderCustomOrder()).toEqual([
+      { type: 'pokemon', dexNumber: 1 },
+      { type: 'pokemon', dexNumber: 2 },
+      { type: 'pokemon', dexNumber: 3 },
+    ]);
+  });
 });
 
 describe('BinderView split-image multi-select', () => {

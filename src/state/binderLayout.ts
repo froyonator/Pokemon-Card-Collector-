@@ -74,7 +74,17 @@ export function computeSpreadPageIndices(pageCount: number): number[][] {
   return spreads;
 }
 
+// A no-op for an out-of-range index (`>= entries.length`): such a slot is
+// one of the spare, past-capacity positions computeBinderPages pads out with
+// `undefined` (see its own `truncated`/`slotsPerPage` math above) rather
+// than a real element of `entries` at all -- it's already implicitly blank.
+// Without this guard, Array.prototype.splice silently clamps an out-of-range
+// index down to entries.length, so calling this on, say, the LAST spare
+// slot of a binder with more capacity than entries would insert the new
+// blank right after the last real entry instead of doing nothing, corrupting
+// every real entry's position.
 export function insertBlankAt(entries: BinderSlotEntry[], index: number): BinderSlotEntry[] {
+  if (index >= entries.length) return entries;
   const next = entries.slice();
   next.splice(index, 0, { type: 'blank' });
   return next;
