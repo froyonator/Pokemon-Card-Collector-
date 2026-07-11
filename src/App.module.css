@@ -41,7 +41,10 @@
    rather than reverted because it's a real, necessary fix -- removing it
    reintroduces the collapse-to-near-zero bug described above in a live
    browser (BinderView.test.tsx's ResizeObserver mock hardcodes a nonzero
-   contentRect, so unit tests can't catch that regression). */
+   contentRect, so unit tests can't catch that regression). Queued for
+   formal resolution in Task 10's own review pass (see that task's
+   "Queued from a Task 3 spec-compliance review" note and its Step 2) so
+   this isn't just a comment with no tracked closure. */
 .dexGridPanel {
   height: 100%;
 }

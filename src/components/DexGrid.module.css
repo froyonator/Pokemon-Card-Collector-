@@ -9,7 +9,8 @@
    even though this file isn't in Task 3's (or Task 4's) declared Files list
    in docs/superpowers/plans/2026-07-11-binder-view-redesign-plan.md and this
    mechanism isn't described anywhere in that plan. See
-   App.module.css's .dexGridPanel for the full disclosure note. */
+   App.module.css's .dexGridPanel for the full disclosure note, and that
+   plan's Task 10 for the queued formal resolution. */
 .panel {
   height: 100%;
 }

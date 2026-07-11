@@ -20,7 +20,9 @@
    already-landed values (only touching .spread and .page below) rather
    than authoring .binder fresh, entangling the two tasks' diffs. The
    BinderPage/usePageSize per-page refactor further down this file is Task
-   4's own work (also bdd2ae3), not Task 3's. */
+   4's own work (also bdd2ae3), not Task 3's. Queued for formal resolution
+   (for both Task 3's and Task 4's commit trails) in Task 10's "Queued from
+   a Task 3 spec-compliance review" note and its Step 2. */
 .binder {
   display: flex;
   flex-direction: column;
