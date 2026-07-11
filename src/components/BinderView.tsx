@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { spriteUrl } from '../api/pokeapi';
 import {
@@ -12,7 +12,7 @@ import { computeSlotSize } from '../state/binderSlotSizing';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
-import type { OwnedRecord } from '../types';
+import type { BinderFillDirection, BinderSlotEntry, OwnedRecord } from '../types';
 import { BinderSlot } from './BinderSlot';
 import styles from './BinderView.module.css';
 
@@ -56,6 +56,151 @@ export interface BinderViewProps {
 // custom property. If --space-2 is ever changed, this needs updating too.
 const GAP_PX = 8;
 
+// .page's own left+right padding (2 * var(--space-4), 16px each = 32px
+// total) -- for the same reason GAP_PX above is a JS constant, this can't be
+// read from the CSS custom property directly and has to be kept in sync by
+// hand if --space-4 ever changes.
+const PAGE_PADDING_PX = 32;
+
+// Each rendered page needs its OWN independent measured size -- a two-page
+// spread renders two .page elements that each claim an equal share of
+// .spread's width via flex: 1 (see BinderView.module.css), so one shared
+// measurement of the whole spread can't tell computeSlotSize how big a
+// single page's own box actually is. React hooks can't be called inside the
+// currentSpread.map(...) callback below, which is why this is a reusable
+// hook and BinderPage (below) is its own component -- one usePageSize() call
+// per rendered page.
+function usePageSize() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size] as const;
+}
+
+interface BinderPageProps {
+  pageIndex: number;
+  rows: number;
+  columns: number;
+  entries: (BinderSlotEntry | undefined)[][];
+  fillDirection: BinderFillDirection;
+  nameByDexNumber: Map<number, string>;
+  ownedCardImageByDexNumber: Map<number, string>;
+  onSlotClick: (dexNumber: number) => void;
+  isManualArrangeActive: boolean;
+  selectedIndex: number | null;
+  onSelectSlot: (slotIndex: number) => void;
+  onDragStartSlot: (slotIndex: number) => void;
+  onDropSlot: (slotIndex: number) => void;
+  // Which edge this page hinges on -- see getPageMotion above, which
+  // BinderPage calls directly since the motion also needs to pair with the
+  // matching .pageLeft/.pageRight CSS class for its transform-origin.
+  side: 'left' | 'right';
+}
+
+// Sets `node` on every ref in `refs`, function or object alike -- needed
+// because BinderPage's root DOM node has two independent consumers: its own
+// usePageSize() measurement ref, AND (see the forwardRef wrapper below) a
+// ref that AnimatePresence's popLayout mode attaches from OUTSIDE the
+// component to freeze the exiting page's size/position. Neither can be
+// dropped in favor of the other.
+function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (typeof ref === 'function') ref(node);
+      else if (ref) (ref as React.MutableRefObject<T | null>).current = node;
+    }
+  };
+}
+
+// A plain function component here would break AnimatePresence's
+// mode="popLayout": PopChild clones its immediate child and attaches its own
+// ref to it (to measure and freeze the exiting page's size before taking it
+// out of flow -- see BinderView.tsx's use of AnimatePresence below), and a
+// ref can only attach to a DOM node or a forwardRef component, not a plain
+// function component. Without this, popLayout's exit measurement silently
+// no-ops and the original "both pages slide right" bug (see the
+// AnimatePresence comment below) comes back.
+const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPage(
+  {
+    pageIndex,
+    rows,
+    columns,
+    entries,
+    fillDirection,
+    nameByDexNumber,
+    ownedCardImageByDexNumber,
+    onSlotClick,
+    isManualArrangeActive,
+    selectedIndex,
+    onSelectSlot,
+    onDragStartSlot,
+    onDropSlot,
+    side,
+  },
+  forwardedRef
+) {
+  const [measureRef, size] = usePageSize();
+  const shouldReduceMotion = useReducedMotion();
+  const slotSize = computeSlotSize({
+    containerWidth: size.width - PAGE_PADDING_PX,
+    containerHeight: size.height - PAGE_PADDING_PX,
+    rows,
+    columns,
+    gap: GAP_PX,
+  });
+
+  return (
+    <motion.div
+      ref={mergeRefs(measureRef, forwardedRef)}
+      className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
+      aria-label={`Page ${pageIndex + 1}`}
+      style={{
+        gridTemplateColumns: `repeat(${columns}, ${slotSize.width}px)`,
+        gridTemplateRows: `repeat(${rows}, ${slotSize.height}px)`,
+      }}
+      {...getPageMotion(side, shouldReduceMotion)}
+    >
+      {entries.flatMap((row, r) =>
+        row.map((entry, c) => {
+          // Must invert computeBinderPages's own fill order exactly:
+          // horizontal fill assigns sequence index r*columns+c to grid[r][c],
+          // vertical fill assigns c*rows+r instead. Using the horizontal
+          // formula unconditionally here would make drag-and-drop and "keep
+          // empty" silently act on the WRONG sequence position under
+          // vertical fill.
+          const withinPage = fillDirection === 'horizontal' ? r * columns + c : c * rows + r;
+          const slotIndex = pageIndex * rows * columns + withinPage;
+          return (
+            <BinderSlot
+              key={`${r}-${c}`}
+              entry={entry}
+              pokemonName={entry?.type === 'pokemon' ? nameByDexNumber.get(entry.dexNumber) : undefined}
+              spriteUrl={entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined}
+              ownedCardImageBase={
+                entry?.type === 'pokemon' ? ownedCardImageByDexNumber.get(entry.dexNumber) : undefined
+              }
+              onClick={onSlotClick}
+              isManualArrangeActive={isManualArrangeActive}
+              isSelected={selectedIndex === slotIndex}
+              onSelect={() => onSelectSlot(slotIndex)}
+              onDragStart={() => onDragStartSlot(slotIndex)}
+              onDrop={() => onDropSlot(slotIndex)}
+            />
+          );
+        })
+      )}
+    </motion.div>
+  );
+});
+
 export function BinderView({
   dexEntries,
   owned,
@@ -67,22 +212,9 @@ export function BinderView({
   const activeBinderId = useAppStore((s) => s.activeBinderId);
   const setBinderCustomOrder = useAppStore((s) => s.setBinderCustomOrder);
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
-  const shouldReduceMotion = useReducedMotion();
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const spreadRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const node = spreadRef.current;
-    if (!node) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     setSpreadIndex(0);
@@ -183,7 +315,7 @@ export function BinderView({
           </button>
         )}
       </div>
-      <div className={styles.spread} ref={spreadRef}>
+      <div className={styles.spread}>
         {/* mode="popLayout": .spread is a plain flex row, so without this an
             exiting page (kept mounted by AnimatePresence during its exit
             animation) stays a normal flex sibling of the newly-entering
@@ -200,73 +332,24 @@ export function BinderView({
             // treated as the right/only page.
             const side: 'left' | 'right' =
               i === 0 && currentSpread.length === 2 ? 'left' : 'right';
-            // Divides the measured .spread container evenly across however
-            // many pages share the current spread (1 for a lone first page,
-            // 2 for a genuine spread) -- Task 4 revisits this split to
-            // measure each page independently, but dividing by
-            // currentSpread.length here keeps this task's fix correct
-            // standalone.
-            const pagesInSpread = currentSpread.length || 1;
-            const slotSize = computeSlotSize({
-              containerWidth: containerSize.width / pagesInSpread - GAP_PX * 2,
-              containerHeight: containerSize.height - GAP_PX * 2,
-              rows: activeBinder.config.rows,
-              columns: activeBinder.config.columns,
-              gap: GAP_PX,
-            });
             return (
-              <motion.div
+              <BinderPage
                 key={pageIndex}
-                className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(
-                  ' '
-                )}
-                aria-label={`Page ${pageIndex + 1}`}
-                style={{
-                  gridTemplateColumns: `repeat(${activeBinder.config.columns}, ${slotSize.width}px)`,
-                  gridTemplateRows: `repeat(${activeBinder.config.rows}, ${slotSize.height}px)`,
-                }}
-                {...getPageMotion(side, shouldReduceMotion)}
-              >
-                {pages[pageIndex]?.flatMap((row, r) =>
-                  row.map((entry, c) => {
-                    // Must invert computeBinderPages's own fill order exactly:
-                    // horizontal fill assigns sequence index r*columns+c to
-                    // grid[r][c], vertical fill assigns c*rows+r instead. Using
-                    // the horizontal formula unconditionally here would make
-                    // drag-and-drop and "keep empty" silently act on the WRONG
-                    // sequence position under vertical fill.
-                    const { rows, columns, fillDirection } = activeBinder.config;
-                    const withinPage =
-                      fillDirection === 'horizontal' ? r * columns + c : c * rows + r;
-                    const slotIndex = pageIndex * rows * columns + withinPage;
-                    return (
-                      <BinderSlot
-                        key={`${r}-${c}`}
-                        entry={entry}
-                        pokemonName={
-                          entry?.type === 'pokemon'
-                            ? nameByDexNumber.get(entry.dexNumber)
-                            : undefined
-                        }
-                        spriteUrl={
-                          entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined
-                        }
-                        ownedCardImageBase={
-                          entry?.type === 'pokemon'
-                            ? ownedCardImageByDexNumber.get(entry.dexNumber)
-                            : undefined
-                        }
-                        onClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
-                        isManualArrangeActive={isManualArrangeActive}
-                        isSelected={selectedIndex === slotIndex}
-                        onSelect={() => setSelectedIndex(slotIndex)}
-                        onDragStart={() => setDragFromIndex(slotIndex)}
-                        onDrop={() => handleDrop(slotIndex)}
-                      />
-                    );
-                  })
-                )}
-              </motion.div>
+                pageIndex={pageIndex}
+                rows={activeBinder.config.rows}
+                columns={activeBinder.config.columns}
+                entries={pages[pageIndex] ?? []}
+                fillDirection={activeBinder.config.fillDirection}
+                nameByDexNumber={nameByDexNumber}
+                ownedCardImageByDexNumber={ownedCardImageByDexNumber}
+                onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
+                isManualArrangeActive={isManualArrangeActive}
+                selectedIndex={selectedIndex}
+                onSelectSlot={setSelectedIndex}
+                onDragStartSlot={setDragFromIndex}
+                onDropSlot={handleDrop}
+                side={side}
+              />
             );
           })}
         </AnimatePresence>
