@@ -80,6 +80,20 @@
   --color-danger: #c62839;
   --color-danger-soft: rgba(198, 40, 57, 0.1);
 
+  /* Dex Grid tile states only. Deliberately separate from --color-gold and
+     --color-danger (used elsewhere for wishlist/rarity and warnings/delete
+     actions) -- reusing those here made "owned" and "no card exists yet"
+     read as near-identical warm washes at a glance. Owned reads as a clear
+     positive (green); unavailable reads as neutral/empty (grey), not an
+     error, since a Pokemon with no released special-art card isn't a
+     problem to fix. */
+  --color-owned: #3f8f5b;
+  --color-owned-strong: #2f7248;
+  --color-owned-soft: rgba(63, 143, 91, 0.16);
+
+  --color-unavailable: #948779;
+  --color-unavailable-soft: rgba(107, 95, 86, 0.1);
+
   --holo-gradient: linear-gradient(
     115deg,
     #e8b23d 0%,
@@ -120,6 +134,13 @@
 
     --color-danger: #e2495b;
     --color-danger-soft: rgba(226, 73, 91, 0.16);
+
+    --color-owned: #4caf7d;
+    --color-owned-strong: #6fcf9a;
+    --color-owned-soft: rgba(76, 175, 125, 0.18);
+
+    --color-unavailable: #837a8f;
+    --color-unavailable-soft: rgba(131, 122, 143, 0.14);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);

@@ -37,8 +37,8 @@
 }
 
 .tile--owned {
-  background: var(--color-gold-soft);
-  border-color: var(--color-gold);
+  background: var(--color-owned-soft);
+  border-color: var(--color-owned);
 }
 
 .tile--owned img {
@@ -47,11 +47,11 @@
 }
 
 .tile--owned .number {
-  color: var(--color-gold-strong);
+  color: var(--color-owned-strong);
 }
 
 .tile--unavailable {
-  background: var(--color-danger-soft);
+  background: var(--color-unavailable-soft);
   border-style: dashed;
   border-color: var(--color-border);
 }
