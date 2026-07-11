@@ -248,6 +248,9 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
     : [];
 
   return (
+    // styles.panel here is an out-of-scope, undisclosed-at-the-time addition
+    // from commit 85ca29a -- see DexGrid.module.css's .panel rule for the
+    // full disclosure.
     <div className={styles.panel}>
       {dexEntries.length === 0 ? (
         <p className={styles.emptyState}>

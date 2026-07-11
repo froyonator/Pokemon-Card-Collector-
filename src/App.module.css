@@ -29,7 +29,19 @@
    by the measurement -- a circular content<->measurement loop that
    collapses to a near-zero degenerate size instead of a true 5:7 card.
    See DexGrid.module.css's matching .panel rule and
-   BinderView.module.css's .binder/.spread for the rest of this chain. */
+   BinderView.module.css's .binder/.spread for the rest of this chain.
+
+   Disclosure: this rule (and App.tsx's use of it, plus DexGrid.module.css's
+   matching .panel and DexGrid.tsx's use of it) was added in commit 85ca29a,
+   a commit titled as a "Task 3" fix. App.module.css, App.tsx,
+   DexGrid.module.css, and DexGrid.tsx are not in Task 3's declared Files
+   list (nor Task 4's) in
+   docs/superpowers/plans/2026-07-11-binder-view-redesign-plan.md, and this
+   height-chain mechanism isn't described anywhere in that plan. It's kept
+   rather than reverted because it's a real, necessary fix -- removing it
+   reintroduces the collapse-to-near-zero bug described above in a live
+   browser (BinderView.test.tsx's ResizeObserver mock hardcodes a nonzero
+   contentRect, so unit tests can't catch that regression). */
 .dexGridPanel {
   height: 100%;
 }

@@ -121,7 +121,11 @@ export default function App() {
             tab is currently visible, avoids re-running DexGrid's mount
             effect (and re-parsing the full card cache blob) on every tab
             round-trip, and preserves its own local UI state (the open
-            Picker) across tab switches instead of resetting it every time. */}
+            Picker) across tab switches instead of resetting it every time.
+
+            styles.dexGridPanel here is an out-of-scope, undisclosed-at-the-
+            time addition from commit 85ca29a -- see App.module.css's
+            .dexGridPanel rule for the full disclosure. */}
         <div hidden={activeTab !== 'grid'} className={styles.dexGridPanel}>
           <DexGrid
             view={view}
