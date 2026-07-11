@@ -64,6 +64,43 @@ export function BinderSlot({
   if (!entry || entry.type === 'blank') {
     const customImage = entry?.type === 'blank' ? entry.customImage : undefined;
 
+    // Manual arrange takes priority over editing (see below), but that must
+    // not mean an empty slot goes fully inert -- it still needs to be
+    // selectable/draggable for reordering, exactly like a pokemon slot.
+    // Without this branch, a kept-empty slot (with or without a custom
+    // image already) rendered as a plain aria-hidden div during manual
+    // arrange with no onClick/draggable at all, silently making it
+    // impossible to select or drag once "Keep empty" had been used.
+    if (isManualArrangeActive) {
+      return (
+        <button
+          type="button"
+          className={[styles.slot, customImage ? styles.owned : '', isSelected ? styles.selected : '']
+            .filter(Boolean)
+            .join(' ')}
+          draggable
+          onDragStart={onDragStart}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={onDrop}
+          onClick={onSelect}
+          aria-label={customImage ? 'Select this custom-image slot' : 'Select this empty slot'}
+          aria-pressed={isSelected}
+        >
+          {customImage && (
+            <img
+              src={customImage.dataUri}
+              alt="Custom binder slot image"
+              className={styles.cardImage}
+              style={{
+                objectPosition: `${50 + customImage.offsetX * 100}% ${50 + customImage.offsetY * 100}%`,
+                transform: `scale(${customImage.zoom})`,
+              }}
+            />
+          )}
+        </button>
+      );
+    }
+
     if (customImage) {
       return (
         <div className={[styles.slot, styles.owned].join(' ')}>
@@ -71,7 +108,7 @@ export function BinderSlot({
             type="button"
             className={styles.customImageButton}
             onClick={onEditCustomImage}
-            disabled={!onEditCustomImage || isManualArrangeActive}
+            disabled={!onEditCustomImage}
             aria-label="Edit custom binder slot image"
           >
             <img
@@ -88,7 +125,7 @@ export function BinderSlot({
       );
     }
 
-    if (onEditCustomImage && !isManualArrangeActive) {
+    if (onEditCustomImage) {
       return (
         <button
           type="button"

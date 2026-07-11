@@ -139,6 +139,56 @@ describe('BinderSlot', () => {
     expect(screen.queryByRole('button', { name: /add a custom image/i })).not.toBeInTheDocument();
   });
 
+  it('keeps an empty slot selectable and draggable during manual arrange, instead of going fully inert', async () => {
+    const onSelect = vi.fn();
+    render(
+      <BinderSlot
+        entry={{ type: 'blank' }}
+        onClick={() => {}}
+        onEditCustomImage={() => {}}
+        isManualArrangeActive
+        onSelect={onSelect}
+      />
+    );
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('draggable', 'true');
+    await userEvent.click(button);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an empty slot as selected during manual arrange, same as a pokemon slot', () => {
+    render(
+      <BinderSlot
+        entry={{ type: 'blank' }}
+        onClick={() => {}}
+        isManualArrangeActive
+        isSelected
+      />
+    );
+    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps a blank slot that already has a custom image selectable and draggable during manual arrange too, still without an edit affordance', async () => {
+    const onSelect = vi.fn();
+    render(
+      <BinderSlot
+        entry={{
+          type: 'blank',
+          customImage: { dataUri: 'data:image/png;base64,ABC', offsetX: 0, offsetY: 0, zoom: 1 },
+        }}
+        onClick={() => {}}
+        onEditCustomImage={() => {}}
+        isManualArrangeActive
+        onSelect={onSelect}
+      />
+    );
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('draggable', 'true');
+    expect(screen.getByAltText('Custom binder slot image')).toBeInTheDocument();
+    await userEvent.click(button);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   describe('enlarge button', () => {
     it('shows an Enlarge button for an owned slot when onEnlarge is provided', () => {
       render(
