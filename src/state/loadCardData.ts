@@ -11,7 +11,7 @@ import {
   reserveWriteGeneration,
   setCachedCards,
 } from '../storage/cardCache';
-import type { CardRecord } from '../types';
+import type { CardRecord, OwnedRecord } from '../types';
 
 // Shared by loadAllCardData's dex x rarity fan-out and loadAllPrintingsForDex's
 // per-card detail fan-out. Not caller-configurable: there's no current need
@@ -60,6 +60,19 @@ export interface LoadAllCardDataOptions {
   // abandoned work) and passed through to every fetch call (so genuinely
   // in-flight requests are cancelled too, not just future ones).
   signal?: AbortSignal;
+  // When a dex number's owned card isn't among this curated fetch's own
+  // rarity results (e.g. it's an off-catalog promo only ever discovered via
+  // "Show all cards"), the write below preserves it by merging it back in
+  // from whatever's already cached, instead of silently discarding it. Real
+  // reported bug this fixes: refreshing data (or a plain auto-load re-run)
+  // used to unconditionally replace a dex number's ENTIRE cache entry with
+  // just the curated subset, orphaning an owned card's own metadata even
+  // though `owned` itself still pointed at that card id -- Card/Binder view
+  // then fell back to a generic sprite since the id it needed no longer
+  // resolved to anything. Optional (defaults to no preservation) since not
+  // every caller has ownership data on hand -- callers that do should always
+  // pass it.
+  owned?: Record<number, OwnedRecord>;
   // Method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under this
   // project's strict mode, a plain function-typed property is checked
   // contravariantly, and this test file's mock needs an explicitly
@@ -85,6 +98,29 @@ interface Job {
   rarity: string;
 }
 
+// If this dex number has an owned card that this curated fetch's own rarity
+// results don't include (an off-catalog card only ever discovered via "Show
+// all cards"), find it in whatever's cached right now and append it, so the
+// write below doesn't silently discard it -- see LoadAllCardDataOptions.owned
+// for the full rationale. Reads the EXISTING cache, not accumulator.cards
+// itself, since accumulator.cards is exactly the curated-only set that's
+// missing the card in the first place; if the owned card isn't findable
+// there either (e.g. its cache entry was already lost some other way),
+// there's nothing to preserve and this is a no-op.
+function mergeOwnedCard(
+  accumulator: DexAccumulator,
+  owned: Record<number, OwnedRecord>,
+  language: string
+): CardRecord[] {
+  const ownedRecord = owned[accumulator.entry.number];
+  if (!ownedRecord) return accumulator.cards;
+  if (accumulator.cards.some((card) => card.id === ownedRecord.cardId)) return accumulator.cards;
+  const existingCards = getCachedCards(language, accumulator.entry.number) ?? [];
+  const ownedCard = existingCards.find((card) => card.id === ownedRecord.cardId);
+  if (!ownedCard) return accumulator.cards;
+  return [...accumulator.cards, ownedCard];
+}
+
 export async function loadAllCardData(
   language: string,
   options: LoadAllCardDataOptions = {}
@@ -94,6 +130,7 @@ export async function loadAllCardData(
     rarities = fetchRarityList(DEFAULT_RARITY_GROUPS),
     onProgress,
     onDexLoaded,
+    owned = {},
     fetchImpl = fetch,
     signal,
   } = options;
@@ -204,7 +241,7 @@ export async function loadAllCardData(
       accumulator.remaining -= 1;
       if (accumulator.remaining === 0) {
         if (isLatestWriteGeneration(language, entry.number, accumulator.generation)) {
-          setCachedCards(language, entry.number, accumulator.cards);
+          setCachedCards(language, entry.number, mergeOwnedCard(accumulator, owned, language));
           // A curated-only fetch just overwrote this dex number's cache slot
           // with the narrower rarity-filtered subset, so any earlier "Show all
           // cards" full-print-history flag for it no longer describes what's

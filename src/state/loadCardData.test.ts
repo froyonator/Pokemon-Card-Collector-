@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAllCachedCardsForDex, loadAllCardData, loadAllPrintingsForDex } from './loadCardData';
+import { setCachedCards } from '../storage/cardCache';
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -135,6 +136,73 @@ describe('loadAllCardData', () => {
     });
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it("preserves an owned card discovered via 'Show all cards' when a curated refresh's own rarity set doesn't include it", async () => {
+    // Reproduces a real reported bug: mark an off-catalog promo card owned
+    // via "Show all cards" (which caches it outside this curated fetch's own
+    // rarity list), then click Refresh Data. Before this test's fix, the
+    // curated write below unconditionally replaced the whole cache entry
+    // with just its own (empty, in this test) results, silently discarding
+    // the owned card's metadata even though the user's `owned` record still
+    // pointed at it -- Card/Binder view then fell back to a generic sprite
+    // since the id it needed no longer resolved to anything.
+    setCachedCards('en', 4, [
+      {
+        id: 'svp-044',
+        name: 'Charmander',
+        dexNumber: 4,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '044',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/svp/044',
+        language: 'en',
+      },
+    ]);
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      owned: { 4: { dexNumber: 4, cardId: 'svp-044', condition: 'Near Mint', addedAt: '' } },
+      fetchImpl,
+    });
+
+    const cached = getAllCachedCardsForDex('en', 4);
+    expect(cached.map((c) => c.id)).toContain('svp-044');
+  });
+
+  it("does not preserve a stale owned-card id that isn't actually cached anywhere (nothing to merge back in)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      owned: { 4: { dexNumber: 4, cardId: 'does-not-exist', condition: 'Near Mint', addedAt: '' } },
+      fetchImpl,
+    });
+    const cached = getAllCachedCardsForDex('en', 4);
+    expect(cached).toEqual([]);
+  });
+
+  it('does not duplicate the owned card when the curated fetch already includes it', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      if (url.includes('dexId')) {
+        return jsonResponse([
+          { id: 'sv03.5-199', localId: '199', name: 'Charizard ex', image: 'https://x/199' },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 6, name: 'Charizard' }],
+      rarities: ['Ultra Rare'],
+      owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
+      fetchImpl,
+    });
+    const cached = getAllCachedCardsForDex('en', 6);
+    expect(cached.filter((c) => c.id === 'sv03.5-199')).toHaveLength(1);
   });
 
   it('caches every dex number, reports progress, and fires onDexLoaded when the rarities list is empty (e.g. every rarity group emptied via Manage Groups)', async () => {

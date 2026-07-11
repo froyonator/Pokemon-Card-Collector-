@@ -133,6 +133,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
     onLoadingChange(true);
     loadAllCardData(language, {
       dexEntries: missingEntries,
+      owned,
       signal: controller.signal,
       onDexLoaded: () => {
         if (loadGeneration.current !== thisGeneration) return;
@@ -167,6 +168,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
     onLoadingChange(true);
     await loadAllCardData(language, {
       dexEntries,
+      owned,
       signal: controller.signal,
       onDexLoaded: () => {
         if (loadGeneration.current !== thisGeneration) return;
