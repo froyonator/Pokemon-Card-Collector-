@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
 import { CardImage } from './CardImage';
@@ -17,16 +18,33 @@ export interface TileProps {
   // that's actually available.
   uploadedImageUri?: string;
   // Fired when the small "Enlarge" button is clicked (see showEnlarge
-  // below for exactly when that button renders). Tile itself stays
-  // presentational -- it has no idea what CardZoomOverlay even is, it just
-  // reports the click and leaves the zoomed-card state to DexGrid. Omitted
-  // entirely by callers that never need this (e.g. most existing tests),
-  // in which case the button simply never renders.
-  onEnlarge?: () => void;
-  onClick: () => void;
+  // below for exactly when that button renders), with this tile's own
+  // dexNumber. Tile itself stays presentational -- it has no idea what
+  // CardZoomOverlay even is, it just reports the click (and which dex
+  // number it was for) and leaves the zoomed-card state to DexGrid. Taking
+  // dexNumber as an argument, rather than the caller closing over it per
+  // tile, is what lets DexGrid hand every Tile the exact same stable
+  // function reference instead of a fresh closure each render -- see this
+  // component's memo wrapper below for why that identity stability is the
+  // other half of what actually stops a re-render. Omitted entirely by
+  // callers that never need this (e.g. most existing tests), in which case
+  // the button simply never renders.
+  onEnlarge?: (dexNumber: number) => void;
+  // Same "takes the dexNumber, so the caller can hand every Tile one
+  // stable function" reasoning as onEnlarge above.
+  onClick: (dexNumber: number) => void;
 }
 
-export function Tile({
+// Wrapped in React.memo so marking a single dex number owned (or any other
+// change that only actually affects a handful of tiles) doesn't re-render
+// all up to 151 of these -- `owned`/`uploadedImages`/`cardOverrides` are
+// subscribed directly from the zustand store in DexGrid, and every store
+// mutation produces a brand-new object reference for the WHOLE record even
+// when only one dex number changed. This only helps as long as every prop
+// DexGrid passes down (notably onClick/onEnlarge) also stays referentially
+// stable across renders that don't concern this particular tile -- see
+// DexGrid's handleTileClick/handleTileEnlarge for that other half.
+export const Tile = memo(function Tile({
   dexNumber,
   name,
   spriteUrl,
@@ -70,7 +88,7 @@ export function Tile({
         className={[styles.tile, styles[`tile--${state}`], isDullInCardView && styles.dullCardView]
           .filter(Boolean)
           .join(' ')}
-        onClick={onClick}
+        onClick={() => onClick(dexNumber)}
         title={title}
         aria-busy={state === 'loading'}
         layout={!shouldReduceMotion}
@@ -108,7 +126,7 @@ export function Tile({
           aria-label={`Enlarge ${name} card`}
           onClick={(event) => {
             event.stopPropagation();
-            onEnlarge?.();
+            onEnlarge?.(dexNumber);
           }}
         >
           <MagnifyIcon />
@@ -116,4 +134,4 @@ export function Tile({
       )}
     </div>
   );
-}
+});

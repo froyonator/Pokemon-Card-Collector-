@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 import type { BinderSlotEntry, CustomSlotImage } from '../types';
 import { CardImage } from './CardImage';
 import { MagnifyIcon } from './icons/TabIcons';
@@ -64,7 +64,15 @@ export interface BinderSlotProps {
   onEnlarge?: () => void;
 }
 
-export function BinderSlot({
+// Wrapped in React.memo for the same reason as Tile.tsx's own memo wrapper
+// -- a binder spread has a far smaller blast radius than the full 151-tile
+// grid (usually just one page's worth of slots), but the same root cause
+// applies: BinderView subscribes owned/uploadedImages straight from the
+// zustand store, and every store mutation produces a brand-new object
+// reference for the WHOLE record even when only one dex number changed.
+// This only helps as long as BinderPage (BinderView.tsx) also hands every
+// slot referentially-stable props, notably onClick.
+export const BinderSlot = memo(function BinderSlot({
   entry,
   pokemonName,
   spriteUrl,
@@ -229,4 +237,4 @@ export function BinderSlot({
       )}
     </div>
   );
-}
+});

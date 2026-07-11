@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ManageGroupsPanel } from './ManageGroupsPanel';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import * as cardCache from '../storage/cardCache';
 import { setCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
@@ -83,5 +84,24 @@ describe('ManageGroupsPanel', () => {
     expect(useAppStore.getState().groups.find((g) => g.id === 'rainbow-gold')?.rarities).toContain(
       'Promo'
     );
+  });
+
+  it('does not recompute the cached-rarity scan on every keystroke, only when the saved groups actually change', async () => {
+    // Regression test: getAllCachedRarities() iterates every cached card
+    // across every language ever fetched (easily low-thousands after a
+    // couple of language refreshes), so it must not rerun on every
+    // localGroups-only edit -- renaming a group re-renders this panel, but
+    // `groups` (the memo's only dependency) doesn't change until Save.
+    const spy = vi.spyOn(cardCache, 'getAllCachedRarities');
+    render(<ManageGroupsPanel onClose={() => {}} />);
+    const callsAfterMount = spy.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+
+    const nameInputs = screen.getAllByLabelText('Group name');
+    await userEvent.type(nameInputs[0], 'X');
+    expect(spy.mock.calls.length).toBe(callsAfterMount);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add group' }));
+    expect(spy.mock.calls.length).toBe(callsAfterMount);
   });
 });

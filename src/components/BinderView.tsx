@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { spriteUrl } from '../api/pokeapi';
@@ -188,7 +188,17 @@ function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
 // function component. Without this, popLayout's exit measurement silently
 // no-ops and the original "both pages slide right" bug (see the
 // AnimatePresence comment below) comes back.
-const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPage(
+//
+// Also wrapped in React.memo (memo can wrap a forwardRef result) for the
+// same reason as Tile.tsx/BinderSlot.tsx's own memo wrappers -- a page full
+// of BinderSlots shouldn't re-render just because some BinderView state
+// unrelated to this page's own content changed (e.g. the zoom slider, or a
+// selection on the OTHER page of a spread). This only helps as long as
+// BinderView also hands this component referentially-stable props -- see
+// BinderView's own onSlotClick/onSelectSlot/onDropSlot below for the other
+// half (the two Maps, nameByDexNumber and ownedCardByDexNumber /
+// uploadedImageUriByDexNumber, were already correctly useMemo'd).
+const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function BinderPage(
   {
     pageIndex,
     rows,
@@ -274,7 +284,7 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
       )}
     </motion.div>
   );
-});
+}));
 
 export function BinderView({
   dexEntries,
@@ -552,34 +562,54 @@ export function BinderView({
   // previously-resolved splitRange and surfaces a rejection message, but
   // deliberately leaves selectedIndex/rangeAnchorIndex untouched -- so it
   // doesn't silently select something nonsensical in their place.
-  function handleSelectSlot(slotIndex: number, event: React.MouseEvent<HTMLButtonElement>) {
-    if (event.shiftKey && rangeAnchorIndex !== null) {
-      const { pageIndex } = slotIndexToPosition(slotIndex, activeBinder.config);
-      const { side, hasLeftNeighbor, hasRightNeighbor } = resolvePagePairing(pageIndex);
-      const range = computeSplitRange(
-        rangeAnchorIndex,
-        slotIndex,
-        activeBinder.config,
-        side,
-        hasLeftNeighbor,
-        hasRightNeighbor
-      );
-      if (range && isRangeAllBlank(range)) {
-        setSplitRange(range);
-        setRangeRejectionMessage(null);
-      } else {
-        setSplitRange(null);
-        setRangeRejectionMessage(
-          'That range crosses the spine or an existing card. Pick two blank slots on the same page, avoiding the spine-adjacent column.'
+  //
+  // Wrapped in useCallback (rather than a plain function declaration) so
+  // this keeps the same identity across BinderView renders that don't
+  // change any of its actual inputs -- it's passed straight through to
+  // BinderPage as onSelectSlot, and BinderPage is now memoized (see its own
+  // comment) specifically so a page's slots don't all re-render for
+  // BinderView-local changes unrelated to that page's content (e.g. the
+  // zoom slider). A fresh function identity here on every render would
+  // defeat that regardless of the memo wrapper.
+  const handleSelectSlot = useCallback(
+    (slotIndex: number, event: React.MouseEvent<HTMLButtonElement>) => {
+      if (event.shiftKey && rangeAnchorIndex !== null) {
+        const { pageIndex } = slotIndexToPosition(slotIndex, activeBinder.config);
+        const { side, hasLeftNeighbor, hasRightNeighbor } = resolvePagePairing(pageIndex);
+        const range = computeSplitRange(
+          rangeAnchorIndex,
+          slotIndex,
+          activeBinder.config,
+          side,
+          hasLeftNeighbor,
+          hasRightNeighbor
         );
+        if (range && isRangeAllBlank(range)) {
+          setSplitRange(range);
+          setRangeRejectionMessage(null);
+        } else {
+          setSplitRange(null);
+          setRangeRejectionMessage(
+            'That range crosses the spine or an existing card. Pick two blank slots on the same page, avoiding the spine-adjacent column.'
+          );
+        }
+        return;
       }
-      return;
-    }
-    setSelectedIndex(slotIndex);
-    setRangeAnchorIndex(slotIndex);
-    setSplitRange(null);
-    setRangeRejectionMessage(null);
-  }
+      setSelectedIndex(slotIndex);
+      setRangeAnchorIndex(slotIndex);
+      setSplitRange(null);
+      setRangeRejectionMessage(null);
+    },
+    // resolvePagePairing/isRangeAllBlank are plain functions redefined on
+    // every render (not memoized themselves), so they're deliberately left
+    // out here -- listing them would make this recompute every render
+    // regardless, defeating the point. Both are pure reads of
+    // currentSpread/sequence/activeBinder.config, which ARE listed below,
+    // so this still recomputes exactly when what they'd actually return
+    // could change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rangeAnchorIndex, activeBinder.config, currentSpread, sequence]
+  );
 
   // Slices the uploaded aggregate image across every slot in the current
   // splitRange and persists each slot's own piece -- the split-image
@@ -620,14 +650,21 @@ export function BinderView({
   // own write IS the snapshot, and every edit after that reads the
   // already-persisted customOrder as its starting point instead of
   // recomputing the default.
-  function handleDrop(toIndex: number) {
-    if (dragFromIndex === null || dragFromIndex === toIndex) {
+  //
+  // Wrapped in useCallback for the same reason as handleSelectSlot just
+  // above (passed straight through to the now-memoized BinderPage as
+  // onDropSlot).
+  const handleDrop = useCallback(
+    (toIndex: number) => {
+      if (dragFromIndex === null || dragFromIndex === toIndex) {
+        setDragFromIndex(null);
+        return;
+      }
+      setBinderCustomOrder(activeBinder.id, moveEntry(sequence, dragFromIndex, toIndex));
       setDragFromIndex(null);
-      return;
-    }
-    setBinderCustomOrder(activeBinder.id, moveEntry(sequence, dragFromIndex, toIndex));
-    setDragFromIndex(null);
-  }
+    },
+    [dragFromIndex, activeBinder.id, sequence, setBinderCustomOrder]
+  );
 
   function handleKeepEmpty() {
     if (selectedIndex === null) return;
@@ -684,6 +721,16 @@ export function BinderView({
   const pages = useMemo(
     () => computeBinderPages(sequence, activeBinder.config),
     [sequence, activeBinder.config]
+  );
+
+  // Wraps the onSlotClick prop (which already resolves to a stable function
+  // from the caller's perspective as long as ITS caller passes one) with
+  // this binder's own language, and keeps that wrapping itself stable
+  // across renders that don't change onSlotClick/activeBinder.language --
+  // passed straight through to the now-memoized BinderPage below.
+  const handleBinderPageSlotClick = useCallback(
+    (dexNumber: number) => onSlotClick(dexNumber, activeBinder.language),
+    [onSlotClick, activeBinder.language]
   );
 
   return (
@@ -794,7 +841,7 @@ export function BinderView({
                   nameByDexNumber={nameByDexNumber}
                   ownedCardByDexNumber={ownedCardByDexNumber}
                   uploadedImageUriByDexNumber={uploadedImageUriByDexNumber}
-                  onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
+                  onSlotClick={handleBinderPageSlotClick}
                   isManualArrangeActive={isManualArrangeActive}
                   selectedIndex={selectedIndex}
                   onSelectSlot={handleSelectSlot}

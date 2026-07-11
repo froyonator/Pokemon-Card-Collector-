@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchRarityList } from '../data/defaultRarityGroups';
 import { getAllCachedRarities } from '../storage/cardCache';
@@ -25,9 +25,18 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
   // rarities shouldn't shrink or reshuffle just because the user has, say,
   // staged a group deletion mid-session without saving. Per-rarity current
   // assignment is still read from `localGroups` via groupIdForRarity below.
-  const allRarities = Array.from(
-    new Set([...getAllCachedRarities(), ...fetchRarityList(groups)])
-  ).sort();
+  //
+  // Memoized on [groups] (same pattern as CollectionTable/WishlistTable's
+  // own memoized row-building) since getAllCachedRarities() iterates every
+  // cached card across every language ever fetched -- easily low-thousands
+  // of cards after a couple of language refreshes. Without this, it reran
+  // on every keystroke while this panel is open: any localGroups edit
+  // (renaming a group, moving a rarity) re-renders this component, and
+  // `groups` itself doesn't change until Save is actually clicked.
+  const allRarities = useMemo(
+    () => Array.from(new Set([...getAllCachedRarities(), ...fetchRarityList(groups)])).sort(),
+    [groups]
+  );
 
   function groupIdForRarity(rarity: string): string {
     const found = localGroups.find((g) => g.rarities.includes(rarity));

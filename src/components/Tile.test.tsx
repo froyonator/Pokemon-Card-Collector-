@@ -49,6 +49,27 @@ describe('Tile', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onClick with its own dex number, not a no-argument callback', async () => {
+    // Regression test: DexGrid now hands every Tile the exact SAME onClick
+    // function reference (for React.memo to actually take effect across up
+    // to 151 tiles -- see DexGrid.tsx's handleTileClick), so onClick can no
+    // longer rely on a per-tile closure to know which dex number it's for.
+    // It must receive that as an argument instead.
+    const onClick = vi.fn();
+    render(
+      <Tile
+        dexNumber={25}
+        name="Pikachu"
+        spriteUrl="https://example.com/25.png"
+        state="owned"
+        view="sprite"
+        onClick={onClick}
+      />
+    );
+    await userEvent.click(screen.getByRole('button'));
+    expect(onClick).toHaveBeenCalledWith(25);
+  });
+
   it('shows the owned card image in card view when one is provided', () => {
     render(
       <Tile
@@ -296,6 +317,27 @@ describe('Tile', () => {
       await userEvent.click(screen.getByRole('button', { name: /enlarge charizard card/i }));
       expect(onEnlarge).toHaveBeenCalledTimes(1);
       expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('calls onEnlarge with its own dex number, not a no-argument callback', async () => {
+      // Same reasoning as the analogous onClick regression test above --
+      // see DexGrid.tsx's handleTileEnlarge, which is likewise shared by
+      // every Tile and looks up the owned card by this argument.
+      const onEnlarge = vi.fn();
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteUrl="https://example.com/6.png"
+          state="owned"
+          view="card"
+          ownedCardImageBase="https://example.com/card"
+          onEnlarge={onEnlarge}
+          onClick={() => {}}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /enlarge charizard card/i }));
+      expect(onEnlarge).toHaveBeenCalledWith(6);
     });
   });
 });

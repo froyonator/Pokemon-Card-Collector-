@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
 import { entriesForGenerations } from '../data/generations';
 import { loadAllCardData } from '../state/loadCardData';
@@ -240,6 +240,39 @@ export function DexGrid({
     return map;
   }, [language, dexEntries, dataVersion]);
 
+  // Latest-value refs for owned/cardsByDexNumber, read (not closed over) by
+  // handleTileEnlarge below -- this is what lets that callback's own
+  // identity stay permanently stable (an empty useCallback dependency
+  // array) instead of changing every time owned/cardsByDexNumber do, which
+  // would otherwise defeat Tile's React.memo for every tile, not just the
+  // one whose ownership actually changed. Updated on every render, but only
+  // ever read inside an event handler (after render), never during render
+  // itself.
+  const ownedRef = useRef(owned);
+  ownedRef.current = owned;
+  const cardsByDexNumberRef = useRef(cardsByDexNumber);
+  cardsByDexNumberRef.current = cardsByDexNumber;
+
+  // ONE stable callback shared by every Tile in the grid (see the .map()
+  // below), rather than each tile getting its own fresh closure per render
+  // -- Tile.tsx's own React.memo wrapper only actually skips a re-render if
+  // its onClick/onEnlarge props keep the same identity across renders that
+  // don't concern that specific tile. Both callbacks take the dex number as
+  // an argument and look up whatever they need at call time instead of
+  // closing over per-iteration data.
+  const handleTileClick = useCallback((dexNumber: number) => {
+    setOpenDexNumber(dexNumber);
+    setOpenPickerLanguage(undefined);
+  }, []);
+
+  const handleTileEnlarge = useCallback((dexNumber: number) => {
+    const ownedRecord = ownedRef.current[dexNumber];
+    if (!ownedRecord) return;
+    const allCards = cardsByDexNumberRef.current.get(dexNumber) ?? [];
+    const ownedCard = allCards.find((c) => c.id === ownedRecord.cardId);
+    if (ownedCard) setZoomedCard(ownedCard);
+  }, []);
+
   const openEntry = openDexNumber ? dexEntries.find((e) => e.number === openDexNumber) : undefined;
   // Deliberately NOT sourced from cardsByDexNumber: that memo is keyed on
   // the grid's own global `language`, but a Picker opened from a binder
@@ -310,11 +343,8 @@ export function DexGrid({
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}
                   uploadedImageUri={ownedCard ? uploadedImages[ownedCard.id] : undefined}
-                  onEnlarge={ownedCard ? () => setZoomedCard(ownedCard) : undefined}
-                  onClick={() => {
-                    setOpenDexNumber(entry.number);
-                    setOpenPickerLanguage(undefined);
-                  }}
+                  onEnlarge={ownedCard ? handleTileEnlarge : undefined}
+                  onClick={handleTileClick}
                 />
               </div>
             );
