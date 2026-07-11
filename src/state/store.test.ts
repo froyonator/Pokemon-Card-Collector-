@@ -418,6 +418,82 @@ describe('binders', () => {
   });
 });
 
+describe('setBinderSlotCustomImage', () => {
+  it('sets a custom image on the blank slot at the given sequence index in a binder\'s customOrder', () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'blank' },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    useAppStore.getState().setBinderSlotCustomImage('a', 1, {
+      dataUri: 'data:image/jpeg;base64,ABC',
+      offsetX: 0.1,
+      offsetY: 0.2,
+      zoom: 1.5,
+    });
+    const order = useAppStore.getState().binders[0].customOrder;
+    expect(order?.[1]).toEqual({
+      type: 'blank',
+      customImage: { dataUri: 'data:image/jpeg;base64,ABC', offsetX: 0.1, offsetY: 0.2, zoom: 1.5 },
+    });
+  });
+
+  it('clearing a custom image (passing null) reverts the slot to a plain blank', () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [
+            {
+              type: 'blank',
+              customImage: { dataUri: 'data:image/jpeg;base64,ABC', offsetX: 0, offsetY: 0, zoom: 1 },
+            },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    useAppStore.getState().setBinderSlotCustomImage('a', 0, null);
+    expect(useAppStore.getState().binders[0].customOrder?.[0]).toEqual({ type: 'blank' });
+  });
+
+  it('sets hasUnsavedChanges', () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'My Binder',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [{ type: 'blank' }],
+        },
+      ],
+      activeBinderId: 'a',
+      hasUnsavedChanges: false,
+    });
+    useAppStore.getState().setBinderSlotCustomImage('a', 0, {
+      dataUri: 'data:image/jpeg;base64,ABC',
+      offsetX: 0,
+      offsetY: 0,
+      zoom: 1,
+    });
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(true);
+  });
+});
+
 describe('replaceUserData with binders', () => {
   it('copies binders and activeBinderId from imported data', () => {
     const imported = [

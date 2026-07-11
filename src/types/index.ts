@@ -45,7 +45,24 @@ export interface RarityGroup {
 
 export type BinderFillDirection = 'horizontal' | 'vertical';
 
-export type BinderSlotEntry = { type: 'pokemon'; dexNumber: number } | { type: 'blank' };
+export interface CustomSlotImage {
+  // The ORIGINAL uploaded image, not a pre-cropped raster -- storing the
+  // crop as a separate transform (offsetX/offsetY/zoom) instead of baking it
+  // into the pixels lets the user re-open the editor and adjust the crop
+  // later without any quality loss, and lets a future print-size export
+  // re-render the crop at full resolution from the original source.
+  dataUri: string;
+  // Pan offset as a fraction of the image's own width/height (0 = centered
+  // on that axis), not raw pixels -- keeps the transform independent of
+  // whatever size the image happens to be uploaded at.
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+}
+
+export type BinderSlotEntry =
+  | { type: 'pokemon'; dexNumber: number }
+  | { type: 'blank'; customImage?: CustomSlotImage };
 
 export interface BinderConfig {
   rows: number;

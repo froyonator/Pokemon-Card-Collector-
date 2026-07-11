@@ -236,6 +236,38 @@ describe('binders in export/import', () => {
     expect(parsed.activeBinderId).toBe('binder-2');
   });
 
+  it('parseImportPayload accepts a blank slot with a customImage and round-trips it intact', () => {
+    const binderWithCustomImage = {
+      ...sampleBinder,
+      customOrder: [
+        {
+          type: 'blank',
+          customImage: {
+            dataUri: 'data:image/jpeg;base64,ABC',
+            offsetX: 0.1,
+            offsetY: -0.2,
+            zoom: 1.5,
+          },
+        },
+      ],
+    };
+    const raw = JSON.stringify({
+      version: 1,
+      language: 'en',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binders: [binderWithCustomImage],
+      activeBinderId: 'binder-1',
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.binders[0].customOrder).toEqual(binderWithCustomImage.customOrder);
+  });
+
   it('parseImportPayload rejects a malformed binders array', () => {
     const raw = JSON.stringify({
       version: 1,

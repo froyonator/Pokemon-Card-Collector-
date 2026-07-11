@@ -1,4 +1,11 @@
-import type { Binder, BinderSlotEntry, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
+import type {
+  Binder,
+  BinderSlotEntry,
+  CustomSlotImage,
+  OwnedRecord,
+  RarityGroup,
+  WishlistRecord,
+} from '../types';
 import type { ExportedUserData } from './store';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
@@ -77,9 +84,21 @@ function isValidBinderConfig(value: unknown): boolean {
   );
 }
 
+function isValidCustomSlotImage(value: unknown): value is CustomSlotImage {
+  return (
+    isPlainObject(value) &&
+    typeof value.dataUri === 'string' &&
+    typeof value.offsetX === 'number' &&
+    typeof value.offsetY === 'number' &&
+    typeof value.zoom === 'number'
+  );
+}
+
 function isValidBinderSlotEntry(value: unknown): value is BinderSlotEntry {
   if (!isPlainObject(value)) return false;
-  if (value.type === 'blank') return true;
+  if (value.type === 'blank') {
+    return value.customImage === undefined || isValidCustomSlotImage(value.customImage);
+  }
   return value.type === 'pokemon' && typeof value.dexNumber === 'number';
 }
 

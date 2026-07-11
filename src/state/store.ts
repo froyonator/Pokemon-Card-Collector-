@@ -7,6 +7,7 @@ import type {
   BinderConfig,
   BinderSlotEntry,
   Condition,
+  CustomSlotImage,
   OwnedRecord,
   RarityGroup,
   WishlistRecord,
@@ -76,6 +77,11 @@ export interface AppState {
   setBinderLanguage: (id: string, language: string) => void;
   setBinderConfig: (id: string, config: Partial<BinderConfig>) => void;
   setBinderCustomOrder: (id: string, order: BinderSlotEntry[] | null) => void;
+  setBinderSlotCustomImage: (
+    binderId: string,
+    slotIndex: number,
+    customImage: CustomSlotImage | null
+  ) => void;
 
   markOwned: (dexNumber: number, cardId: string, condition: Condition) => void;
   unmarkOwned: (dexNumber: number) => void;
@@ -181,6 +187,20 @@ export const useAppStore = create<AppState>()(
         setBinderCustomOrder: (id, order) =>
           set((state) => ({
             binders: state.binders.map((b) => (b.id === id ? { ...b, customOrder: order } : b)),
+            hasUnsavedChanges: true,
+          })),
+        setBinderSlotCustomImage: (binderId, slotIndex, customImage) =>
+          set((state) => ({
+            binders: state.binders.map((binder) => {
+              if (binder.id !== binderId) return binder;
+              const order = binder.customOrder;
+              if (!order || !order[slotIndex] || order[slotIndex].type !== 'blank') return binder;
+              const nextOrder = [...order];
+              nextOrder[slotIndex] = customImage
+                ? { type: 'blank', customImage }
+                : { type: 'blank' };
+              return { ...binder, customOrder: nextOrder };
+            }),
             hasUnsavedChanges: true,
           })),
 
