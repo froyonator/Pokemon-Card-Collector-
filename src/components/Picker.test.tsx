@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Picker } from './Picker';
@@ -508,6 +508,67 @@ describe('Picker', () => {
     await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
     await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
     expect(fetchImpl.mock.calls.every(([url]) => url.includes('/ja/'))).toBe(true);
+  });
+
+  describe('enlarge / zoom overlay', () => {
+    it('clicking Enlarge opens the overlay showing that card', async () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: `Enlarge ${cardA.name}` }));
+
+      const zoomDialog = screen.getByRole('dialog', { name: `${cardA.name} enlarged` });
+      expect(zoomDialog).toBeInTheDocument();
+      expect(
+        within(zoomDialog).getByAltText(/charizard ex from 151/i)
+      ).toHaveAttribute('src', `${cardA.imageBase}/low.webp`);
+    });
+
+    it('clicking Enlarge does not also open the condition picker or toggle wishlist', async () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: `Enlarge ${cardA.name}` }));
+
+      expect(screen.queryByText(/what condition/i)).not.toBeInTheDocument();
+      expect(useAppStore.getState().owned[6]).toBeUndefined();
+      expect(useAppStore.getState().wishlist[6]).toBeUndefined();
+    });
+
+    it('closing the overlay returns to the normal picker grid', async () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: `Enlarge ${cardA.name}` }));
+
+      const zoomDialog = screen.getByRole('dialog', { name: `${cardA.name} enlarged` });
+      await userEvent.click(within(zoomDialog).getByRole('button', { name: 'Close' }));
+
+      expect(
+        screen.queryByRole('dialog', { name: `${cardA.name} enlarged` })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('dialog', { name: /card options for charizard/i })
+      ).toBeInTheDocument();
+      expect(screen.getByAltText(/charizard ex from 151/i)).toBeInTheDocument();
+    });
+
+    // Enlarge is a read-only preview action unrelated to selection, so it
+    // must keep working while select mode is active, and must not itself
+    // toggle a card's selection state.
+    it('still opens the overlay while select mode is active, without toggling selection', async () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      await userEvent.click(screen.getByRole('button', { name: /select cards/i }));
+
+      await userEvent.click(screen.getByRole('button', { name: `Enlarge ${cardA.name}` }));
+
+      expect(
+        screen.getByRole('dialog', { name: `${cardA.name} enlarged` })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('0 selected');
+      // getByAltText alone would now match two images (the grid tile behind
+      // the zoom overlay's own enlarged copy), so scope the query to the
+      // main picker dialog specifically.
+      const pickerDialog = screen.getByRole('dialog', { name: /card options for charizard/i });
+      const cardBody = within(pickerDialog)
+        .getByAltText(/charizard ex from 151/i)
+        .closest('[role="button"]');
+      expect(cardBody).toHaveAttribute('aria-pressed', 'false');
+    });
   });
 
   describe('holo tilt effect', () => {

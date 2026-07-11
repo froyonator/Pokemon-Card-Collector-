@@ -116,6 +116,34 @@
   box-shadow: 0 0 0 2px var(--color-gold-soft);
 }
 
+/* Mirrors .star's positioning approach exactly, just anchored to the
+   opposite corner (top-left instead of top-right) so the two per-card
+   buttons never visually collide. */
+.enlarge {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  background: rgba(20, 14, 10, 0.55);
+  color: var(--color-text);
+  border: none;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.enlarge:hover {
+  transform: scale(1.12);
+  background: rgba(20, 14, 10, 0.75);
+}
+
 .cardBody,
 .cardBodySelected {
   position: relative;

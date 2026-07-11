@@ -7,6 +7,7 @@ import { useAppStore } from '../state/store';
 import { useCardTilt, type UseCardTiltResult } from '../state/useCardTilt';
 import type { CardRecord, Condition } from '../types';
 import { CardImage } from './CardImage';
+import { CardZoomOverlay } from './CardZoomOverlay';
 import { ConditionPicker } from './ConditionPicker';
 import styles from './Picker.module.css';
 
@@ -52,6 +53,19 @@ function PickerCardTilt({
 }) {
   const tilt = useCardTilt({ disabled });
   return <>{children(tilt)}</>;
+}
+
+// Hand-drawn magnifying-glass icon for the "Enlarge" button, matching the
+// stroke/viewBox conventions of src/components/icons/TabIcons.tsx (inline
+// SVG, no icon library, sized with currentColor so it inherits the button's
+// color across light/dark mode and hover state).
+function MagnifyIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
+      <circle cx="8.3" cy="8.3" r="5.3" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12.4 12.4L17 17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export function Picker({
@@ -106,11 +120,21 @@ export function Picker({
   const [isLoadingAllCards, setIsLoadingAllCards] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [zoomedCard, setZoomedCard] = useState<CardRecord | null>(null);
 
   function handleStarClick(card: CardRecord, event: React.MouseEvent) {
     event.stopPropagation();
     const result = toggleWishlist(dexNumber, card.id);
     setWarning(result.ok ? null : (result.reason ?? 'That card could not be added.'));
+  }
+
+  // A read-only preview action, unrelated to selection or marking a card
+  // owned, so it stays available (and inert to that other state) whether or
+  // not isSelectMode is active -- unlike the card body's own onClick, this
+  // never touches selectedCardIds or pendingCard.
+  function handleEnlargeClick(card: CardRecord, event: React.MouseEvent) {
+    event.stopPropagation();
+    setZoomedCard(card);
   }
 
   function handleToggleSelectMode() {
@@ -274,6 +298,14 @@ export function Picker({
                 <div key={card.id} className={styles.card}>
                   <button
                     type="button"
+                    className={styles.enlarge}
+                    aria-label={`Enlarge ${card.name}`}
+                    onClick={(event) => handleEnlargeClick(card, event)}
+                  >
+                    <MagnifyIcon />
+                  </button>
+                  <button
+                    type="button"
                     className={styles.star}
                     aria-label={
                       isWishlisted
@@ -380,6 +412,13 @@ export function Picker({
           </div>
         )}
       </motion.div>
+      {zoomedCard && (
+        <CardZoomOverlay
+          card={zoomedCard}
+          uploadedImageUri={uploadedImages[zoomedCard.id]}
+          onClose={() => setZoomedCard(null)}
+        />
+      )}
     </motion.div>
   );
 }
