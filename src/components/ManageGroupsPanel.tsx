@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchRarityList } from '../data/defaultRarityGroups';
 import { getAllCachedRarities } from '../storage/cardCache';
 import { useAppStore } from '../state/store';
@@ -63,7 +64,18 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
     onClose();
   }
 
-  return (
+  // Portaled straight to document.body rather than rendering in place: this
+  // panel is opened from FilterBar, which now lives inside the sticky-
+  // positioned Sidebar. A `position: sticky` ancestor establishes its own
+  // stacking context, so this panel's own `position: fixed` overlay --
+  // despite laying out correctly against the viewport -- would still PAINT
+  // within Sidebar's local stacking context rather than the document root,
+  // letting the Dex Grid's tiles (a later sibling of Sidebar, painted after
+  // it) render on top of the "modal" regardless of its z-index. Portaling
+  // out of the component tree entirely sidesteps this, and any similar
+  // ancestor-stacking issue in the future, rather than chasing z-index
+  // values that only work for today's exact DOM layout.
+  return createPortal(
     <div className={styles.overlay} role="dialog" aria-label="Manage rarity groups">
       <div className={styles.panel}>
         <div className={styles.header}>
@@ -116,6 +128,7 @@ export function ManageGroupsPanel({ onClose }: ManageGroupsPanelProps) {
           Save changes
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
