@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { spriteUrl } from '../api/pokeapi';
 import {
   computeBinderPages,
@@ -12,9 +13,17 @@ import { computeSlotSize } from '../state/binderSlotSizing';
 import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
-import type { BinderFillDirection, BinderSlotEntry, OwnedRecord } from '../types';
+import type {
+  BinderFillDirection,
+  BinderSlotEntry,
+  CardRecord,
+  CustomSlotImage,
+  OwnedRecord,
+} from '../types';
 import { BinderSlot } from './BinderSlot';
 import { BinderZoomControl, MAX_ZOOM, MIN_ZOOM } from './BinderZoomControl';
+import { CardZoomOverlay } from './CardZoomOverlay';
+import { SlotImageEditor } from './SlotImageEditor';
 import styles from './BinderView.module.css';
 
 // A page hinged at the spine (its inner edge, set via .pageLeft/.pageRight's
@@ -93,13 +102,25 @@ interface BinderPageProps {
   entries: (BinderSlotEntry | undefined)[][];
   fillDirection: BinderFillDirection;
   nameByDexNumber: Map<number, string>;
-  ownedCardImageByDexNumber: Map<number, string>;
+  ownedCardByDexNumber: Map<number, CardRecord>;
+  // A user-uploaded replacement image for an owned card with no real TCGdex
+  // image (see CardImage's own uploadedImageUri prop) -- keyed the same way
+  // as ownedCardByDexNumber, but resolved separately since it comes from a
+  // completely different piece of store state (uploadedImages, keyed by
+  // card id) rather than the card cache.
+  uploadedImageUriByDexNumber: Map<number, string>;
   onSlotClick: (dexNumber: number) => void;
   isManualArrangeActive: boolean;
   selectedIndex: number | null;
   onSelectSlot: (slotIndex: number) => void;
   onDragStartSlot: (slotIndex: number) => void;
   onDropSlot: (slotIndex: number) => void;
+  // Only relevant for a `blank` entry, and only outside manual-arrange mode
+  // -- see BinderSlot's own onEditCustomImage prop for the full rationale.
+  onEditSlot: (slotIndex: number) => void;
+  // Only relevant for an OWNED pokemon entry -- see BinderSlot's own
+  // onEnlarge prop for the full rationale.
+  onEnlargeSlot: (card: CardRecord) => void;
   // Which edge this page hinges on -- see getPageMotion above, which
   // BinderPage calls directly since the motion also needs to pair with the
   // matching .pageLeft/.pageRight CSS class for its transform-origin.
@@ -137,13 +158,16 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
     entries,
     fillDirection,
     nameByDexNumber,
-    ownedCardImageByDexNumber,
+    ownedCardByDexNumber,
+    uploadedImageUriByDexNumber,
     onSlotClick,
     isManualArrangeActive,
     selectedIndex,
     onSelectSlot,
     onDragStartSlot,
     onDropSlot,
+    onEditSlot,
+    onEnlargeSlot,
     side,
   },
   forwardedRef
@@ -179,14 +203,17 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
           // vertical fill.
           const withinPage = fillDirection === 'horizontal' ? r * columns + c : c * rows + r;
           const slotIndex = pageIndex * rows * columns + withinPage;
+          const ownedCard =
+            entry?.type === 'pokemon' ? ownedCardByDexNumber.get(entry.dexNumber) : undefined;
           return (
             <BinderSlot
               key={`${r}-${c}`}
               entry={entry}
               pokemonName={entry?.type === 'pokemon' ? nameByDexNumber.get(entry.dexNumber) : undefined}
               spriteUrl={entry?.type === 'pokemon' ? spriteUrl(entry.dexNumber) : undefined}
-              ownedCardImageBase={
-                entry?.type === 'pokemon' ? ownedCardImageByDexNumber.get(entry.dexNumber) : undefined
+              ownedCardImageBase={ownedCard?.imageBase}
+              uploadedImageUri={
+                entry?.type === 'pokemon' ? uploadedImageUriByDexNumber.get(entry.dexNumber) : undefined
               }
               onClick={onSlotClick}
               isManualArrangeActive={isManualArrangeActive}
@@ -194,6 +221,8 @@ const BinderPage = forwardRef<HTMLDivElement, BinderPageProps>(function BinderPa
               onSelect={() => onSelectSlot(slotIndex)}
               onDragStart={() => onDragStartSlot(slotIndex)}
               onDrop={() => onDropSlot(slotIndex)}
+              onEditCustomImage={entry?.type === 'blank' ? () => onEditSlot(slotIndex) : undefined}
+              onEnlarge={ownedCard ? () => onEnlargeSlot(ownedCard) : undefined}
             />
           );
         })
@@ -212,12 +241,24 @@ export function BinderView({
   const binders = useAppStore((s) => s.binders);
   const activeBinderId = useAppStore((s) => s.activeBinderId);
   const setBinderCustomOrder = useAppStore((s) => s.setBinderCustomOrder);
+  const setBinderSlotCustomImage = useAppStore((s) => s.setBinderSlotCustomImage);
+  const uploadedImages = useAppStore((s) => s.uploadedImages);
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
   const [isZoomModeActive, setIsZoomModeActive] = useState(false);
+  // Which blank slot's custom-image editor is currently open, as an index
+  // into `sequence` below -- undefined/null means no editor is open. See
+  // handleSaveCustomImage and the portaled SlotImageEditor overlay further
+  // down for how this is consumed.
+  const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
+  // The card currently shown large in CardZoomOverlay, opened via a
+  // BinderSlot's Enlarge button -- mirrors DexGrid.tsx's own zoomedCard
+  // state exactly (same reasoning: BinderSlot stays presentational, so this
+  // lives here instead).
+  const [zoomedCard, setZoomedCard] = useState<CardRecord | null>(null);
 
   // Keyboard: 'g' enters zoom mode, Escape exits it. Attached to `window`
   // rather than a specific element since the user can press 'g' with focus
@@ -275,6 +316,11 @@ export function BinderView({
     return map;
   }, [dexEntries]);
 
+  // Holds each owned dex number's full CardRecord, not just its imageBase --
+  // the Enlarge button (see onEnlargeSlot below) needs the whole record to
+  // open CardZoomOverlay with, and BinderSlot's own ownedCardImageBase prop
+  // is derived from it (`.imageBase`) at each BinderPage's BinderSlot
+  // invocation instead of being precomputed as a separate map here.
   // Deliberately keyed on activeBinder.language, not any grid-global
   // language: a binder set to a different language than the rest of the app
   // needs its owned-card art resolved from THAT language's cache, exactly
@@ -282,18 +328,36 @@ export function BinderView({
   // only reflects whatever's already cached for that language -- it doesn't
   // trigger a fetch itself (see the design spec's documented tradeoff on
   // not auto-prefetching a binder's own language in the background).
-  const ownedCardImageByDexNumber = useMemo(() => {
+  const ownedCardByDexNumber = useMemo(() => {
     void dataVersion;
-    const map = new Map<number, string>();
+    const map = new Map<number, CardRecord>();
     for (const entry of dexEntries) {
       const ownedRecord = owned[entry.number];
       if (!ownedRecord) continue;
       const cards = getCachedCards(activeBinder.language, entry.number) ?? [];
       const card = cards.find((c) => c.id === ownedRecord.cardId);
-      if (card) map.set(entry.number, card.imageBase);
+      if (card) map.set(entry.number, card);
     }
     return map;
   }, [dexEntries, owned, activeBinder.language, dataVersion]);
+
+  // A user-uploaded replacement image for the owned card (see CardImage's
+  // own uploadedImageUri prop) -- resolved straight from the owned record's
+  // cardId, unlike ownedCardByDexNumber above, since uploadedImages is
+  // keyed by card id directly and needs no cache lookup at all. Fixes a
+  // pre-existing gap where an uploaded replacement image (set via CardImage's
+  // upload fallback for a card with no real TCGdex image) never reached
+  // Binder view -- only the Picker ever showed it.
+  const uploadedImageUriByDexNumber = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const entry of dexEntries) {
+      const ownedRecord = owned[entry.number];
+      if (!ownedRecord) continue;
+      const uri = uploadedImages[ownedRecord.cardId];
+      if (uri) map.set(entry.number, uri);
+    }
+    return map;
+  }, [dexEntries, owned, uploadedImages]);
 
   const sequence = activeBinder.customOrder ?? defaultBinderSequence(dexEntries);
 
@@ -320,6 +384,19 @@ export function BinderView({
     setSelectedIndex(null);
   }
 
+  function handleSaveCustomImage(customImage: CustomSlotImage) {
+    if (editingSlotIndex === null) return;
+    setBinderSlotCustomImage(activeBinder.id, editingSlotIndex, customImage);
+    setEditingSlotIndex(null);
+  }
+
+  // The blank entry currently being edited, if any -- resolved once here
+  // (rather than indexing `sequence[editingSlotIndex]` again inline below)
+  // so TypeScript can actually narrow its `customImage` field; re-indexing
+  // the array a second time in the JSX wouldn't be recognized as the same
+  // expression and would lose that narrowing.
+  const editingEntry = editingSlotIndex !== null ? sequence[editingSlotIndex] : undefined;
+
   const pages = useMemo(
     () => computeBinderPages(sequence, activeBinder.config),
     [sequence, activeBinder.config]
@@ -331,74 +408,109 @@ export function BinderView({
   const currentSpread = spreads[spreadIndex] ?? [];
 
   return (
-    <div className={styles.binder}>
-      <div className={styles.nav}>
-        <button
-          type="button"
-          aria-label="Previous page"
-          disabled={spreadIndex === 0}
-          onClick={() => setSpreadIndex((i) => Math.max(0, i - 1))}
-        >
-          &larr;
-        </button>
-        <button
-          type="button"
-          aria-label="Next page"
-          disabled={spreadIndex >= spreads.length - 1}
-          onClick={() => setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1))}
-        >
-          &rarr;
-        </button>
-        {isManualArrangeActive && selectedIndex !== null && (
-          <button type="button" onClick={handleKeepEmpty}>
-            Keep empty
+    <>
+      <div className={styles.binder}>
+        <div className={styles.nav}>
+          <button
+            type="button"
+            aria-label="Previous page"
+            disabled={spreadIndex === 0}
+            onClick={() => setSpreadIndex((i) => Math.max(0, i - 1))}
+          >
+            &larr;
           </button>
+          <button
+            type="button"
+            aria-label="Next page"
+            disabled={spreadIndex >= spreads.length - 1}
+            onClick={() => setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1))}
+          >
+            &rarr;
+          </button>
+          {isManualArrangeActive && selectedIndex !== null && (
+            <button type="button" onClick={handleKeepEmpty}>
+              Keep empty
+            </button>
+          )}
+          <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
+        </div>
+        <div
+          className={styles.spread}
+          onWheel={handleWheel}
+          style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
+        >
+          {/* mode="popLayout": .spread is a plain flex row, so without this an
+              exiting page (kept mounted by AnimatePresence during its exit
+              animation) stays a normal flex sibling of the newly-entering
+              pages, shoving them sideways instead of both animating in place
+              over the same screen position -- exactly the "both pages slide
+              right" bug this fixes. popLayout takes an exiting element out of
+              flow (position: absolute) the moment it starts exiting, so it can
+              no longer affect its siblings' layout. */}
+          <AnimatePresence mode="popLayout">
+            {currentSpread.map((pageIndex, i) => {
+              // Only a genuine two-page spread has a "left" page to hinge
+              // differently from a "right" page -- a lone first page
+              // (currentSpread.length === 1) has no left-hand partner, so it's
+              // treated as the right/only page.
+              const side: 'left' | 'right' =
+                i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+              return (
+                <BinderPage
+                  key={pageIndex}
+                  pageIndex={pageIndex}
+                  rows={activeBinder.config.rows}
+                  columns={activeBinder.config.columns}
+                  entries={pages[pageIndex] ?? []}
+                  fillDirection={activeBinder.config.fillDirection}
+                  nameByDexNumber={nameByDexNumber}
+                  ownedCardByDexNumber={ownedCardByDexNumber}
+                  uploadedImageUriByDexNumber={uploadedImageUriByDexNumber}
+                  onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
+                  isManualArrangeActive={isManualArrangeActive}
+                  selectedIndex={selectedIndex}
+                  onSelectSlot={setSelectedIndex}
+                  onDragStartSlot={setDragFromIndex}
+                  onDropSlot={handleDrop}
+                  onEditSlot={setEditingSlotIndex}
+                  onEnlargeSlot={setZoomedCard}
+                  side={side}
+                />
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      </div>
+      {/* Portaled straight to document.body (both the editor overlay and
+          CardZoomOverlay itself), same reason as ManageGroupsPanel /
+          CardZoomOverlay's own doc comment: this can be opened from deep
+          inside .spread, which is transformed by the zoom slider's own
+          `scale(...)` (see the style prop above) -- rendering the editor
+          inline there would inherit that transform and visually shrink
+          along with the binder, which portaling out of the component tree
+          sidesteps entirely. */}
+      {editingSlotIndex !== null &&
+        createPortal(
+          <div
+            className={styles.editorOverlay}
+            role="dialog"
+            aria-label="Edit custom binder slot image"
+          >
+            <SlotImageEditor
+              initialImage={editingEntry?.type === 'blank' ? editingEntry.customImage ?? null : null}
+              onSave={handleSaveCustomImage}
+              onCancel={() => setEditingSlotIndex(null)}
+            />
+          </div>,
+          document.body
         )}
-        <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
-      </div>
-      <div
-        className={styles.spread}
-        onWheel={handleWheel}
-        style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
-      >
-        {/* mode="popLayout": .spread is a plain flex row, so without this an
-            exiting page (kept mounted by AnimatePresence during its exit
-            animation) stays a normal flex sibling of the newly-entering
-            pages, shoving them sideways instead of both animating in place
-            over the same screen position -- exactly the "both pages slide
-            right" bug this fixes. popLayout takes an exiting element out of
-            flow (position: absolute) the moment it starts exiting, so it can
-            no longer affect its siblings' layout. */}
-        <AnimatePresence mode="popLayout">
-          {currentSpread.map((pageIndex, i) => {
-            // Only a genuine two-page spread has a "left" page to hinge
-            // differently from a "right" page -- a lone first page
-            // (currentSpread.length === 1) has no left-hand partner, so it's
-            // treated as the right/only page.
-            const side: 'left' | 'right' =
-              i === 0 && currentSpread.length === 2 ? 'left' : 'right';
-            return (
-              <BinderPage
-                key={pageIndex}
-                pageIndex={pageIndex}
-                rows={activeBinder.config.rows}
-                columns={activeBinder.config.columns}
-                entries={pages[pageIndex] ?? []}
-                fillDirection={activeBinder.config.fillDirection}
-                nameByDexNumber={nameByDexNumber}
-                ownedCardImageByDexNumber={ownedCardImageByDexNumber}
-                onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
-                isManualArrangeActive={isManualArrangeActive}
-                selectedIndex={selectedIndex}
-                onSelectSlot={setSelectedIndex}
-                onDragStartSlot={setDragFromIndex}
-                onDropSlot={handleDrop}
-                side={side}
-              />
-            );
-          })}
-        </AnimatePresence>
-      </div>
-    </div>
+      {zoomedCard && (
+        <CardZoomOverlay
+          card={zoomedCard}
+          uploadedImageUri={uploadedImages[zoomedCard.id]}
+          onClose={() => setZoomedCard(null)}
+        />
+      )}
+    </>
   );
 }

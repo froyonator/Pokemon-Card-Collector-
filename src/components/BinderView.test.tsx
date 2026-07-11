@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BinderView } from './BinderView';
@@ -111,6 +111,66 @@ describe('BinderView', () => {
       />
     );
     expect(screen.queryByAltText('Bulbasaur card')).not.toBeInTheDocument();
+  });
+
+  it('shows a user-uploaded replacement image on the slot for an owned card with no real image', () => {
+    setCachedCards('en', 1, [
+      {
+        id: 'no-image-card',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '001',
+        rarity: 'Promo',
+        imageBase: '',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({ uploadedImages: { 'no-image-card': 'data:image/jpeg;base64,UPLOADED' } });
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{ 1: { dexNumber: 1, cardId: 'no-image-card', condition: 'Near Mint', addedAt: '' } }}
+        dataVersion={0}
+        onSlotClick={() => {}}
+      />
+    );
+    expect(screen.getByAltText('Bulbasaur card')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,UPLOADED'
+    );
+  });
+
+  it('clicking Enlarge on an owned slot opens the zoom overlay for that card', async () => {
+    setCachedCards('en', 1, [
+      {
+        id: 'sv03.5-199',
+        name: 'Bulbasaur',
+        dexNumber: 1,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        language: 'en',
+      },
+    ]);
+    render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{ 1: { dexNumber: 1, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } }}
+        dataVersion={0}
+        onSlotClick={() => {}}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /enlarge bulbasaur card/i }));
+
+    const zoomDialog = await screen.findByRole('dialog', { name: 'Bulbasaur enlarged' });
+    expect(within(zoomDialog).getByAltText(/bulbasaur from 151/i)).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
+    );
   });
 });
 
@@ -274,6 +334,44 @@ describe('BinderView manual arrange', () => {
       { type: 'blank' },
       { type: 'pokemon', dexNumber: 2 },
     ]);
+  });
+
+  it('marking a slot empty, then editing it outside manual arrange, opens the editor and saving persists the image to that slot', async () => {
+    const { rerender } = render(
+      <BinderView
+        dexEntries={dexEntries}
+        owned={{}}
+        dataVersion={0}
+        onSlotClick={() => {}}
+        isManualArrangeActive
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /select bulbasaur/i }));
+    await userEvent.click(screen.getByRole('button', { name: /keep empty/i }));
+    expect(activeBinderCustomOrder()?.[0]).toEqual({ type: 'blank' });
+
+    // BinderSlot only offers its "add a custom image" affordance outside
+    // manual arrange (dragging/selecting takes priority there) -- turning
+    // it off on the SAME render tree is what makes the now-blank first slot
+    // editable.
+    rerender(
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /add a custom image to this slot/i }));
+    const dialog = screen.getByRole('dialog', { name: /edit custom binder slot image/i });
+
+    const file = new File(['fake-image-bytes'], 'filler.png', { type: 'image/png' });
+    await userEvent.upload(within(dialog).getByLabelText(/upload an image/i), file);
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Save' }));
+
+    expect(activeBinderCustomOrder()?.[0]).toMatchObject({
+      type: 'blank',
+      customImage: { offsetX: 0, offsetY: 0, zoom: 1 },
+    });
+    expect(
+      screen.queryByRole('dialog', { name: /edit custom binder slot image/i })
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,24 @@
+/* .slotWrapper is the actual CSS Grid item now (see .page's fixed-pixel
+   grid-template-columns/rows in BinderView.module.css) for a pokemon-type
+   entry, so a sibling Enlarge button can sit next to .slot without nesting
+   a button inside a button (invalid HTML) -- mirrors Tile.module.css's own
+   .tileWrapper/.enlarge split exactly. Grid's default item alignment is
+   stretch, so .slotWrapper (no explicit width/height of its own) still
+   ends up exactly the grid cell's pixel size; .slot below then needs
+   width/height: 100% to fill that size in turn, since it's no longer the
+   grid item stretching directly. A blank slot (with or without a custom
+   image) has no Enlarge button and no wrapper -- .slot/.owned there stays
+   the direct grid item, same as before, which is why the 100% addition
+   below is harmless for that case too (100% of its own stretched grid
+   area is just that same area). */
+.slotWrapper {
+  position: relative;
+}
+
 .slot {
   position: relative;
+  width: 100%;
+  height: 100%;
   border-radius: var(--radius-md);
   background: #0c0a08;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -17,7 +36,14 @@
   background: #1a1613;
 }
 
-.slot img {
+/* :not(.owned) so this never touches the owned/.cardImage case below --
+   `.slot img` (one class + one type) is MORE specific than `.cardImage`
+   (one class alone), so without this exclusion it silently won the
+   width/height/object-fit properties they share, shrinking every real card
+   image down to a 48px thumbnail pinned to the slot's top-left corner
+   regardless of .cardImage's own 100%/cover rule. Confirmed live: this is
+   exactly the "cards render tiny in a black box" symptom. */
+.slot:not(.owned) img {
   /* Fixed pixel dimensions, not percentage-based: a percentage width/height
      here would depend on the slot's own size, and the slot is a CSS Grid
      item sized in pixels computed by BinderView.tsx's computeSlotSize. This
@@ -60,4 +86,72 @@
 .selected {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.blankEditable {
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.blankEditable:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.customImageButton {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+/* Mirrors Tile.module.css's own .enlarge button (position, colors, hover
+   scale) exactly. Anchored to .slotWrapper, not .slot itself, since this is
+   a DOM sibling of .slot rather than a child of it (see the comment in
+   BinderSlot.tsx). */
+.enlarge {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  width: 26px;
+  height: 26px;
+  /* Without this, the shared global button reset's padding (0.5rem 0.9rem)
+     pushes the border-box width past 26px (padding + border can't be
+     smaller than the box), rendering an oval instead of a circle. */
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: rgba(20, 14, 10, 0.5);
+  backdrop-filter: blur(3px);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  z-index: 1;
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.enlarge svg {
+  width: 15px;
+  height: 15px;
+}
+
+.enlarge:hover {
+  transform: scale(1.12);
+  background: rgba(20, 14, 10, 0.75);
 }
