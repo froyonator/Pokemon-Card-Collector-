@@ -276,3 +276,39 @@ describe('BinderView manual arrange', () => {
     ]);
   });
 });
+
+describe('zoom', () => {
+  beforeEach(resetStore);
+
+  it('pressing g enters zoom mode, shown via the zoom control hint', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    await userEvent.keyboard('g');
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent(/scroll to zoom/i);
+  });
+
+  it('scrolling while in zoom mode changes the zoom slider value', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    await userEvent.keyboard('g');
+    const slider = screen.getByRole('slider', { name: /zoom/i });
+    const before = Number(slider.getAttribute('value') ?? slider.getAttribute('aria-valuenow'));
+    fireEvent.wheel(screen.getByLabelText(/page 1/i).parentElement!, { deltaY: -100 });
+    const after = Number((slider as HTMLInputElement).value);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('pressing Escape exits zoom mode', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    await userEvent.keyboard('g');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText(/scroll to zoom/i)).not.toBeInTheDocument();
+  });
+
+  it('clicking anywhere while in zoom mode exits it without triggering the click underneath', async () => {
+    const onSlotClick = vi.fn();
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={onSlotClick} />);
+    await userEvent.keyboard('g');
+    await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
+    expect(screen.queryByText(/scroll to zoom/i)).not.toBeInTheDocument();
+    expect(onSlotClick).not.toHaveBeenCalled();
+  });
+});

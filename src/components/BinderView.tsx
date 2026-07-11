@@ -14,6 +14,7 @@ import { getCachedCards } from '../storage/cardCache';
 import type { DexEntry } from '../data/gen1Dex';
 import type { BinderFillDirection, BinderSlotEntry, OwnedRecord } from '../types';
 import { BinderSlot } from './BinderSlot';
+import { BinderZoomControl, MAX_ZOOM, MIN_ZOOM } from './BinderZoomControl';
 import styles from './BinderView.module.css';
 
 // A page hinged at the spine (its inner edge, set via .pageLeft/.pageRight's
@@ -215,6 +216,45 @@ export function BinderView({
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [isZoomModeActive, setIsZoomModeActive] = useState(false);
+
+  // Keyboard: 'g' enters zoom mode, Escape exits it. Attached to `window`
+  // rather than a specific element since the user can press 'g' with focus
+  // anywhere on the page, not just while a binder element itself has focus.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'g' || event.key === 'G') {
+        setIsZoomModeActive(true);
+      } else if (event.key === 'Escape') {
+        setIsZoomModeActive(false);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Any click anywhere exits zoom mode and swallows that specific click so it
+  // doesn't also activate whatever was underneath it (e.g. opening a binder
+  // slot's Picker) -- captured on window in the CAPTURE phase, so it runs
+  // before the click reaches its actual target and can be stopped there.
+  useEffect(() => {
+    if (!isZoomModeActive) return;
+    function handleClickCapture(event: MouseEvent) {
+      event.stopPropagation();
+      event.preventDefault();
+      setIsZoomModeActive(false);
+    }
+    window.addEventListener('click', handleClickCapture, { capture: true });
+    return () => window.removeEventListener('click', handleClickCapture, { capture: true });
+  }, [isZoomModeActive]);
+
+  function handleWheel(event: React.WheelEvent) {
+    if (!isZoomModeActive) return;
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 0.1 : -0.1;
+    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 20) / 20)));
+  }
 
   useEffect(() => {
     setSpreadIndex(0);
@@ -314,8 +354,13 @@ export function BinderView({
             Keep empty
           </button>
         )}
+        <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
       </div>
-      <div className={styles.spread}>
+      <div
+        className={styles.spread}
+        onWheel={handleWheel}
+        style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
+      >
         {/* mode="popLayout": .spread is a plain flex row, so without this an
             exiting page (kept mounted by AnimatePresence during its exit
             animation) stays a normal flex sibling of the newly-entering
