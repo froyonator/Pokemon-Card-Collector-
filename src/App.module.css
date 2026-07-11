@@ -14,21 +14,7 @@
 }
 
 .header h1 {
-  position: relative;
-  padding-left: var(--space-5);
   letter-spacing: -0.01em;
-}
-
-.header h1::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.35em;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .tabs {
