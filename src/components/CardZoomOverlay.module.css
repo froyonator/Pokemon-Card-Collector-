@@ -1,0 +1,89 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 10, 8, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: var(--space-4);
+}
+
+.panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close {
+  position: absolute;
+  top: calc(var(--space-4) * -1);
+  right: calc(var(--space-4) * -1);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: var(--text-md);
+  line-height: 1;
+  box-shadow: var(--shadow-lg);
+  z-index: 1;
+}
+
+.close:hover {
+  background: var(--color-surface);
+}
+
+.cardBody {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius-xl);
+}
+
+/* The holo tilt effect (see src/state/useCardTilt.ts) drives these two
+   custom properties per-frame from JS; the fallback values keep the shine
+   fully transparent and centered on a card the effect hasn't touched. Same
+   pattern as Picker.module.css's .cardBody::after, scaled up for a single
+   large card instead of a grid of small ones. */
+.cardBody::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at var(--tilt-shine-x, 50%) var(--tilt-shine-y, 50%),
+      rgba(255, 253, 248, 0.6),
+      transparent 55%
+    ),
+    var(--holo-gradient);
+  background-blend-mode: screen;
+  mix-blend-mode: soft-light;
+  opacity: var(--tilt-shine-opacity, 0);
+  transition: opacity var(--transition-base);
+}
+
+/* While the cursor is actively moving over the card, the transform set
+   inline by useCardTilt must track the cursor 1:1 -- the base transition
+   above (meant for the mouse-leave reset) would otherwise make every frame
+   lag behind the cursor. */
+.cardTilting {
+  transition: none;
+}
+
+.cardImage {
+  display: block;
+  width: min(calc(80vh * 5 / 7), 90vw);
+  aspect-ratio: 5 / 7;
+  height: auto;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
