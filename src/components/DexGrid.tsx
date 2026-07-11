@@ -43,6 +43,7 @@ export function DexGrid({
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
   const owned = useAppStore((s) => s.owned);
+  const wishlist = useAppStore((s) => s.wishlist);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
@@ -78,6 +79,17 @@ export function DexGrid({
   const dexEntries = useMemo(
     () => entriesForGenerations(selectedGenerations),
     [selectedGenerations]
+  );
+
+  // Hoisted above the auto-load effect and handleRefreshData below (both
+  // need it in scope) so the actual network fetch respects the user's live
+  // Manage-Groups configuration instead of loadAllCardData's own hardcoded
+  // default rarity list -- previously neither call site passed `rarities`
+  // at all, so any rarity added to an active group was never fetched by the
+  // normal load/refresh pipeline.
+  const activeSet = useMemo(
+    () => activeRarities(groups, activeGroupIds),
+    [groups, activeGroupIds]
   );
 
   // Coalesces the up-to-151 individual onDexLoaded callbacks fired during a
@@ -146,7 +158,9 @@ export function DexGrid({
     onLoadingChange(true);
     loadAllCardData(language, {
       dexEntries: missingEntries,
+      rarities: [...activeSet],
       owned,
+      wishlist,
       signal: controller.signal,
       onDexLoaded: () => {
         if (loadGeneration.current !== thisGeneration) return;
@@ -179,19 +193,35 @@ export function DexGrid({
 
     setIsLoading(true);
     onLoadingChange(true);
-    await loadAllCardData(language, {
-      dexEntries,
-      owned,
-      signal: controller.signal,
-      onDexLoaded: () => {
-        if (loadGeneration.current !== thisGeneration) return;
-        scheduleDataVersionBump();
-      },
-    });
-    if (loadGeneration.current !== thisGeneration) return;
-    setIsLoading(false);
-    onLoadingChange(false);
-    setDataVersion((v) => v + 1);
+    try {
+      await loadAllCardData(language, {
+        dexEntries,
+        rarities: [...activeSet],
+        owned,
+        wishlist,
+        signal: controller.signal,
+        onDexLoaded: () => {
+          if (loadGeneration.current !== thisGeneration) return;
+          scheduleDataVersionBump();
+        },
+      });
+    } catch (err) {
+      // loadAllCardData itself already resolves normally (rather than
+      // rejecting) for an aborted load -- an expected, frequent outcome
+      // whenever this call gets superseded -- so anything that reaches here
+      // is a genuine fetch failure, not a superseded request. Logged rather
+      // than silently swallowed; no user-facing toast needed, but this must
+      // not skip the `finally` below, which is what stops the Refresh
+      // button (and any still-loading tile) from getting stuck forever --
+      // mirroring the auto-load effect's own `.finally()` just above.
+      console.error('Refresh Data failed:', err);
+    } finally {
+      if (loadGeneration.current === thisGeneration) {
+        setIsLoading(false);
+        onLoadingChange(false);
+        setDataVersion((v) => v + 1);
+      }
+    }
   }
 
   // Fires handleRefreshData whenever the parent (Sidebar's Refresh Data
@@ -206,11 +236,6 @@ export function DexGrid({
     handleRefreshData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshRequestId]);
-
-  const activeSet = useMemo(
-    () => activeRarities(groups, activeGroupIds),
-    [groups, activeGroupIds]
-  );
 
   // Memoized so the cache blob (all languages x all dex numbers ever cached)
   // is only re-parsed once per dex entry when language, dexEntries, or

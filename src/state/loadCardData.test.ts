@@ -173,6 +173,84 @@ describe('loadAllCardData', () => {
     expect(cached.map((c) => c.id)).toContain('svp-044');
   });
 
+  it("preserves a wishlisted card discovered via 'Show all cards' when a curated refresh's own rarity set doesn't include it", async () => {
+    // Same real reported bug as the owned-card test above, but for a card
+    // the user has only wishlisted, not marked owned: before this test's
+    // fix, mergeOwnedCard only ever checked `owned`, so a curated refresh
+    // would still silently discard a wishlisted off-catalog card's cache
+    // entry -- the wishlist record itself stayed intact, but the Wishlist
+    // tab's Card cell rendered blank once the id it pointed at no longer
+    // resolved to anything.
+    setCachedCards('en', 4, [
+      {
+        id: 'svp-044',
+        name: 'Charmander',
+        dexNumber: 4,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '044',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/svp/044',
+        language: 'en',
+      },
+    ]);
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 4, name: 'Charmander' }],
+      rarities: ['Ultra Rare'],
+      wishlist: { 4: { dexNumber: 4, cardId: 'svp-044', addedAt: '' } },
+      fetchImpl,
+    });
+
+    const cached = getAllCachedCardsForDex('en', 4);
+    expect(cached.map((c) => c.id)).toContain('svp-044');
+  });
+
+  it("preserves both an owned card and a different dex number's wishlisted card in the same curated refresh", async () => {
+    setCachedCards('en', 4, [
+      {
+        id: 'svp-044',
+        name: 'Charmander',
+        dexNumber: 4,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '044',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/svp/044',
+        language: 'en',
+      },
+    ]);
+    setCachedCards('en', 7, [
+      {
+        id: 'svp-007',
+        name: 'Squirtle',
+        dexNumber: 7,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '007',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/svp/007',
+        language: 'en',
+      },
+    ]);
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+
+    await loadAllCardData('en', {
+      dexEntries: [
+        { number: 4, name: 'Charmander' },
+        { number: 7, name: 'Squirtle' },
+      ],
+      rarities: ['Ultra Rare'],
+      owned: { 4: { dexNumber: 4, cardId: 'svp-044', condition: 'Near Mint', addedAt: '' } },
+      wishlist: { 7: { dexNumber: 7, cardId: 'svp-007', addedAt: '' } },
+      fetchImpl,
+    });
+
+    expect(getAllCachedCardsForDex('en', 4).map((c) => c.id)).toContain('svp-044');
+    expect(getAllCachedCardsForDex('en', 7).map((c) => c.id)).toContain('svp-007');
+  });
+
   it("does not preserve a stale owned-card id that isn't actually cached anywhere (nothing to merge back in)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
     await loadAllCardData('en', {

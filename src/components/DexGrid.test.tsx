@@ -214,6 +214,62 @@ describe('DexGrid', () => {
     expect(secondSignal?.aborted).toBe(false);
   });
 
+  it("fetches a rarity that only exists in a user-added active group, not just the 9 built-in DEFAULT_RARITY_GROUPS rarities", async () => {
+    // Real reported bug: neither the auto-load effect nor handleRefreshData
+    // ever passed `rarities` into loadAllCardData, so it silently fell back
+    // to its own hardcoded default (fetchRarityList(DEFAULT_RARITY_GROUPS))
+    // no matter what the user had actually configured via Manage Groups.
+    // Adding "Promo" to an active group here, a rarity absent from every
+    // built-in group, and asserting the mocked fetch actually got queried
+    // for it is what catches a regression back to that hardcoded default.
+    useAppStore.setState({
+      groups: [
+        ...DEFAULT_RARITY_GROUPS,
+        { id: 'custom-promo', name: 'Promos', rarities: ['Promo'] },
+      ],
+      activeGroupIds: [...DEFAULT_RARITY_GROUPS.map((g) => g.id), 'custom-promo'],
+    });
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    const calledUrls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
+    expect(calledUrls.some((url) => url.includes('rarity=eq%3APromo'))).toBe(true);
+  });
+
+  it('does not get stuck loading when a genuine (non-abort) fetch failure occurs during Refresh Data', async () => {
+    // Real reported bug: handleRefreshData had no try/catch around its
+    // `await loadAllCardData(...)` call, so a genuine fetch failure threw
+    // past setIsLoading(false)/onLoadingChange(false), permanently
+    // disabling the Refresh button and leaving any not-yet-loaded tile
+    // stuck showing "loading" forever.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onLoadingChange = vi.fn();
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    onLoadingChange.mockClear();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response)
+    );
+
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={1} />
+    );
+    expect(onLoadingChange).toHaveBeenCalledWith(true);
+
+    await waitFor(() => {
+      expect(onLoadingChange).toHaveBeenCalledWith(false);
+    });
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
     render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => {

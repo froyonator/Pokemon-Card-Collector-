@@ -11,7 +11,7 @@ import {
   reserveWriteGeneration,
   setCachedCards,
 } from '../storage/cardCache';
-import type { CardRecord, OwnedRecord } from '../types';
+import type { CardRecord, OwnedRecord, WishlistRecord } from '../types';
 
 // Shared by loadAllCardData's dex x rarity fan-out and loadAllPrintingsForDex's
 // per-card detail fan-out. Not caller-configurable: there's no current need
@@ -73,6 +73,17 @@ export interface LoadAllCardDataOptions {
   // every caller has ownership data on hand -- callers that do should always
   // pass it.
   owned?: Record<number, OwnedRecord>;
+  // Same rationale and mechanism as `owned` above, but for a card the user
+  // has wishlisted rather than owns. Without this, a curated refresh could
+  // silently drop an off-catalog wishlisted card's cache entry too, leaving
+  // the wishlist record itself intact but pointing at a card id that no
+  // longer resolves to anything -- the Wishlist tab's Card cell then renders
+  // blank. Safe to check alongside `owned` unconditionally: `markOwned`
+  // always deletes any existing wishlist entry for that same dex number, so
+  // a dex number is never simultaneously owned and wishlisted, and this
+  // never ends up "double preserving" the same slot. Optional for the same
+  // reason as `owned`: not every caller has wishlist data on hand.
+  wishlist?: Record<number, WishlistRecord>;
   // Method-shorthand syntax, not `fetchImpl?: typeof fetch`. Under this
   // project's strict mode, a plain function-typed property is checked
   // contravariantly, and this test file's mock needs an explicitly
@@ -98,27 +109,41 @@ interface Job {
   rarity: string;
 }
 
-// If this dex number has an owned card that this curated fetch's own rarity
-// results don't include (an off-catalog card only ever discovered via "Show
-// all cards"), find it in whatever's cached right now and append it, so the
-// write below doesn't silently discard it -- see LoadAllCardDataOptions.owned
-// for the full rationale. Reads the EXISTING cache, not accumulator.cards
-// itself, since accumulator.cards is exactly the curated-only set that's
-// missing the card in the first place; if the owned card isn't findable
-// there either (e.g. its cache entry was already lost some other way),
-// there's nothing to preserve and this is a no-op.
-function mergeOwnedCard(
+// If this dex number has an owned and/or wishlisted card that this curated
+// fetch's own rarity results don't include (an off-catalog card only ever
+// discovered via "Show all cards"), find it in whatever's cached right now
+// and append it, so the write below doesn't silently discard it -- see
+// LoadAllCardDataOptions.owned and .wishlist for the full rationale. Reads
+// the EXISTING cache, not accumulator.cards itself, since accumulator.cards
+// is exactly the curated-only set that's missing the card in the first
+// place; if a referenced card isn't findable there either (e.g. its cache
+// entry was already lost some other way), there's nothing to preserve for
+// it and it's skipped. Owned and wishlisted are checked independently (not
+// e.g. owned-then-wishlist-as-fallback) since, although a given dex number
+// is never both at once (`markOwned` always clears any existing wishlist
+// entry for that dex number), this function has no need to assume that
+// invariant to stay correct.
+function mergeReferencedCards(
   accumulator: DexAccumulator,
   owned: Record<number, OwnedRecord>,
+  wishlist: Record<number, WishlistRecord>,
   language: string
 ): CardRecord[] {
-  const ownedRecord = owned[accumulator.entry.number];
-  if (!ownedRecord) return accumulator.cards;
-  if (accumulator.cards.some((card) => card.id === ownedRecord.cardId)) return accumulator.cards;
-  const existingCards = getCachedCards(language, accumulator.entry.number) ?? [];
-  const ownedCard = existingCards.find((card) => card.id === ownedRecord.cardId);
-  if (!ownedCard) return accumulator.cards;
-  return [...accumulator.cards, ownedCard];
+  const referencedCardIds = [
+    owned[accumulator.entry.number]?.cardId,
+    wishlist[accumulator.entry.number]?.cardId,
+  ].filter((cardId): cardId is string => cardId !== undefined);
+  if (referencedCardIds.length === 0) return accumulator.cards;
+
+  let cards = accumulator.cards;
+  let existingCards: CardRecord[] | undefined;
+  for (const cardId of referencedCardIds) {
+    if (cards.some((card) => card.id === cardId)) continue;
+    existingCards ??= getCachedCards(language, accumulator.entry.number) ?? [];
+    const referencedCard = existingCards.find((card) => card.id === cardId);
+    if (referencedCard) cards = [...cards, referencedCard];
+  }
+  return cards;
 }
 
 export async function loadAllCardData(
@@ -131,6 +156,7 @@ export async function loadAllCardData(
     onProgress,
     onDexLoaded,
     owned = {},
+    wishlist = {},
     fetchImpl = fetch,
     signal,
   } = options;
@@ -241,7 +267,11 @@ export async function loadAllCardData(
       accumulator.remaining -= 1;
       if (accumulator.remaining === 0) {
         if (isLatestWriteGeneration(language, entry.number, accumulator.generation)) {
-          setCachedCards(language, entry.number, mergeOwnedCard(accumulator, owned, language));
+          setCachedCards(
+            language,
+            entry.number,
+            mergeReferencedCards(accumulator, owned, wishlist, language)
+          );
           // A curated-only fetch just overwrote this dex number's cache slot
           // with the narrower rarity-filtered subset, so any earlier "Show all
           // cards" full-print-history flag for it no longer describes what's
