@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { CustomSlotImage } from '../types';
 import { clampCropOffset } from '../state/slotImageCrop';
+import { downloadCardSizedImage } from '../state/slotImageExport';
 import { MAX_ZOOM, MIN_ZOOM } from './BinderZoomControl';
 import styles from './SlotImageEditor.module.css';
 
@@ -17,7 +18,18 @@ export function SlotImageEditor({ initialImage, onSave, onCancel }: SlotImageEdi
   const [offsetX, setOffsetX] = useState(initialImage?.offsetX ?? DEFAULT_TRANSFORM.offsetX);
   const [offsetY, setOffsetY] = useState(initialImage?.offsetY ?? DEFAULT_TRANSFORM.offsetY);
   const [zoom, setZoom] = useState(initialImage?.zoom ?? DEFAULT_TRANSFORM.zoom);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const dragOrigin = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  async function handleDownload() {
+    if (!dataUri) return;
+    setDownloadError(null);
+    try {
+      await downloadCardSizedImage({ dataUri, offsetX, offsetY, zoom });
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'Failed to download the image.');
+    }
+  }
 
   function handleFile(file: File) {
     const reader = new FileReader();
@@ -104,9 +116,20 @@ export function SlotImageEditor({ initialImage, onSave, onCancel }: SlotImageEdi
         value={zoom}
         onChange={(event) => handleZoomChange(Number(event.target.value))}
       />
+      {downloadError && <p role="alert">{downloadError}</p>}
       <div className={styles.actions}>
         <button type="button" onClick={() => setDataUri(null)}>
           Remove image
+        </button>
+        {/* Renders the CURRENT crop (whether or not it's been Saved yet) at
+            full print resolution and downloads it -- the "download this
+            image in the pokemon card size so I can print it and cut it out
+            to add to my actual binder" feature. See slotImageExport.ts for
+            why the CustomSlotImage type already stores the original,
+            uncropped image plus this transform rather than a baked-in
+            preview-resolution raster. */}
+        <button type="button" onClick={handleDownload}>
+          Download for printing
         </button>
         <button type="button" onClick={onCancel}>
           Cancel
