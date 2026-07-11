@@ -2115,6 +2115,13 @@ git commit -m "Add a pan/zoom crop editor for custom binder slot filler images"
 
 A blank slot, outside manual-arrange mode, becomes clickable: with no custom image yet, clicking opens the editor to add one; with one already set, clicking re-opens the editor to change it, and the slot permanently shows the cropped image (not a hover-reveal) exactly like an owned card slot does.
 
+**Also fix a pre-existing, separate bug while this task is already touching these two files' owned-card rendering path:** a user-uploaded replacement image (`uploadedImages` in the store, set via `CardImage`'s upload fallback for a card with no real TCGdex image) never reaches Binder view at all — `BinderSlot`'s `isOwned` branch calls `<CardImage imageBase={ownedCardImageBase} .../>` with no `uploadedImageUri` prop, so an uploaded image only ever shows inside the Picker, never on the binder slot itself once that card is owned. (The same gap in Card-view tiles was already fixed directly in `Tile.tsx`/`DexGrid.tsx`, outside this plan, specifically BEFORE this task started, to avoid colliding with this task's own in-flight edits to `BinderSlot.tsx`/`BinderView.tsx` — that fix is the reference pattern for this one.) Do this as part of Step 1-3 below, alongside the new blank-slot work, not as an afterthought:
+
+- Add `uploadedImageUri?: string` to `BinderSlotProps` in `src/components/BinderSlot.tsx`, and pass it through to the EXISTING owned-card `<CardImage imageBase={ownedCardImageBase} .../>` call (the `isOwned` branch, unrelated to the new blank-slot-with-customImage branch this task also adds): `<CardImage imageBase={ownedCardImageBase} uploadedImageUri={uploadedImageUri} alt={...} className={styles.cardImage} loading="lazy" />`.
+- In `src/components/BinderView.tsx`, read `const uploadedImages = useAppStore((s) => s.uploadedImages);` alongside the store selectors already destructured near the top of the component, and extend the existing `ownedCardImageByDexNumber` memo (or add a sibling `uploadedImageUriByDexNumber` memo, keyed the same way) to also resolve each owned dex number's `uploadedImages[ownedRecord.cardId]`. Thread it through `BinderPageProps`/`BinderPage`'s existing `ownedCardImageByDexNumber` plumbing (added in Task 4) the same way, and pass it into `BinderSlot`'s new `uploadedImageUri` prop, keyed on `entry.dexNumber`, only when `entry?.type === 'pokemon'` (same conditional pattern already used for `ownedCardImageBase`/`pokemonName`/`spriteUrl`).
+- Add a `BinderSlot.test.tsx` test: given `ownedCardImageBase=""` (no real image) and `uploadedImageUri="data:image/jpeg;base64,ABC"`, the slot renders that uploaded image via `CardImage`, not the "no image available" placeholder.
+- Add a `BinderView.test.tsx` test mirroring the DexGrid one already added for Card view: seed a cached card with an empty `imageBase`, mark it owned, set `uploadedImages` for that card id, render `BinderView`, and assert the slot shows the uploaded image.
+
 - [ ] **Step 1: Write the failing tests for `BinderSlot`'s new blank-with-custom-image behavior**
 
 ```tsx
@@ -2177,6 +2184,11 @@ export interface BinderSlotProps {
   pokemonName?: string;
   spriteUrl?: string;
   ownedCardImageBase?: string;
+  // A user-uploaded replacement image for the owned card (see CardImage's
+  // own uploadedImageUri prop) -- only relevant when isOwned; unrelated to
+  // a blank slot's own `customImage` (that's the crop-editor filler-image
+  // feature this task also adds, a completely separate path).
+  uploadedImageUri?: string;
   onClick: (dexNumber: number) => void;
   isManualArrangeActive?: boolean;
   isSelected?: boolean;
@@ -2195,6 +2207,7 @@ export function BinderSlot({
   pokemonName,
   spriteUrl,
   ownedCardImageBase,
+  uploadedImageUri,
   onClick,
   isManualArrangeActive = false,
   isSelected = false,
@@ -2276,6 +2289,7 @@ export function BinderSlot({
       {isOwned ? (
         <CardImage
           imageBase={ownedCardImageBase}
+          uploadedImageUri={uploadedImageUri}
           alt={`${pokemonName} card`}
           className={styles.cardImage}
           loading="lazy"
@@ -2351,6 +2365,15 @@ onEditCustomImage={
 ```
 
 (`onEditSlot` is a new required prop threaded through `BinderPageProps`, wired from the main component as `onEditSlot={setEditingSlotIndex}`.)
+
+While you're here: also thread the pre-existing `uploadedImages` fix described at the top of this task through the exact same path. In the main `BinderView` component, add `const uploadedImages = useAppStore((s) => s.uploadedImages);` alongside the other store selectors, and extend the `ownedCardImageByDexNumber` memo (from an earlier task) with a sibling `uploadedImageUriByDexNumber` memo built the same way but resolving `uploadedImages[card.id]` instead of `card.imageBase`. Add `uploadedImageUriByDexNumber: Map<number, string>` to `BinderPageProps`, thread it into the `BinderPage` invocation the same way `ownedCardImageByDexNumber` already is, and in `BinderPage`'s own `BinderSlot` invocation add:
+
+```tsx
+// src/components/BinderView.tsx — inside BinderPage's BinderSlot invocation, alongside the existing ownedCardImageBase line
+uploadedImageUri={
+  entry?.type === 'pokemon' ? uploadedImageUriByDexNumber.get(entry.dexNumber) : undefined
+}
+```
 
 Render the editor as an overlay when `editingSlotIndex !== null`, using the same portal-to-`document.body` pattern `ManageGroupsPanel.tsx` already established for exactly this "ancestor establishes its own stacking context" problem (the binder's own `.spread` isn't `position: sticky`, but rendering the editor inline within the zoomed/transformed `.spread` would inherit that `scale()` transform, visually shrinking the editor along with the binder — portaling out avoids that entirely, for the same class of reason `ManageGroupsPanel` already documents):
 
