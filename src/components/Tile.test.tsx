@@ -81,6 +81,24 @@ describe('Tile', () => {
     expect(screen.queryByAltText('Charmander card')).not.toBeInTheDocument();
   });
 
+  it('shows a user-uploaded replacement image, not the placeholder, when the owned card has no real image', () => {
+    render(
+      <Tile
+        dexNumber={4}
+        name="Charmander"
+        spriteUrl="https://example.com/4.png"
+        state="owned"
+        view="card"
+        ownedCardImageBase=""
+        uploadedImageUri="data:image/jpeg;base64,UPLOADED"
+        onClick={() => {}}
+      />
+    );
+    const img = screen.getByAltText('Charmander card');
+    expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,UPLOADED');
+    expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
+  });
+
   it('falls back to the sprite image in card view when no owned card image is provided', () => {
     render(
       <Tile

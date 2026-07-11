@@ -35,6 +35,7 @@ beforeEach(() => {
     owned: {},
     wishlist: {},
     selectedGenerations: [1],
+    uploadedImages: {},
     hasUnsavedChanges: false,
   });
   vi.stubGlobal(
@@ -393,6 +394,32 @@ describe('DexGrid', () => {
       const img = within(tile).getByRole('img', { name: /charizard card/i });
       expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/svp/044/low.webp');
     });
+  });
+
+  it('shows a user-uploaded replacement image on the Card-view tile for an owned card with no real image', async () => {
+    setCachedCards('en', 6, [
+      {
+        id: 'no-image-card',
+        name: 'Charizard',
+        dexNumber: 6,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '044',
+        rarity: 'Promo',
+        imageBase: '',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({
+      owned: { 6: { dexNumber: 6, cardId: 'no-image-card', condition: 'Near Mint', addedAt: '' } },
+      uploadedImages: { 'no-image-card': 'data:image/jpeg;base64,UPLOADED' },
+    });
+
+    render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /charizard/i });
+    const img = within(tile).getByRole('img', { name: /charizard card/i });
+    expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,UPLOADED');
   });
 });
 

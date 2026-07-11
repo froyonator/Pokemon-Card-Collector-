@@ -29,6 +29,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
   const groups = useAppStore((s) => s.groups);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
   const owned = useAppStore((s) => s.owned);
+  const uploadedImages = useAppStore((s) => s.uploadedImages);
   const cardOverrides = useAppStore((s) => s.cardOverrides);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
 
@@ -282,6 +283,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
                   state={state}
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}
+                  uploadedImageUri={ownedCard ? uploadedImages[ownedCard.id] : undefined}
                   onClick={() => {
                     setOpenDexNumber(entry.number);
                     setOpenPickerLanguage(undefined);

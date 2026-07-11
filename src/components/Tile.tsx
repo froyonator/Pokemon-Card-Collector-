@@ -10,6 +10,11 @@ export interface TileProps {
   state: TileState;
   view: 'sprite' | 'card';
   ownedCardImageBase?: string;
+  // A user-uploaded replacement image for the owned card (see CardImage's
+  // own uploadedImageUri prop) -- only ever shown as a fallback when
+  // ownedCardImageBase has no usable real image, never as an override of one
+  // that's actually available.
+  uploadedImageUri?: string;
   onClick: () => void;
 }
 
@@ -20,6 +25,7 @@ export function Tile({
   state,
   view,
   ownedCardImageBase,
+  uploadedImageUri,
   onClick,
 }: TileProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -56,7 +62,13 @@ export function Tile({
     >
       <span className={styles.number}>#{String(dexNumber).padStart(3, '0')}</span>
       {view === 'card' && ownedCardImageBase !== undefined ? (
-        <CardImage imageBase={ownedCardImageBase} alt={`${name} card`} loading="lazy" width={68} />
+        <CardImage
+          imageBase={ownedCardImageBase}
+          uploadedImageUri={uploadedImageUri}
+          alt={`${name} card`}
+          loading="lazy"
+          width={68}
+        />
       ) : (
         <img src={spriteUrl} alt={name} loading="lazy" />
       )}
