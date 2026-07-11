@@ -24,6 +24,11 @@
   overflow: hidden;
 }
 
+.title {
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+}
+
 .layout {
   display: flex;
   gap: var(--space-5);

@@ -33,6 +33,10 @@ function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       onRefresh={() => {}}
       isManualArrangeActive={false}
       onToggleManualArrange={() => {}}
+      activeTab="grid"
+      tabs={[{ id: 'grid', label: 'Dex Grid' }]}
+      onTabChange={() => {}}
+      showDexGridControls
       {...overrides}
     />
   );
@@ -82,5 +86,67 @@ describe('Sidebar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
     expect(screen.getByText('Generations')).toBeInTheDocument();
+  });
+
+  it('renders the app title and every tab, marking the active one pressed', () => {
+    render(
+      <Sidebar
+        view="sprite"
+        onSetView={() => {}}
+        isLoading={false}
+        onRefresh={() => {}}
+        isManualArrangeActive={false}
+        onToggleManualArrange={() => {}}
+        activeTab="collection"
+        tabs={[
+          { id: 'grid', label: 'Dex Grid' },
+          { id: 'collection', label: 'My Collection' },
+        ]}
+        onTabChange={() => {}}
+        showDexGridControls={false}
+      />
+    );
+    expect(screen.getByRole('heading', { name: "Collector's Ledger" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dex Grid' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'My Collection' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('calls onTabChange with the clicked tab id', async () => {
+    const onTabChange = vi.fn();
+    render(
+      <Sidebar
+        view="sprite"
+        onSetView={() => {}}
+        isLoading={false}
+        onRefresh={() => {}}
+        isManualArrangeActive={false}
+        onToggleManualArrange={() => {}}
+        activeTab="grid"
+        tabs={[{ id: 'grid', label: 'Dex Grid' }, { id: 'collection', label: 'My Collection' }]}
+        onTabChange={onTabChange}
+        showDexGridControls
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'My Collection' }));
+    expect(onTabChange).toHaveBeenCalledWith('collection');
+  });
+
+  it('hides the filter/view/binder-settings sections when showDexGridControls is false', () => {
+    render(
+      <Sidebar
+        view="sprite"
+        onSetView={() => {}}
+        isLoading={false}
+        onRefresh={() => {}}
+        isManualArrangeActive={false}
+        onToggleManualArrange={() => {}}
+        activeTab="summary"
+        tabs={[{ id: 'summary', label: 'Summary' }]}
+        onTabChange={() => {}}
+        showDexGridControls={false}
+      />
+    );
+    expect(screen.queryByRole('button', { name: /sprite view/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refresh data/i })).not.toBeInTheDocument();
   });
 });

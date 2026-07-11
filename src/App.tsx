@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
+import { Sidebar, type DexView } from './components/Sidebar';
 import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
 import { Tutorial } from './components/Tutorial';
@@ -53,6 +54,10 @@ const TABS: { id: Tab; label: string }[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('grid');
   const [needsOnboarding, setNeedsOnboarding] = useState(readInitialOnboardingNeeded);
+  const [view, setView] = useState<DexView>('sprite');
+  const [isManualArrangeActive, setIsManualArrangeActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [refreshRequestId, setRefreshRequestId] = useState(0);
   const shouldReduceMotion = useReducedMotion();
 
   useUnsavedChangesWarning();
@@ -88,61 +93,60 @@ export default function App() {
   }
 
   return (
-    <main className={styles.app}>
-      <header className={styles.header}>
-        <h1>Collector's Ledger</h1>
+    <div className={styles.shell}>
+      <Sidebar
+        view={view}
+        onSetView={setView}
+        isLoading={isLoading}
+        onRefresh={() => setRefreshRequestId((id) => id + 1)}
+        isManualArrangeActive={isManualArrangeActive}
+        onToggleManualArrange={() => setIsManualArrangeActive((active) => !active)}
+        activeTab={activeTab}
+        tabs={TABS}
+        onTabChange={(tabId) => setActiveTab(tabId as Tab)}
+        showDexGridControls={activeTab === 'grid'}
+      />
+
+      <main className={styles.main}>
+        {/* The Dex Grid panel stays mounted at all times and is toggled with
+            the `hidden` attribute rather than conditional JSX removal. This
+            keeps its tutorial anchors present in the DOM regardless of which
+            tab is currently visible, avoids re-running DexGrid's mount
+            effect (and re-parsing the full card cache blob) on every tab
+            round-trip, and preserves its own local UI state (the open
+            Picker) across tab switches instead of resetting it every time. */}
+        <div hidden={activeTab !== 'grid'}>
+          <DexGrid
+            view={view}
+            isManualArrangeActive={isManualArrangeActive}
+            onLoadingChange={setIsLoading}
+            refreshRequestId={refreshRequestId}
+          />
+        </div>
+        <AnimatePresence mode="wait">
+          {activeTab !== 'grid' && (
+            <motion.div
+              key={activeTab}
+              initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+            >
+              {activeTab === 'collection' && <CollectionTable />}
+              {activeTab === 'wishlist' && <WishlistTable />}
+              {activeTab === 'summary' && <Summary />}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      <div className={styles.floatingControls}>
         <div data-tutorial="export-import">
           <ExportImportControls />
         </div>
-      </header>
-
-      <nav className={styles.tabs} data-tutorial="tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            aria-pressed={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      {/* The Dex Grid panel stays mounted at all times and is toggled with
-          the `hidden` attribute rather than conditional JSX removal. This
-          keeps its tutorial anchors (filter-bar, view-toggle, first-tile,
-          refresh-data — the 4 of the tour's 6 steps that live inside it)
-          present in the DOM regardless of which tab is currently visible,
-          avoids re-running DexGrid's mount effect (and re-parsing the full
-          card cache blob) on every tab round-trip, and preserves its own
-          local UI state (the view toggle, the open Picker) across tab
-          switches instead of resetting it every time.
-          The other three panels don't hold any tutorial anchors and don't
-          share DexGrid's expensive full-cache-blob mount cost, so they're
-          left conditionally rendered as before — mounting them unconditionally
-          would only add unnecessary background fetches for tabs the user
-          hasn't opened yet. */}
-      <div hidden={activeTab !== 'grid'}>
-        <DexGrid />
       </div>
-      <AnimatePresence mode="wait">
-        {activeTab !== 'grid' && (
-          <motion.div
-            key={activeTab}
-            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
-          >
-            {activeTab === 'collection' && <CollectionTable />}
-            {activeTab === 'wishlist' && <WishlistTable />}
-            {activeTab === 'summary' && <Summary />}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <Tutorial onStart={() => setActiveTab('grid')} />
-    </main>
+    </div>
   );
 }

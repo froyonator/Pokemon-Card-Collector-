@@ -1,53 +1,24 @@
-.app {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-6) var(--space-12);
-}
-
-.header {
+.shell {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-6);
-  flex-wrap: wrap;
-  gap: var(--space-3);
+  align-items: flex-start;
+  gap: var(--space-5);
+  min-height: 100vh;
+  padding: var(--space-4);
 }
 
-.header h1 {
-  letter-spacing: -0.01em;
+.main {
+  flex: 1;
+  min-width: 0;
 }
 
-.tabs {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-6);
-  flex-wrap: wrap;
-}
-
-.tabs button {
-  padding: 0.55rem 1.2rem;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  font-size: var(--text-sm);
-}
-
-.tabs button:hover {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
-}
-
-.tabs button[aria-pressed='true'] {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-accent-contrast);
-  box-shadow: var(--shadow-sm);
-}
-
-.tabs button[aria-pressed='true']:hover {
-  transform: none;
+.floatingControls {
+  position: fixed;
+  right: var(--space-5);
+  /* Stacked directly above the Tutorial button, which floats at the
+     bottom-right corner of the viewport (see Tutorial.module.css) -- this
+     value needs to clear that button's own height plus a gap. Measured live:
+     the Tutorial button renders at ~45px tall with a 20px (--space-5) bottom
+     offset, so 56px here leaves an ~11px gap above it with no overlap. */
+  bottom: calc(var(--space-5) + 56px);
+  z-index: 50;
 }

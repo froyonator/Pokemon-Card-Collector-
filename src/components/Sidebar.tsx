@@ -5,6 +5,11 @@ import styles from './Sidebar.module.css';
 
 export type DexView = 'sprite' | 'card' | 'binder';
 
+export interface SidebarTab {
+  id: string;
+  label: string;
+}
+
 export interface SidebarProps {
   view: DexView;
   onSetView: (view: DexView) => void;
@@ -12,16 +17,25 @@ export interface SidebarProps {
   onRefresh: () => void;
   isManualArrangeActive: boolean;
   onToggleManualArrange: () => void;
+  activeTab: string;
+  tabs: SidebarTab[];
+  onTabChange: (tabId: string) => void;
+  // False on every tab except Dex Grid: the filters/view-toggle/binder-settings
+  // sections only make sense while the Dex Grid is what's actually on screen.
+  // The title and tab nav above them stay visible regardless -- they're the
+  // one persistent piece of chrome every tab shares.
+  showDexGridControls: boolean;
 }
 
-// Holds every control that affects what the Dex Grid shows: the
-// generation/rarity/language filters (FilterBar, unchanged internally, just
-// relocated here from being a standalone bar above the grid), the view mode
-// toggle, the refresh button, and -- while Binder view
-// is active -- every Binder Settings control too. Collapses to a thin strip
-// so it doesn't have to compete with the grid for space once the user
-// already knows what they want, and stays pinned via `position: sticky` so
-// it's still reachable after scrolling down a long grid.
+// The single left rail for the whole app: the title and tab nav (previously
+// App.tsx's own centered header), plus -- only while the Dex Grid tab is
+// active -- every control that affects what the Dex Grid shows (filters,
+// view mode, refresh, and Binder Settings). Merging these into one component
+// is what makes the rail read as one continuous panel flush against the left
+// edge instead of two separate boxes stacked with a gap between them.
+// Collapses to a thin strip so it doesn't have to compete with the grid for
+// space once the user already knows what they want, and stays pinned via
+// `position: sticky` so it's still reachable after scrolling down a long grid.
 export function Sidebar({
   view,
   onSetView,
@@ -29,13 +43,17 @@ export function Sidebar({
   onRefresh,
   isManualArrangeActive,
   onToggleManualArrange,
+  activeTab,
+  tabs,
+  onTabChange,
+  showDexGridControls,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
     <aside
       className={[styles.sidebar, isCollapsed ? styles.collapsed : ''].filter(Boolean).join(' ')}
-      aria-label="Dex Grid controls"
+      aria-label="App navigation and Dex Grid controls"
     >
       <button
         type="button"
@@ -47,50 +65,80 @@ export function Sidebar({
       </button>
       {!isCollapsed && (
         <>
-          <div data-tutorial="filter-bar">
-            <FilterBar />
-          </div>
+          <h1 className={styles.title}>Collector&apos;s Ledger</h1>
 
-          <hr className={styles.divider} />
-
-          <fieldset className={styles.section}>
-            <legend>View</legend>
-            <div
-              className={styles.viewToggle}
-              role="radiogroup"
-              aria-label="View"
-              data-tutorial="view-toggle"
-            >
+          <nav className={styles.tabs} data-tutorial="tabs">
+            {tabs.map((tab) => (
               <button
+                key={tab.id}
                 type="button"
-                aria-pressed={view === 'sprite'}
-                onClick={() => onSetView('sprite')}
+                aria-pressed={activeTab === tab.id}
+                onClick={() => onTabChange(tab.id)}
               >
-                Sprite view
+                {tab.label}
               </button>
-              <button type="button" aria-pressed={view === 'card'} onClick={() => onSetView('card')}>
-                Card view
-              </button>
-              <button
-                type="button"
-                aria-pressed={view === 'binder'}
-                onClick={() => onSetView('binder')}
-              >
-                Binder view
-              </button>
-            </div>
-            <button type="button" onClick={onRefresh} disabled={isLoading} data-tutorial="refresh-data">
-              {isLoading ? 'Refreshing...' : 'Refresh Data'}
-            </button>
-          </fieldset>
+            ))}
+          </nav>
 
-          {view === 'binder' && (
+          {showDexGridControls && (
             <>
               <hr className={styles.divider} />
-              <BinderSettings
-                isManualArrangeActive={isManualArrangeActive}
-                onToggleManualArrange={onToggleManualArrange}
-              />
+
+              <div data-tutorial="filter-bar">
+                <FilterBar />
+              </div>
+
+              <hr className={styles.divider} />
+
+              <fieldset className={styles.section}>
+                <legend>View</legend>
+                <div
+                  className={styles.viewToggle}
+                  role="radiogroup"
+                  aria-label="View"
+                  data-tutorial="view-toggle"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={view === 'sprite'}
+                    onClick={() => onSetView('sprite')}
+                  >
+                    Sprite view
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={view === 'card'}
+                    onClick={() => onSetView('card')}
+                  >
+                    Card view
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={view === 'binder'}
+                    onClick={() => onSetView('binder')}
+                  >
+                    Binder view
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={isLoading}
+                  data-tutorial="refresh-data"
+                >
+                  {isLoading ? 'Refreshing...' : 'Refresh Data'}
+                </button>
+              </fieldset>
+
+              {view === 'binder' && (
+                <>
+                  <hr className={styles.divider} />
+                  <BinderSettings
+                    isManualArrangeActive={isManualArrangeActive}
+                    onToggleManualArrange={onToggleManualArrange}
+                  />
+                </>
+              )}
             </>
           )}
         </>

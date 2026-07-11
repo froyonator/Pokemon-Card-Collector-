@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DexGrid } from './DexGrid';
@@ -64,7 +64,7 @@ afterEach(() => {
 
 describe('DexGrid', () => {
   it('renders all 151 Pokemon and loads card data on mount', async () => {
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     expect(screen.getByText('Bulbasaur')).toBeInTheDocument();
     expect(screen.getByText('Mew')).toBeInTheDocument();
     await waitFor(() => {
@@ -73,7 +73,7 @@ describe('DexGrid', () => {
   });
 
   it('shows the loading tile state, not "unavailable", for a Pokemon whose dex number has not been cached yet, before the initial fetch resolves', async () => {
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     // Right after the initial render, the auto-load effect has set isLoading
     // true synchronously, but the mocked fetch chain resolves via
     // microtasks, which haven't had a chance to run yet -- so nothing is
@@ -99,7 +99,7 @@ describe('DexGrid', () => {
         1: { dexNumber: 1, cardId: 'some-card-id', condition: 'Near Mint', addedAt: '2024-01-01' },
       },
     });
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
     expect(bulbasaurTile).toHaveClass('tile--owned');
     expect(bulbasaurTile).not.toHaveClass('tile--loading');
@@ -125,7 +125,7 @@ describe('DexGrid', () => {
       },
     ]);
 
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
 
     const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
     const ivysaurTile = screen.getByRole('button', { name: /ivysaur/i });
@@ -146,7 +146,7 @@ describe('DexGrid', () => {
       .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveEn = resolve)))
       .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveFr = resolve)));
 
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => expect(resolveEn).toBeDefined());
 
     const bulbasaurTile = screen.getByRole('button', { name: /bulbasaur/i });
@@ -195,7 +195,7 @@ describe('DexGrid', () => {
     };
     vi.mocked(loadAllCardData).mockImplementationOnce(captureSignal).mockImplementationOnce(captureSignal);
 
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => expect(seenSignals).toHaveLength(1));
     const firstSignal = seenSignals[0];
     expect(firstSignal).toBeInstanceOf(AbortSignal);
@@ -214,7 +214,7 @@ describe('DexGrid', () => {
   });
 
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -223,22 +223,15 @@ describe('DexGrid', () => {
     expect(within(dialog).getByText('Charizard')).toBeInTheDocument();
   });
 
-  it('switches between sprite and card view', async () => {
-    render(<DexGrid />);
-    const cardViewButton = screen.getByRole('button', { name: 'Card view' });
-    await userEvent.click(cardViewButton);
-    expect(cardViewButton).toHaveAttribute('aria-pressed', 'true');
-  });
-
   it('shows an empty-state message instead of a blank grid when no generation is selected', () => {
     useAppStore.setState({ selectedGenerations: [] });
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     expect(screen.getByText(/select at least one generation/i)).toBeInTheDocument();
     expect(screen.queryByText('Bulbasaur')).not.toBeInTheDocument();
   });
 
   it('auto-fetches a newly-selected generation even when this language was already cached for a different one', async () => {
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -250,25 +243,29 @@ describe('DexGrid', () => {
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsBefore);
   });
 
-  it('refetches everything currently shown when "Refresh Data" is clicked, unlike the passive auto-load', async () => {
-    render(<DexGrid />);
+  it('refetches everything currently shown when refreshRequestId is bumped, unlike the passive auto-load', async () => {
+    // The "Refresh Data" button itself now lives in Sidebar, outside
+    // DexGrid's own render tree -- App wires a click there to bumping this
+    // refreshRequestId prop, so this test drives that same contract
+    // directly via a rerender instead of clicking a button that no longer
+    // exists inside a DexGrid-only render.
+    const onLoadingChange = vi.fn();
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={0} />
+    );
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
     const fetchCallsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    onLoadingChange.mockClear();
 
-    const refreshButton = screen.getByRole('button', { name: 'Refresh Data' });
-    // fireEvent.click, not userEvent.click: it dispatches and flushes React's
-    // state update synchronously, so the loading state is observable right
-    // after this call returns and before the mocked fetch chain (which
-    // resolves via microtasks, not real I/O) has a chance to settle.
-    fireEvent.click(refreshButton);
-    expect(refreshButton).toHaveTextContent('Refreshing...');
-    expect(refreshButton).toBeDisabled();
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={1} />
+    );
+    expect(onLoadingChange).toHaveBeenCalledWith(true);
 
     await waitFor(() => {
-      expect(refreshButton).toHaveTextContent('Refresh Data');
-      expect(refreshButton).not.toBeDisabled();
+      expect(onLoadingChange).toHaveBeenCalledWith(false);
     });
     // Every dex number was already cached from the initial load, so this
     // only proves something re-fetched (not a no-op) if the call count grew
@@ -316,7 +313,7 @@ describe('DexGrid', () => {
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
     });
-    render(<DexGrid />);
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -368,12 +365,15 @@ describe('DexGrid', () => {
     });
     vi.stubGlobal('fetch', fetchImpl);
 
-    render(<DexGrid />);
+    // Rendered directly in "card" view: the view-toggle button that used to
+    // drive this switch now lives in Sidebar, outside DexGrid's own render
+    // tree, so a DexGrid-only render exercises the same view via the `view`
+    // prop instead of clicking a button that no longer exists here.
+    render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Card view' }));
     await userEvent.click(screen.getByRole('button', { name: /charizard/i }));
 
     const dialog = screen.getByRole('dialog');
@@ -412,27 +412,13 @@ describe('Binder view', () => {
     });
   });
 
-  it('shows a Binder view button alongside Sprite view and Card view', () => {
-    render(<DexGrid />);
-    expect(screen.getByRole('button', { name: 'Binder view' })).toBeInTheDocument();
-  });
-
-  it('selecting Binder view renders the binder layout instead of the sprite/card grid', async () => {
-    render(<DexGrid />);
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+  it('selecting Binder view renders the binder layout instead of the sprite/card grid', () => {
+    render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
   });
 
-  it('shows Binder Settings only while Binder view is active', async () => {
-    render(<DexGrid />);
-    expect(screen.queryByText('Binder settings')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
-    expect(screen.getByText('Binder settings')).toBeInTheDocument();
-  });
-
   it('clicking a binder slot opens the Picker for that Pokemon', async () => {
-    render(<DexGrid />);
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     expect(
       await screen.findByRole('dialog', { name: /card options for bulbasaur/i })
@@ -453,8 +439,7 @@ describe('Binder view', () => {
       ],
       activeBinderId: 'a',
     });
-    render(<DexGrid />);
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     // The Picker itself doesn't render the language anywhere visibly, so
     // the languageOverride plumbing itself is already unit-tested at the
@@ -506,8 +491,7 @@ describe('Binder view', () => {
       ],
       activeBinderId: 'a',
     });
-    render(<DexGrid />);
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     await screen.findByRole('dialog', { name: /card options for bulbasaur/i });
 
