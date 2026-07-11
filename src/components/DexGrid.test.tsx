@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DexGrid } from './DexGrid';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
-import { setCachedCards } from '../storage/cardCache';
+import { getCachedCards, reserveWriteGeneration, setCachedCards } from '../storage/cardCache';
 import { loadAllCardData } from '../state/loadCardData';
 import { loadStaticCardData } from '../api/staticDatabase';
 import { GEN1_DEX } from '../data/gen1Dex';
@@ -658,6 +658,43 @@ describe('Static database preload', () => {
     expect(callsDuringThisTest).toHaveLength(1);
     const [, options] = callsDuringThisTest[0];
     expect(options?.dexEntries).toEqual(GEN1_DEX);
+  });
+
+  it('does not let a slow preload clobber a fresher write (e.g. "Show all cards") that completes while the preload is still in flight', async () => {
+    // Simulates a real race: the static preload's own fetch is slow (kept
+    // pending here under direct control), and a competing writer for the
+    // same dex number -- reserving its own, later generation, exactly like
+    // loadAllCardData/loadAllPrintingsForDex already do for every other
+    // write to this cache -- finishes first. The preload must recognize its
+    // own reservation is now stale and skip its write instead of silently
+    // overwriting the fresher card with its own narrower static one.
+    let resolveStatic!: (value: Record<number, CardRecord[]> | null) => void;
+    vi.mocked(loadStaticCardData).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStatic = resolve;
+      })
+    );
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    // While the preload is still awaiting its fetch, a competing writer
+    // reserves a newer generation for Bulbasaur's dex number and writes its
+    // own, fresher card.
+    const competingCard = staticRecord(1, 'Bulbasaur');
+    competingCard.id = 'competing-fresher-card';
+    reserveWriteGeneration('en', 1);
+    setCachedCards('en', 1, [competingCard]);
+
+    // Only now does the preload's own fetch resolve, with its own (by now
+    // stale-by-generation) data for the same dex number.
+    resolveStatic({ 1: [staticRecord(1, 'Bulbasaur')] });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    expect(getCachedCards('en', 1)).toEqual([competingCard]);
   });
 });
 

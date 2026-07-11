@@ -6,7 +6,12 @@ import { entriesForGenerations } from '../data/generations';
 import { loadAllCardData } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
-import { getCachedCards, setCachedCards } from '../storage/cardCache';
+import {
+  getCachedCards,
+  isLatestWriteGeneration,
+  reserveWriteGeneration,
+  setCachedCards,
+} from '../storage/cardCache';
 import type { CardRecord } from '../types';
 import { BinderView } from './BinderView';
 import { CardZoomOverlay } from './CardZoomOverlay';
@@ -166,6 +171,20 @@ export function DexGrid({
     setIsLoading(true);
     onLoadingChange(true);
 
+    // Reserved synchronously, in this same tick -- before the preload's own
+    // await below -- exactly like loadAllCardData already reserves a
+    // generation for each of its own accumulators before any network call.
+    // This is what lets a competing writer for the same dex number (e.g.
+    // "Show all cards", which reserves its own generation at the very start
+    // of ITS OWN fetch) that starts after this effect but resolves before
+    // this preload's await does correctly win: isLatestWriteGeneration below
+    // will come back false for this preload's now-stale reservation, so it
+    // skips the write instead of silently clobbering fresher data with the
+    // narrower curated static set.
+    const reservedGenerations = new Map(
+      missingEntries.map((entry) => [entry.number, reserveWriteGeneration(language, entry.number)])
+    );
+
     // Guards the async preload-then-fetch work below against acting after
     // this effect's own cleanup has run (unmount, or a re-run triggered by
     // language/dexEntries changing again before the preload's single await
@@ -202,8 +221,17 @@ export function DexGrid({
             remaining.push(entry);
             continue;
           }
-          setCachedCards(language, entry.number, cards);
-          wroteAny = true;
+          const generation = reservedGenerations.get(entry.number);
+          // A competing writer (e.g. "Show all cards") reserved a newer
+          // generation for this dex number while this preload's fetch was
+          // in flight -- don't overwrite whatever it wrote, and don't
+          // live-fetch it either below: it's no longer this effect's job to
+          // resolve, and whatever that other writer produced is already
+          // correctly protected by its own generation check.
+          if (generation !== undefined && isLatestWriteGeneration(language, entry.number, generation)) {
+            setCachedCards(language, entry.number, cards);
+            wroteAny = true;
+          }
         }
         stillMissing = remaining;
         // Bumped here -- even for a partial preload, and even when (in the
