@@ -74,12 +74,22 @@ function isBinderFillDirection(value: unknown): value is 'horizontal' | 'vertica
   return value === 'horizontal' || value === 'vertical';
 }
 
+// Must be a finite whole number >= 1: rows/columns/pageCount feed straight
+// into computeBinderPages/computeSpreadPageIndices (binderLayout.ts) with no
+// further guard downstream. A non-positive or non-integer value there throws
+// (e.g. `new Array(-1)` is a RangeError) and, since this app has no
+// ErrorBoundary, blank-screens the entire app the next time Binder view
+// renders -- not just an imported binder failing gracefully.
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
 function isValidBinderConfig(value: unknown): boolean {
   return (
     isPlainObject(value) &&
-    typeof value.rows === 'number' &&
-    typeof value.columns === 'number' &&
-    typeof value.pageCount === 'number' &&
+    isPositiveInteger(value.rows) &&
+    isPositiveInteger(value.columns) &&
+    isPositiveInteger(value.pageCount) &&
     isBinderFillDirection(value.fillDirection)
   );
 }

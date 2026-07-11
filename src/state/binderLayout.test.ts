@@ -77,6 +77,36 @@ describe('computeBinderPages', () => {
     const pages = computeBinderPages(entries, config);
     expect(pages[0][0][1]).toEqual({ type: 'blank' });
   });
+
+  // A corrupted/hand-edited localStorage value or a config that somehow
+  // bypasses import validation (see exportImport.test.ts) must never reach
+  // `new Array(columns)` or index into `grid[r]` with these values -- doing
+  // so throws (RangeError for a negative array length, TypeError for
+  // indexing an undefined row), and since there is no ErrorBoundary
+  // anywhere in this app, that blank-screens the whole app, not just Binder
+  // view.
+  it('returns an empty array instead of throwing when columns is negative', () => {
+    const entries = [{ type: 'pokemon' as const, dexNumber: 1 }];
+    expect(computeBinderPages(entries, { ...config, columns: -1 })).toEqual([]);
+  });
+
+  it('returns an empty array instead of throwing when rows is negative', () => {
+    const entries = [{ type: 'pokemon' as const, dexNumber: 1 }];
+    expect(computeBinderPages(entries, { ...config, rows: -1 })).toEqual([]);
+  });
+
+  it('returns an empty array when rows, columns, or pageCount is zero', () => {
+    const entries = [{ type: 'pokemon' as const, dexNumber: 1 }];
+    expect(computeBinderPages(entries, { ...config, rows: 0 })).toEqual([]);
+    expect(computeBinderPages(entries, { ...config, columns: 0 })).toEqual([]);
+    expect(computeBinderPages(entries, { ...config, pageCount: 0 })).toEqual([]);
+  });
+
+  it('returns an empty array when rows or columns is not an integer', () => {
+    const entries = [{ type: 'pokemon' as const, dexNumber: 1 }];
+    expect(computeBinderPages(entries, { ...config, rows: 2.5 })).toEqual([]);
+    expect(computeBinderPages(entries, { ...config, columns: 2.5 })).toEqual([]);
+  });
 });
 
 describe('computeSpreadPageIndices', () => {
@@ -102,6 +132,14 @@ describe('computeSpreadPageIndices', () => {
 
   it('returns an empty array for 0 pages', () => {
     expect(computeSpreadPageIndices(0)).toEqual([]);
+  });
+
+  it('returns an empty array instead of throwing for a negative pageCount', () => {
+    expect(computeSpreadPageIndices(-1)).toEqual([]);
+  });
+
+  it('returns an empty array for a non-integer pageCount', () => {
+    expect(computeSpreadPageIndices(2.5)).toEqual([]);
   });
 });
 

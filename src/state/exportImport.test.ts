@@ -283,4 +283,57 @@ describe('binders in export/import', () => {
     });
     expect(() => parseImportPayload(raw)).toThrow('This file does not look like a valid export.');
   });
+
+  // rows/columns/pageCount feed straight into computeBinderPages /
+  // computeSpreadPageIndices (binderLayout.ts) with no further guard
+  // downstream: a non-positive or non-integer value there throws
+  // (`new Array(-1)` is a RangeError) and, since this app has no
+  // ErrorBoundary, blank-screens the entire app the next time Binder view
+  // renders. A corrupted or maliciously crafted import file must be
+  // rejected here, at the one validation boundary for import data, rather
+  // than sail through and detonate later.
+  function rawWithBinderConfig(config: Record<string, unknown>): string {
+    return JSON.stringify({
+      version: 1,
+      language: 'en',
+      activeGroupIds: [],
+      groups: [],
+      owned: {},
+      wishlist: {},
+      selectedGenerations: [1],
+      cardOverrides: {},
+      uploadedImages: {},
+      binders: [{ ...sampleBinder, config }],
+      activeBinderId: 'binder-1',
+    });
+  }
+
+  it.each([
+    ['rows', { rows: 0, columns: 3, pageCount: 17, fillDirection: 'horizontal' }],
+    ['rows', { rows: -1, columns: 3, pageCount: 17, fillDirection: 'horizontal' }],
+    ['rows', { rows: 2.5, columns: 3, pageCount: 17, fillDirection: 'horizontal' }],
+    ['columns', { rows: 3, columns: 0, pageCount: 17, fillDirection: 'horizontal' }],
+    ['columns', { rows: 3, columns: -1, pageCount: 17, fillDirection: 'horizontal' }],
+    ['columns', { rows: 3, columns: 2.5, pageCount: 17, fillDirection: 'horizontal' }],
+    ['pageCount', { rows: 3, columns: 3, pageCount: 0, fillDirection: 'horizontal' }],
+    ['pageCount', { rows: 3, columns: 3, pageCount: -1, fillDirection: 'horizontal' }],
+    ['pageCount', { rows: 3, columns: 3, pageCount: 2.5, fillDirection: 'horizontal' }],
+  ] as const)(
+    'rejects a binder config with a non-positive or non-integer %s (%o)',
+    (_field, config) => {
+      expect(() => parseImportPayload(rawWithBinderConfig(config))).toThrow(
+        'This file does not look like a valid export.'
+      );
+    }
+  );
+
+  it('accepts a binder config with valid positive integer rows/columns/pageCount', () => {
+    const raw = rawWithBinderConfig({
+      rows: 3,
+      columns: 3,
+      pageCount: 17,
+      fillDirection: 'horizontal',
+    });
+    expect(() => parseImportPayload(raw)).not.toThrow();
+  });
 });

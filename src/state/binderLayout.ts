@@ -10,11 +10,28 @@ export function defaultBinderSequence(dexEntries: DexEntry[]): BinderSlotEntry[]
 
 export type BinderPage = (BinderSlotEntry | undefined)[][]; // rows x columns
 
+// Guards computeBinderPages/computeSpreadPageIndices against a config that
+// somehow reaches them with a non-positive or non-integer rows/columns/
+// pageCount -- e.g. `new Array(-1)` throws RangeError, and a negative rows
+// leaves grid rows undefined so indexing into them throws TypeError. Import
+// validation (isValidBinderConfig in exportImport.ts) already rejects such
+// values, but this is a second, independent line of defense: there is no
+// ErrorBoundary anywhere in this app, so any future path that reaches these
+// functions with a bad config (a hand-edited localStorage value, for
+// instance) would otherwise blank-screen the entire app, not just Binder
+// view.
+function isPositiveInteger(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
+}
+
 export function computeBinderPages(
   entries: BinderSlotEntry[],
   config: BinderConfig
 ): BinderPage[] {
   const { rows, columns, pageCount, fillDirection } = config;
+  if (!isPositiveInteger(rows) || !isPositiveInteger(columns) || !isPositiveInteger(pageCount)) {
+    return [];
+  }
   const slotsPerPage = rows * columns;
   const capacity = slotsPerPage * pageCount;
   const truncated = entries.slice(0, capacity);
@@ -45,7 +62,7 @@ export function computeBinderPages(
 // From page index 1 onward, pages pair up (1+2, 3+4, ...); a final
 // unpaired page (whenever pageCount is even) displays alone too.
 export function computeSpreadPageIndices(pageCount: number): number[][] {
-  if (pageCount <= 0) return [];
+  if (!isPositiveInteger(pageCount)) return [];
   const spreads: number[][] = [[0]];
   for (let i = 1; i < pageCount; i += 2) {
     if (i + 1 < pageCount) {
