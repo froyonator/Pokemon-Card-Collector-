@@ -1,6 +1,11 @@
 .shell {
   display: flex;
-  align-items: flex-start;
+  /* stretch, not flex-start: .main needs a real (not content-derived) height
+     so BinderView's spread/page sizing has something definite to measure
+     against instead of a circular content<->measurement loop that collapses
+     it to near-zero. Sidebar is unaffected -- it already pins its own
+     align-self: flex-start regardless of this value. */
+  align-items: stretch;
   gap: var(--space-5);
   min-height: 100vh;
   padding: var(--space-4);
@@ -9,6 +14,7 @@
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 .floatingControls {
