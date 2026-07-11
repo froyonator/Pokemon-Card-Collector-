@@ -6,8 +6,13 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(10, 18px);
-  grid-template-rows: repeat(10, 18px);
+  /* Must match GridSizePicker.tsx's own MAX_SIZE constant -- a mismatch
+     here doesn't error, it silently scrambles layout: with fewer real
+     cells than template columns, CSS Grid's default row-major auto-
+     placement packs multiple logical rows' worth of buttons into the
+     same visual row instead of wrapping cleanly at the intended width. */
+  grid-template-columns: repeat(6, 18px);
+  grid-template-rows: repeat(6, 18px);
   gap: 2px;
 }
 
