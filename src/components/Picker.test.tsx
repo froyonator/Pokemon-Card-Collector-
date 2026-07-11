@@ -519,7 +519,7 @@ describe('Picker', () => {
       expect(zoomDialog).toBeInTheDocument();
       expect(
         within(zoomDialog).getByAltText(/charizard ex from 151/i)
-      ).toHaveAttribute('src', `${cardA.imageBase}/low.webp`);
+      ).toHaveAttribute('src', `${cardA.imageBase}/high.png`);
     });
 
     it('clicking Enlarge does not also open the condition picker or toggle wishlist', async () => {

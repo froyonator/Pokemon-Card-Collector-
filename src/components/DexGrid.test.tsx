@@ -462,7 +462,7 @@ describe('DexGrid', () => {
     const zoomDialog = await screen.findByRole('dialog', { name: 'Charizard ex enlarged' });
     expect(within(zoomDialog).getByAltText(/charizard ex from 151/i)).toHaveAttribute(
       'src',
-      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
     );
     expect(
       screen.queryByRole('dialog', { name: /card options for charizard/i })
