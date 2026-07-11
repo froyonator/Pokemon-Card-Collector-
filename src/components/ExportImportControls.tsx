@@ -79,11 +79,15 @@ export function ExportImportControls() {
 
   return (
     <div className={styles.controls}>
-      <button type="button" onClick={handleExport}>
-        Export my collection
+      <button type="button" onClick={handleExport} aria-label="Export my collection">
+        Export
       </button>
-      <button type="button" onClick={() => fileInputRef.current?.click()}>
-        Import a backup
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        aria-label="Import a backup"
+      >
+        Import
       </button>
       <input
         ref={fileInputRef}

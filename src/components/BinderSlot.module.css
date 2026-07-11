@@ -1,4 +1,5 @@
 .slot {
+  position: relative;
   border-radius: var(--radius-md);
   background: #0c0a08;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -32,7 +33,18 @@
   padding: 0;
 }
 
+/* position: absolute + inset: 0 (not relying on width/height: 100% of a flex
+   child) so this unambiguously fills .slot's box regardless of any
+   flex/percentage-resolution edge case -- a real card image inside .slot
+   (a flex container with align-items/justify-content: center) was rendering
+   far smaller than the slot itself instead of filling it, even though
+   width/height: 100% should have worked in principle. Anchoring directly to
+   .slot's own (position: relative) box sidesteps that entirely: an
+   absolutely-positioned element with inset: 0 always exactly matches its
+   positioned ancestor's content box, full stop. */
 .cardImage {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;

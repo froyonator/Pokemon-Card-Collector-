@@ -1,0 +1,75 @@
+.stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1);
+}
+
+.ratioRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ratio {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+/* The "still missing" count -- deliberately reddish (distinct from the
+   green "owned" tile color used elsewhere) since this number is framed as
+   a countdown of what's left, not a positive/owned signal. */
+.missingBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: #e0483e;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.gauge {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+}
+
+.gaugeTrack {
+  stroke: var(--color-border);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.gaugeFill {
+  stroke: var(--color-accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: d var(--transition-base);
+}
+
+.gaugeNeedle {
+  stroke: var(--color-text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gaugeHub {
+  fill: var(--color-text-muted);
+}
+
+.gaugeLabel {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--color-text);
+}

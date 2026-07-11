@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
@@ -9,6 +9,12 @@ import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
 import { Tutorial } from './components/Tutorial';
 import { WishlistTable } from './components/WishlistTable';
+import {
+  CollectionIcon,
+  DexGridIcon,
+  SummaryIcon,
+  WishlistIcon,
+} from './components/icons/TabIcons';
 import { USER_DATA_STORAGE_KEY } from './state/store';
 import { useUnsavedChangesWarning } from './state/useUnsavedChangesWarning';
 import styles from './App.module.css';
@@ -45,11 +51,11 @@ function readInitialOnboardingNeeded(): boolean {
 
 type Tab = 'grid' | 'collection' | 'wishlist' | 'summary';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'grid', label: 'Dex Grid' },
-  { id: 'collection', label: 'My Collection' },
-  { id: 'wishlist', label: 'Wishlist' },
-  { id: 'summary', label: 'Summary' },
+const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
+  { id: 'grid', label: 'Dex Grid', icon: <DexGridIcon /> },
+  { id: 'collection', label: 'My Collection', icon: <CollectionIcon /> },
+  { id: 'wishlist', label: 'Wishlist', icon: <WishlistIcon /> },
+  { id: 'summary', label: 'Summary', icon: <SummaryIcon /> },
 ];
 
 export default function App() {

@@ -1,5 +1,12 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { spriteUrl } from '../api/pokeapi';
+import { cardImageUrl } from '../api/tcgdex';
+import { getCachedCards } from '../storage/cardCache';
+import { useAppStore } from '../state/store';
+import { BinderIcon } from './icons/TabIcons';
 import { BinderSettings } from './BinderSettings';
+import { CollectionStats } from './CollectionStats';
 import { FilterBar } from './FilterBar';
 import styles from './Sidebar.module.css';
 
@@ -8,7 +15,16 @@ export type DexView = 'sprite' | 'card' | 'binder';
 export interface SidebarTab<TabId extends string = string> {
   id: TabId;
   label: string;
+  icon: ReactNode;
 }
+
+// Pikachu (#25) -- used as the Sprite/Card view toggle's own icons, since
+// showing an actual sprite/card is a more immediate "this is what that view
+// looks like" preview than an abstract icon would be. The card image falls
+// back to the sprite if Pikachu's card data hasn't been cached yet (e.g. the
+// user has deselected Generation 1, or the initial fetch hasn't landed) --
+// see pikachuCardImageBase below.
+const VIEW_ICON_DEX_NUMBER = 25;
 
 export interface SidebarProps<TabId extends string = string> {
   view: DexView;
@@ -27,15 +43,16 @@ export interface SidebarProps<TabId extends string = string> {
   showDexGridControls: boolean;
 }
 
-// The single left rail for the whole app: the title and tab nav (previously
-// App.tsx's own centered header), plus -- only while the Dex Grid tab is
-// active -- every control that affects what the Dex Grid shows (filters,
-// view mode, refresh, and Binder Settings). Merging these into one component
-// is what makes the rail read as one continuous panel flush against the left
-// edge instead of two separate boxes stacked with a gap between them.
-// Collapses to a thin strip so it doesn't have to compete with the grid for
-// space once the user already knows what they want, and stays pinned via
-// `position: sticky` so it's still reachable after scrolling down a long grid.
+// The single left rail for the whole app: the collection-progress summary,
+// title, and tab nav (previously App.tsx's own centered header), plus --
+// only while the Dex Grid tab is active -- every control that affects what
+// the Dex Grid shows (filters, view mode, refresh, and Binder Settings).
+// Merging these into one component is what makes the rail read as one
+// continuous panel flush against the left edge instead of two separate boxes
+// stacked with a gap between them. Collapses to a thin strip so it doesn't
+// have to compete with the grid for space once the user already knows what
+// they want, and stays pinned via `position: sticky` so it's still reachable
+// after scrolling down a long grid.
 export function Sidebar<TabId extends string = string>({
   view,
   onSetView,
@@ -49,6 +66,12 @@ export function Sidebar<TabId extends string = string>({
   showDexGridControls,
 }: SidebarProps<TabId>) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const language = useAppStore((s) => s.language);
+  // A real Pikachu card image for the Card view icon, resolved from
+  // whatever's already cached for the current language -- not a fetch of
+  // its own, so it stays undefined (falling back to the sprite below) until
+  // Pikachu's own card data happens to already be cached.
+  const pikachuCardImageBase = getCachedCards(language, VIEW_ICON_DEX_NUMBER)?.[0]?.imageBase;
 
   return (
     <aside
@@ -63,6 +86,9 @@ export function Sidebar<TabId extends string = string>({
       >
         {isCollapsed ? '»' : '«'}
       </button>
+
+      {!isCollapsed && <CollectionStats />}
+
       {/* Title and tab nav are outside the isCollapsed gate below -- unlike
           the filter/view/binder-settings sections, they must stay visible
           (and clickable) even while the sidebar is collapsed, since the tabs
@@ -75,10 +101,13 @@ export function Sidebar<TabId extends string = string>({
           <button
             key={tab.id}
             type="button"
+            className={styles.tabButton}
             aria-pressed={activeTab === tab.id}
+            aria-label={tab.label}
+            title={tab.label}
             onClick={() => onTabChange(tab.id)}
           >
-            {tab.label}
+            {tab.icon}
           </button>
         ))}
       </nav>
@@ -103,24 +132,37 @@ export function Sidebar<TabId extends string = string>({
             >
               <button
                 type="button"
+                className={styles.viewToggleButton}
                 aria-pressed={view === 'sprite'}
                 onClick={() => onSetView('sprite')}
               >
-                Sprite view
+                <img src={spriteUrl(VIEW_ICON_DEX_NUMBER)} alt="" />
+                <span>Sprite</span>
               </button>
               <button
                 type="button"
+                className={styles.viewToggleButton}
                 aria-pressed={view === 'card'}
                 onClick={() => onSetView('card')}
               >
-                Card view
+                <img
+                  src={
+                    pikachuCardImageBase
+                      ? cardImageUrl(pikachuCardImageBase)
+                      : spriteUrl(VIEW_ICON_DEX_NUMBER)
+                  }
+                  alt=""
+                />
+                <span>Card</span>
               </button>
               <button
                 type="button"
+                className={styles.viewToggleButton}
                 aria-pressed={view === 'binder'}
                 onClick={() => onSetView('binder')}
               >
-                Binder view
+                <BinderIcon />
+                <span>Binder</span>
               </button>
             </div>
             <button

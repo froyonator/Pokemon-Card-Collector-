@@ -2,15 +2,24 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Sidebar } from './Sidebar';
+import { spriteUrl } from '../api/pokeapi';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { setCachedCards } from '../storage/cardCache';
+
+function TestIcon() {
+  return <span aria-hidden="true">icon</span>;
+}
 
 function resetStore() {
+  localStorage.clear();
   useAppStore.setState({
     language: 'en',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     selectedGenerations: [1],
+    owned: {},
+    cardOverrides: {},
     binders: [
       {
         id: 'a',
@@ -34,7 +43,7 @@ function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       isManualArrangeActive={false}
       onToggleManualArrange={() => {}}
       activeTab="grid"
-      tabs={[{ id: 'grid', label: 'Dex Grid' }]}
+      tabs={[{ id: 'grid', label: 'Dex Grid', icon: <TestIcon /> }]}
       onTabChange={() => {}}
       showDexGridControls
       {...overrides}
@@ -55,8 +64,35 @@ describe('Sidebar', () => {
   it('shows the view toggle and calls onSetView when a different view is picked', async () => {
     const onSetView = vi.fn();
     renderSidebar({ onSetView });
-    await userEvent.click(screen.getByRole('button', { name: 'Binder view' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Binder' }));
     expect(onSetView).toHaveBeenCalledWith('binder');
+  });
+
+  it("uses Pikachu's sprite as the Card view icon when no Pikachu card is cached yet", () => {
+    renderSidebar();
+    const cardButton = screen.getByRole('button', { name: 'Card' });
+    const img = cardButton.querySelector('img');
+    expect(img).toHaveAttribute('src', spriteUrl(25));
+  });
+
+  it("uses a real cached Pikachu card image as the Card view icon once one is available", () => {
+    setCachedCards('en', 25, [
+      {
+        id: 'sv03.5-236',
+        name: 'Pikachu',
+        dexNumber: 25,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '236',
+        rarity: 'Illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/236',
+        language: 'en',
+      },
+    ]);
+    renderSidebar();
+    const cardButton = screen.getByRole('button', { name: 'Card' });
+    const img = cardButton.querySelector('img');
+    expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/sv03.5/236/low.webp');
   });
 
   it('shows a disabled, in-flight state on the refresh button while loading, and calls onRefresh when clicked', async () => {
@@ -92,8 +128,8 @@ describe('Sidebar', () => {
     const onTabChange = vi.fn();
     renderSidebar({
       tabs: [
-        { id: 'grid', label: 'Dex Grid' },
-        { id: 'collection', label: 'My Collection' },
+        { id: 'grid', label: 'Dex Grid', icon: <TestIcon /> },
+        { id: 'collection', label: 'My Collection', icon: <TestIcon /> },
       ],
       onTabChange,
     });
@@ -117,8 +153,8 @@ describe('Sidebar', () => {
         onToggleManualArrange={() => {}}
         activeTab="collection"
         tabs={[
-          { id: 'grid', label: 'Dex Grid' },
-          { id: 'collection', label: 'My Collection' },
+          { id: 'grid', label: 'Dex Grid', icon: <TestIcon /> },
+          { id: 'collection', label: 'My Collection', icon: <TestIcon /> },
         ]}
         onTabChange={() => {}}
         showDexGridControls={false}
@@ -140,7 +176,10 @@ describe('Sidebar', () => {
         isManualArrangeActive={false}
         onToggleManualArrange={() => {}}
         activeTab="grid"
-        tabs={[{ id: 'grid', label: 'Dex Grid' }, { id: 'collection', label: 'My Collection' }]}
+        tabs={[
+          { id: 'grid', label: 'Dex Grid', icon: <TestIcon /> },
+          { id: 'collection', label: 'My Collection', icon: <TestIcon /> },
+        ]}
         onTabChange={onTabChange}
         showDexGridControls
       />
@@ -159,12 +198,12 @@ describe('Sidebar', () => {
         isManualArrangeActive={false}
         onToggleManualArrange={() => {}}
         activeTab="summary"
-        tabs={[{ id: 'summary', label: 'Summary' }]}
+        tabs={[{ id: 'summary', label: 'Summary', icon: <TestIcon /> }]}
         onTabChange={() => {}}
         showDexGridControls={false}
       />
     );
-    expect(screen.queryByRole('button', { name: /sprite view/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sprite' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /refresh data/i })).not.toBeInTheDocument();
   });
 });

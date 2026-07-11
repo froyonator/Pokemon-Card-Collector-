@@ -57,11 +57,11 @@ export interface BinderViewProps {
 // custom property. If --space-2 is ever changed, this needs updating too.
 const GAP_PX = 8;
 
-// .page's own left+right padding (2 * var(--space-4), 16px each = 32px
+// .page's own left+right padding (2 * var(--space-2), 8px each = 16px
 // total) -- for the same reason GAP_PX above is a JS constant, this can't be
 // read from the CSS custom property directly and has to be kept in sync by
-// hand if --space-4 ever changes.
-const PAGE_PADDING_PX = 32;
+// hand if --space-2 ever changes.
+const PAGE_PADDING_PX = 16;
 
 // Each rendered page needs its OWN independent measured size -- a two-page
 // spread renders two .page elements that each claim an equal share of
