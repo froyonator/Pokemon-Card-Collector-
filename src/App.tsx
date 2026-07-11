@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { CollectionTable } from './components/CollectionTable';
 import { DexGrid } from './components/DexGrid';
 import { ExportImportControls } from './components/ExportImportControls';
+import { GitHubLink } from './components/GitHubLink';
 import { Sidebar, type DexView } from './components/Sidebar';
 import { StartScreen } from './components/StartScreen';
 import { Summary } from './components/Summary';
@@ -152,6 +153,7 @@ export default function App() {
         </div>
       </div>
 
+      <GitHubLink />
       <Tutorial onStart={() => setActiveTab('grid')} />
     </div>
   );
