@@ -18,40 +18,36 @@ export function FilterBar() {
 
   return (
     <div className={styles.bar}>
-      <details className={styles.generationFilters}>
-        <summary>Generations</summary>
-        <div>
-          {GENERATIONS.map((generation) => (
-            <label key={generation.id}>
-              <input
-                type="checkbox"
-                checked={selectedGenerations.includes(generation.id)}
-                onChange={() => toggleGeneration(generation.id)}
-              />
-              {generation.label}
-            </label>
-          ))}
-        </div>
-      </details>
+      <fieldset className={styles.generationFilters}>
+        <legend>Generations</legend>
+        {GENERATIONS.map((generation) => (
+          <label key={generation.id}>
+            <input
+              type="checkbox"
+              checked={selectedGenerations.includes(generation.id)}
+              onChange={() => toggleGeneration(generation.id)}
+            />
+            {generation.label}
+          </label>
+        ))}
+      </fieldset>
 
-      <details className={styles.groupFilters}>
-        <summary>Card rarity groups</summary>
-        <div>
-          {groups.map((group) => (
-            <label key={group.id}>
-              <input
-                type="checkbox"
-                checked={activeGroupIds.includes(group.id)}
-                onChange={() => toggleActiveGroup(group.id)}
-              />
-              {group.name}
-            </label>
-          ))}
-          <button type="button" onClick={() => setShowManageGroups(true)}>
-            Manage groups
-          </button>
-        </div>
-      </details>
+      <fieldset className={styles.groupFilters}>
+        <legend>Card rarity groups</legend>
+        {groups.map((group) => (
+          <label key={group.id}>
+            <input
+              type="checkbox"
+              checked={activeGroupIds.includes(group.id)}
+              onChange={() => toggleActiveGroup(group.id)}
+            />
+            {group.name}
+          </label>
+        ))}
+        <button type="button" onClick={() => setShowManageGroups(true)}>
+          Manage groups
+        </button>
+      </fieldset>
 
       <label>
         Language

@@ -12,34 +12,11 @@
 
 .groupFilters,
 .generationFilters {
-  border: none;
-}
-
-.groupFilters summary,
-.generationFilters summary {
-  cursor: pointer;
-  font-size: var(--text-xs);
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  /* Collapsed by default (no `open` attribute) so these two sections -- the
-     tallest ones in the sidebar once every generation/group is listed --
-     don't force the sidebar to scroll. */
-  margin-bottom: var(--space-2);
-}
-
-.groupFilters[open] summary,
-.generationFilters[open] summary {
-  margin-bottom: var(--space-3);
-}
-
-.groupFilters > div,
-.generationFilters > div {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
+  border: none;
 }
 
 .groupFilters label,

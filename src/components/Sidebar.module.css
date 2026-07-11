@@ -1,7 +1,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   width: 280px;
   flex-shrink: 0;
   padding: var(--space-4) var(--space-5);
@@ -11,6 +11,8 @@
   position: sticky;
   top: var(--space-4);
   align-self: flex-start;
+  max-height: calc(100vh - var(--space-8));
+  overflow-y: auto;
   transition:
     width var(--transition-base),
     padding var(--transition-base);
@@ -25,28 +27,6 @@
 .title {
   font-size: var(--text-xl);
   letter-spacing: -0.01em;
-}
-
-.tabs {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.tabButton {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-sunken);
-  color: var(--color-text-muted);
-}
-
-.tabButton[aria-pressed='true'] {
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  border-color: var(--color-accent);
 }
 
 .collapseToggle {
@@ -74,38 +54,26 @@
 
 .viewToggle {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
   border-radius: var(--radius-md);
+  overflow: hidden;
   border: 1px solid var(--color-border);
-  padding: var(--space-2);
 }
 
-.viewToggleButton {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: none;
+.viewToggle button {
+  border: none;
+  border-radius: 0;
+  background: var(--color-surface);
   color: var(--color-text-muted);
   font-weight: 600;
-  font-size: var(--text-xs);
-  padding: var(--space-2) var(--space-1);
+  font-size: var(--text-sm);
+  text-align: left;
 }
 
-.viewToggleButton img,
-.viewToggleButton svg {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-}
-
-.viewToggleButton[aria-pressed='true'] {
-  background: var(--color-accent-soft);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+.viewToggle button[aria-pressed='true'] {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
 }
 
 .divider {
