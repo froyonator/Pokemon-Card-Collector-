@@ -99,7 +99,7 @@ export function Picker({
     setShowAllCards(next);
     if (next && allCards === null) {
       setIsLoadingAllCards(true);
-      const fetched = await loadAllPrintingsForDex(language, dexNumber);
+      const fetched = await loadAllPrintingsForDex(language, dexNumber, pokemonName);
       setAllCards(fetched);
       onAllCardsLoaded?.();
       setIsLoadingAllCards(false);

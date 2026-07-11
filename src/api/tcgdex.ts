@@ -51,20 +51,62 @@ export async function fetchCardsForDexAndRarity(
   return cards.filter((card) => !isPocketCard(card));
 }
 
-export async function fetchAllCardsForDex(
-  dexNumber: number,
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function fetchCardsByQuery(
+  params: Record<string, string>,
   language: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch,
   signal?: AbortSignal
 ): Promise<TcgdexCardBrief[]> {
   const url = new URL(`${TCGDEX_BASE}/${language}/cards`);
-  url.searchParams.set('dexId', `eq:${dexNumber}`);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
   const res = await fetchImpl(url.toString(), { headers: { Accept: 'application/json' }, signal });
   if (!res.ok) {
     throw new Error(`TCGdex request failed with status ${res.status}`);
   }
   const cards: TcgdexCardBrief[] = await res.json();
   return cards.filter((card) => !isPocketCard(card));
+}
+
+export async function fetchAllCardsForDex(
+  dexNumber: number,
+  pokemonName: string,
+  language: string,
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<TcgdexCardBrief[]> {
+  // A dexId-only query misses any card TCGdex has left dexId: null on --
+  // confirmed for every card in the very recent "Ascended Heroes" set (a
+  // real, upstream data-completeness gap, not something wrong with this
+  // query). A name-based search catches those instead, since the name field
+  // is populated even when dexId isn't. Run both and merge, since neither
+  // alone is a superset of the other (a card can have a populated dexId but
+  // an unexpected name, or vice versa).
+  const [byDexId, byName] = await Promise.all([
+    fetchCardsByQuery({ dexId: `eq:${dexNumber}` }, language, fetchImpl, signal),
+    fetchCardsByQuery({ name: `like:${pokemonName}` }, language, fetchImpl, signal),
+  ]);
+
+  const merged = new Map<string, TcgdexCardBrief>();
+  for (const card of byDexId) merged.set(card.id, card);
+
+  // `like` is a substring match, which would incorrectly pull in e.g.
+  // "Mewtwo" cards when searching for "Mew". Only keep name-matched cards
+  // where the Pokemon's name appears as a whole word (so "Mega Gengar ex"
+  // matches a search for "Gengar", but "Mewtwo ex" doesn't match "Mew").
+  const wholeWordMatch = new RegExp(`\\b${escapeRegExp(pokemonName)}\\b`, 'i');
+  for (const card of byName) {
+    if (!merged.has(card.id) && wholeWordMatch.test(card.name)) {
+      merged.set(card.id, card);
+    }
+  }
+
+  return Array.from(merged.values());
 }
 
 export async function fetchCardDetail(

@@ -56,13 +56,18 @@ describe('fetchCardsForDexAndRarity', () => {
 });
 
 describe('fetchAllCardsForDex', () => {
-  it('queries dexId with no rarity filter', async () => {
+  it('queries both dexId (no rarity filter) and name in parallel', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
-    await fetchAllCardsForDex(4, 'en', fetchImpl);
-    const calledUrl = new URL(fetchImpl.mock.calls[0][0] as string);
-    expect(calledUrl.pathname).toBe('/v2/en/cards');
-    expect(calledUrl.searchParams.get('dexId')).toBe('eq:4');
-    expect(calledUrl.searchParams.has('rarity')).toBe(false);
+    await fetchAllCardsForDex(4, 'Charmander', 'en', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const urls = fetchImpl.mock.calls.map((call) => new URL(call[0] as string));
+    const dexIdUrl = urls.find((u) => u.searchParams.has('dexId'));
+    const nameUrl = urls.find((u) => u.searchParams.has('name'));
+    expect(dexIdUrl?.pathname).toBe('/v2/en/cards');
+    expect(dexIdUrl?.searchParams.get('dexId')).toBe('eq:4');
+    expect(dexIdUrl?.searchParams.has('rarity')).toBe(false);
+    expect(nameUrl?.pathname).toBe('/v2/en/cards');
+    expect(nameUrl?.searchParams.get('name')).toBe('like:Charmander');
   });
 
   it('filters out Pokemon TCG Pocket cards by image path, same as the per-rarity fetch', async () => {
@@ -72,14 +77,41 @@ describe('fetchAllCardsForDex', () => {
         { id: 'A1a-086', localId: '086', name: 'Mew ex', image: 'https://assets.tcgdex.net/en/tcgp/A1a/086' },
       ])
     );
-    const cards = await fetchAllCardsForDex(4, 'en', fetchImpl);
+    const cards = await fetchAllCardsForDex(4, 'Charmander', 'en', fetchImpl);
     expect(cards).toHaveLength(1);
     expect(cards[0].id).toBe('svp-044');
   });
 
+  it('merges dexId and name results by id, de-duplicating cards found by both', async () => {
+    const shared = { id: 'svp-044', localId: '044', name: 'Charmander', image: 'https://assets.tcgdex.net/en/sv/svp/044' };
+    const nameOnly = {
+      id: 'me02.5-039',
+      localId: '039',
+      name: 'Mega Charmander ex',
+      image: 'https://assets.tcgdex.net/en/me/me02.5/039',
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([shared]))
+      .mockResolvedValueOnce(jsonResponse([shared, nameOnly]));
+    const cards = await fetchAllCardsForDex(4, 'Charmander', 'en', fetchImpl);
+    expect(cards.map((c) => c.id).sort()).toEqual(['me02.5-039', 'svp-044']);
+  });
+
+  it('drops name-matched cards that only substring-match, not whole-word-match, the pokemon name', async () => {
+    const wholeWord = { id: 'a-1', localId: '1', name: 'Mega Gengar ex', image: 'https://assets.tcgdex.net/en/a/1' };
+    const substringOnly = { id: 'a-2', localId: '2', name: 'Gengarite', image: 'https://assets.tcgdex.net/en/a/2' };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse([wholeWord, substringOnly]));
+    const cards = await fetchAllCardsForDex(94, 'Gengar', 'en', fetchImpl);
+    expect(cards.map((c) => c.id)).toEqual(['a-1']);
+  });
+
   it('throws on a non-ok response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(null, false, 500));
-    await expect(fetchAllCardsForDex(4, 'en', fetchImpl)).rejects.toThrow(
+    await expect(fetchAllCardsForDex(4, 'Charmander', 'en', fetchImpl)).rejects.toThrow(
       'TCGdex request failed with status 500'
     );
   });
@@ -87,8 +119,9 @@ describe('fetchAllCardsForDex', () => {
   it('passes an AbortSignal through to fetchImpl when given one', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
     const controller = new AbortController();
-    await fetchAllCardsForDex(4, 'en', fetchImpl, controller.signal);
+    await fetchAllCardsForDex(4, 'Charmander', 'en', fetchImpl, controller.signal);
     expect(fetchImpl.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
+    expect(fetchImpl.mock.calls[1][1]).toMatchObject({ signal: controller.signal });
   });
 });
 

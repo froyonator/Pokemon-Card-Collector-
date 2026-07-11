@@ -247,6 +247,7 @@ interface FetchImplParam {
 export async function loadAllPrintingsForDex(
   language: string,
   dexNumber: number,
+  pokemonName: string,
   fetchImpl: FetchImplParam['fetchImpl'] = fetch,
   signal?: AbortSignal
 ): Promise<CardRecord[]> {
@@ -269,7 +270,7 @@ export async function loadAllPrintingsForDex(
   // so it doesn't clobber the fresher curated result.
   const generation = reserveWriteGeneration(language, dexNumber);
   try {
-    const briefs = await fetchAllCardsForDex(dexNumber, language, fetchImpl, signal);
+    const briefs = await fetchAllCardsForDex(dexNumber, pokemonName, language, fetchImpl, signal);
     // mapWithConcurrency preserves input order in its results array regardless
     // of which detail fetch resolves first, so `cards` still lines up with
     // `briefs` exactly as the old sequential loop did.

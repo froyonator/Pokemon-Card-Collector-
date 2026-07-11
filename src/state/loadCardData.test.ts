@@ -239,7 +239,7 @@ describe('loadAllPrintingsForDex', () => {
       return jsonResponse([]);
     });
 
-    const result = await loadAllPrintingsForDex('en', 4, fetchImpl);
+    const result = await loadAllPrintingsForDex('en', 4, 'Charmander', fetchImpl);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -255,7 +255,7 @@ describe('loadAllPrintingsForDex', () => {
 
   it('caches an empty array when a Pokemon has no cards at all', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
-    const result = await loadAllPrintingsForDex('en', 999, fetchImpl);
+    const result = await loadAllPrintingsForDex('en', 999, 'Nonexistent', fetchImpl);
     expect(result).toEqual([]);
     expect(getAllCachedCardsForDex('en', 999)).toEqual([]);
   });
@@ -289,11 +289,11 @@ describe('loadAllPrintingsForDex', () => {
       return jsonResponse([]);
     });
 
-    const first = await loadAllPrintingsForDex('en', 4, fetchImpl);
+    const first = await loadAllPrintingsForDex('en', 4, 'Charmander', fetchImpl);
     const callsAfterFirst = fetchImpl.mock.calls.length;
     expect(callsAfterFirst).toBeGreaterThan(0);
 
-    const second = await loadAllPrintingsForDex('en', 4, fetchImpl);
+    const second = await loadAllPrintingsForDex('en', 4, 'Charmander', fetchImpl);
 
     expect(fetchImpl.mock.calls.length).toBe(callsAfterFirst);
     expect(second).toEqual(first);
@@ -319,7 +319,7 @@ describe('loadAllPrintingsForDex', () => {
         },
       ]);
     });
-    await loadAllPrintingsForDex('en', 4, showAllFetch);
+    await loadAllPrintingsForDex('en', 4, 'Charmander', showAllFetch);
 
     // A curated refresh (e.g. "Refresh Data") overwrites dex 4's cache slot
     // with just the narrower curated subset.
@@ -349,7 +349,7 @@ describe('loadAllPrintingsForDex', () => {
         },
       ]);
     });
-    await loadAllPrintingsForDex('en', 4, secondShowAllFetch);
+    await loadAllPrintingsForDex('en', 4, 'Charmander', secondShowAllFetch);
 
     expect(secondShowAllFetch.mock.calls.length).toBeGreaterThan(0);
   });
@@ -403,7 +403,7 @@ describe('cross-load-path write-generation guard (loadAllCardData vs. loadAllPri
         },
       ]);
     });
-    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    const showAllResult = await loadAllPrintingsForDex('en', 4, 'Charmander', showAllFetch);
     expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
 
     // Now let the stale curated fetch finally resolve.
@@ -445,7 +445,7 @@ describe('cross-load-path write-generation guard (loadAllCardData vs. loadAllPri
         },
       ]);
     });
-    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    const showAllResult = await loadAllPrintingsForDex('en', 4, 'Charmander', showAllFetch);
     expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
 
     // The user deliberately hits "Refresh Data" some time later: a fresh
@@ -678,7 +678,7 @@ describe('3-way interleaving: curated load + Show-All + a mid-flight abort, all 
         },
       ]);
     });
-    const showAllResult = await loadAllPrintingsForDex('en', 4, showAllFetch);
+    const showAllResult = await loadAllPrintingsForDex('en', 4, 'Charmander', showAllFetch);
     expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
 
     // The user switches language: DexGrid aborts the curated load instead
