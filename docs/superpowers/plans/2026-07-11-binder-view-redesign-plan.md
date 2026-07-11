@@ -763,18 +763,19 @@ git commit -m "Merge title/tabs into a single left rail and de-center the app sh
 
 ---
 
-### Task 2: Fix the binder page-flip animation (missing 3D perspective)
+### Task 2: Fix the binder page-flip animation (spine-hinged turn, not a corner curl)
 
 **Files:**
+- Modify: `src/components/BinderView.tsx`
 - Modify: `src/components/BinderView.module.css`
 - Test: `src/components/BinderView.test.tsx`
 
-The flip uses Framer Motion's `rotateY: ±90deg`, but no ancestor sets a CSS `perspective`, so the rotation has no depth to turn through and looks glitchy/flat instead of like a page turning.
+The flip currently uses Framer Motion's `rotateY: ±90deg` rotating around the page's own CENTER, with no ancestor `perspective` set at all — so it has no depth to turn through and looks glitchy/flat instead of like a page turning. Per the approved reference, a page should instead turn like a real binder page hinged on its rings: rotating around the edge NEAREST THE SPINE (its inner edge, where the two pages of a spread meet), not its own center, and not with a curled page-corner (that's a paper-book effect, evaluated and explicitly rejected — a binder page is rigid plastic, it doesn't dog-ear).
 
-- [ ] **Step 1: Add `perspective` and `transform-style: preserve-3d` to `BinderView.module.css`**
+- [ ] **Step 1: Add `perspective` to `.spread` and side-aware hinge points to `BinderView.module.css`**
 
 ```css
-/* src/components/BinderView.module.css — modify .spread, add nothing else */
+/* src/components/BinderView.module.css — modify .spread and .page, add .pageLeft/.pageRight */
 .spread {
   display: flex;
   gap: var(--space-4);
@@ -790,25 +791,95 @@ The flip uses Framer Motion's `rotateY: ±90deg`, but no ancestor sets a CSS `pe
   border-radius: var(--radius-xl);
   background: #050403;
   transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* The left page of a spread hinges on its RIGHT edge (the spine); the right
+   page (or a lone first page, which has no left-hand partner) hinges on its
+   LEFT edge. Framer Motion's rotateY needs a matching transform-origin here
+   to actually pivot at that edge instead of the element's center. */
+.pageLeft {
+  transform-origin: right center;
+}
+
+.pageRight {
+  transform-origin: left center;
 }
 ```
 
 (`border-radius` bumped from `var(--radius-lg)` to `var(--radius-xl)` here too, per Task 5's "make the rounding obviously visible" requirement — harmless to land early since Task 5 doesn't touch this property again.)
 
-- [ ] **Step 2: Manual verification (no automated test can assert on visual 3D depth)**
+- [ ] **Step 2: Replace the single `pageMotion` object in `BinderView.tsx` with a side-aware variant function**
 
-This is a pure visual fix — Vitest/jsdom has no real CSS 3D rendering to assert against. Verify live: start the dev server, open Binder view with at least 3 pages configured, click "Next page," and confirm the transition now visibly rotates with depth (the page appears to recede/turn rather than squash flat or flicker). Take this as the acceptance check instead of a written test.
+```tsx
+// src/components/BinderView.tsx — delete the existing `const pageMotion = shouldReduceMotion ? ... : ...` block and replace it with this function, defined at module scope (above the BinderView component) so it has no closure dependency on component state
+// A page hinged at the spine (its inner edge, set via .pageLeft/.pageRight's
+// transform-origin in BinderView.module.css) rather than rotating around its
+// own center -- matches how a real binder page turns on its rings, not a
+// book-corner curl (a paper effect that doesn't fit a rigid binder page,
+// evaluated and rejected in favor of this spine-hinge approach). The left
+// page in a spread hinges on its right edge; the right page (or a lone first
+// page, which has no left-hand partner to hinge against) hinges on its left
+// edge. `awayRotation`'s sign is chosen so a page swings AWAY from the
+// viewer on exit/entry, as if genuinely rotating back on its hinge, rather
+// than rotating through the viewer's side of the page.
+function getPageMotion(side: 'left' | 'right', shouldReduceMotion: boolean) {
+  if (shouldReduceMotion) {
+    return { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } };
+  }
+  const awayRotation = side === 'left' ? 130 : -130;
+  return {
+    initial: { opacity: 0, rotateY: awayRotation },
+    animate: { opacity: 1, rotateY: 0, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
+    exit: { opacity: 0, rotateY: awayRotation, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
+  };
+}
+```
 
-- [ ] **Step 3: Run the full test suite to confirm nothing regressed**
+Delete the now-unreferenced `shouldReduceMotion`-based `pageMotion` `const` from the component body if your edit tool left it behind — `getPageMotion` fully replaces it.
 
-Run: `npm test -- --run`
-Expected: PASS (this change is CSS-only, no test should be affected).
+- [ ] **Step 3: Apply the side + variant to each rendered page**
 
-- [ ] **Step 4: Commit**
+```tsx
+// src/components/BinderView.tsx — replace the existing {currentSpread.map((pageIndex) => ( <motion.div className={styles.page} ... {...pageMotion}> ... </motion.div> ))} block
+{currentSpread.map((pageIndex, i) => {
+  // Only a genuine two-page spread has a "left" page to hinge differently
+  // from a "right" page -- a lone first page (currentSpread.length === 1)
+  // has no left-hand partner, so it's treated as the right/only page.
+  const side: 'left' | 'right' = i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+  return (
+    <motion.div
+      key={pageIndex}
+      className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
+      aria-label={`Page ${pageIndex + 1}`}
+      style={{
+        gridTemplateColumns: `repeat(${activeBinder.config.columns}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${activeBinder.config.rows}, minmax(0, 1fr))`,
+      }}
+      {...getPageMotion(side, shouldReduceMotion)}
+    >
+      {/* ...existing page contents unchanged... */}
+    </motion.div>
+  );
+})}
+```
+
+(The `style={{ gridTemplateColumns/gridTemplateRows: ... }}` shown here is still the ORIGINAL `minmax(0, 1fr)` version — Task 3 replaces it with measured pixel sizing; don't jump ahead to that here, just preserve whatever the current step's baseline is so Task 3's diff applies cleanly on top.)
+
+- [ ] **Step 4: Manual verification (no automated test can assert on visual 3D depth or rotation direction)**
+
+This is a visual fix — Vitest/jsdom has no real CSS 3D rendering to assert against. Verify live: start the dev server, open Binder view with at least 3 pages configured (so a spread genuinely has two pages), click "Next page," and confirm each page now visibly rotates around its INNER (spine-side) edge with real depth, not its center — the left page should appear to swing on a hinge at the right, the right page on a hinge at the left. If the rotation direction looks backwards (pages appear to swing toward the viewer instead of away), flip the sign of `awayRotation` in `getPageMotion` and re-check.
+
+- [ ] **Step 5: Run the full test suite, typecheck, and lint to confirm nothing regressed**
+
+Run: `npm test -- --run`, `npm run typecheck`, `npm run lint`
+Expected: all clean — this is a CSS + Framer Motion variant change, no test assertion should be affected, but confirm rather than assume.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/components/BinderView.module.css
-git commit -m "Fix the binder page-flip animation by adding the missing 3D perspective"
+git add src/components/BinderView.tsx src/components/BinderView.module.css
+git commit -m "Turn binder pages on a spine hinge instead of rotating around their own center"
 ```
 
 ---
@@ -962,6 +1033,8 @@ Then, in the JSX, attach `spreadRef` to the `.spread` div, and change the `.page
 
 ```tsx
 // src/components/BinderView.tsx — replace the existing style={{ gridTemplateColumns: ..., gridTemplateRows: ... }} block
+// (this is INSIDE the {currentSpread.map((pageIndex, i) => { const side = ...; return (...) })}
+// block Task 2 already introduced -- `side` is already in scope here, unchanged)
 const pagesInSpread = currentSpread.length || 1;
 const slotSize = computeSlotSize({
   containerWidth: containerSize.width / pagesInSpread - GAP_PX * 2, // leaves room for .page's own padding
@@ -973,13 +1046,13 @@ const slotSize = computeSlotSize({
 // ...
 <motion.div
   key={pageIndex}
-  className={styles.page}
+  className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
   aria-label={`Page ${pageIndex + 1}`}
   style={{
     gridTemplateColumns: `repeat(${activeBinder.config.columns}, ${slotSize.width}px)`,
     gridTemplateRows: `repeat(${activeBinder.config.rows}, ${slotSize.height}px)`,
   }}
-  {...pageMotion}
+  {...getPageMotion(side, shouldReduceMotion)}
 >
 ```
 
@@ -1087,12 +1160,15 @@ Per the approved design: a spread of two pages splits the available screen down 
   border-radius: var(--radius-xl);
   background: #050403;
   transform-style: preserve-3d;
+  backface-visibility: hidden;
   flex: 1;
   min-width: 0;
   justify-content: center;
   align-content: center;
 }
 ```
+
+(`backface-visibility: hidden` carried forward from Task 2 — this replaces the WHOLE `.page` rule, so don't drop it. `.pageLeft`/`.pageRight`, also added in Task 2, are separate rule blocks and are untouched by this edit — leave them exactly as they are.)
 
 `flex: 1` on `.page` is what makes each page in a two-page spread claim half the row (both pages have equal `flex: 1`, so they split evenly), while a LONE page (nothing else in the flex row) naturally claims the full row width on its own — no JS branching needed for "single page vs spread" sizing at the container level, only at the slot-sizing level (Step 2 below).
 
@@ -1136,7 +1212,11 @@ interface BinderPageProps {
   onSelectSlot: (slotIndex: number) => void;
   onDragStartSlot: (slotIndex: number) => void;
   onDropSlot: (slotIndex: number) => void;
-  pageMotion: Record<string, unknown>;
+  // Which edge this page hinges on -- see Task 2's getPageMotion, which
+  // BinderPage now calls directly instead of receiving a precomputed motion
+  // object as a prop, since the motion also needs to pair with the matching
+  // .pageLeft/.pageRight CSS class for its transform-origin.
+  side: 'left' | 'right';
 }
 
 function BinderPage({
@@ -1153,9 +1233,10 @@ function BinderPage({
   onSelectSlot,
   onDragStartSlot,
   onDropSlot,
-  pageMotion,
+  side,
 }: BinderPageProps) {
   const [ref, size] = usePageSize();
+  const shouldReduceMotion = useReducedMotion();
   const slotSize = computeSlotSize({
     // 2 * space-4 (32px) for .page's own left+right padding.
     containerWidth: size.width - 32,
@@ -1169,13 +1250,13 @@ function BinderPage({
     <motion.div
       ref={ref}
       key={pageIndex}
-      className={styles.page}
+      className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
       aria-label={`Page ${pageIndex + 1}`}
       style={{
         gridTemplateColumns: `repeat(${columns}, ${slotSize.width}px)`,
         gridTemplateRows: `repeat(${rows}, ${slotSize.height}px)`,
       }}
-      {...pageMotion}
+      {...getPageMotion(side, shouldReduceMotion)}
     >
       {entries.flatMap((row, r) =>
         row.map((entry, c) => {
@@ -1208,28 +1289,33 @@ function BinderPage({
 And replace the main `BinderView` component's page-rendering JSX (the `{currentSpread.map((pageIndex) => ( <motion.div className={styles.page} ...> ... </motion.div> ))}` block) with:
 
 ```tsx
-{currentSpread.map((pageIndex) => (
-  <BinderPage
-    key={pageIndex}
-    pageIndex={pageIndex}
-    rows={activeBinder.config.rows}
-    columns={activeBinder.config.columns}
-    entries={pages[pageIndex] ?? []}
-    fillDirection={activeBinder.config.fillDirection}
-    nameByDexNumber={nameByDexNumber}
-    ownedCardImageByDexNumber={ownedCardImageByDexNumber}
-    onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
-    isManualArrangeActive={isManualArrangeActive}
-    selectedIndex={selectedIndex}
-    onSelectSlot={setSelectedIndex}
-    onDragStartSlot={setDragFromIndex}
-    onDropSlot={handleDrop}
-    pageMotion={pageMotion}
-  />
-))}
+{currentSpread.map((pageIndex, i) => {
+  // Same rule as Task 2: only a genuine two-page spread has a "left" page to
+  // hinge differently from a "right" page.
+  const side: 'left' | 'right' = i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+  return (
+    <BinderPage
+      key={pageIndex}
+      pageIndex={pageIndex}
+      rows={activeBinder.config.rows}
+      columns={activeBinder.config.columns}
+      entries={pages[pageIndex] ?? []}
+      fillDirection={activeBinder.config.fillDirection}
+      nameByDexNumber={nameByDexNumber}
+      ownedCardImageByDexNumber={ownedCardImageByDexNumber}
+      onSlotClick={(dexNumber) => onSlotClick(dexNumber, activeBinder.language)}
+      isManualArrangeActive={isManualArrangeActive}
+      selectedIndex={selectedIndex}
+      onSelectSlot={setSelectedIndex}
+      onDragStartSlot={setDragFromIndex}
+      onDropSlot={handleDrop}
+      side={side}
+    />
+  );
+})}
 ```
 
-Delete the now-unused `GAP_PX`/`containerSize`/`spreadRef`/`pagesInSpread`/`slotSize` variables from Task 3's Step 5 in the main component body — that logic now lives inside `BinderPage`/`usePageSize` instead. Keep the `AnimatePresence` wrapper around this `.map(...)` exactly as it already is.
+`getPageMotion` itself (defined at module scope in Task 2) needs no change or re-export — `BinderPage` is defined in the same file and calls it directly. Delete the now-unused `GAP_PX`/`containerSize`/`spreadRef`/`pagesInSpread`/`slotSize` variables from Task 3's Step 5 in the main component body — that logic now lives inside `BinderPage`/`usePageSize` instead. Keep the `AnimatePresence` wrapper around this `.map(...)` exactly as it already is.
 
 - [ ] **Step 3: Update `BinderView.test.tsx`'s `ResizeObserver` mock (from Task 3 Step 8) to fire once per `observe()` call rather than assuming a single global instance**, since there are now potentially two independent `BinderPage` instances each observing their own node:
 
