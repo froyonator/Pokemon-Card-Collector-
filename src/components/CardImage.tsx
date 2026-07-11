@@ -90,6 +90,13 @@ export function CardImage({
 }: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+  // Set once a hosted URL has actually failed to load (a bad/stale hosted
+  // copy, a transient CDN hiccup, etc.), so rendering falls through to the
+  // imageBase-based construction below instead of getting stuck retrying
+  // the same broken hosted URL forever. Distinct from `exhausted`, which
+  // means "nothing at all worked" -- a hosted-URL failure with a usable
+  // imageBase to fall back to is not that.
+  const [hostedFailed, setHostedFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The one hosted URL relevant to this render, matching whichever variant
@@ -109,9 +116,25 @@ export function CardImage({
   useEffect(() => {
     setVariantIndex(0);
     setExhausted(false);
+    setHostedFailed(false);
   }, [imageBase, hostedUrl]);
 
-  const hasNoImage = (!imageBase && !hostedUrl) || exhausted;
+  const useHostedUrl = Boolean(hostedUrl) && !hostedFailed;
+  const hasNoImage = (!imageBase && !useHostedUrl) || exhausted;
+
+  function handleHostedError() {
+    // A hosted URL that fails to load with a usable imageBase still on hand
+    // falls through to that construction below (today's exact behavior)
+    // rather than jumping straight to the placeholder -- a bad/unpublished
+    // hosted copy shouldn't regress a card that would otherwise render
+    // fine. Only when there's truly nothing else to try does this count as
+    // exhausted.
+    if (imageBase) {
+      setHostedFailed(true);
+    } else {
+      setExhausted(true);
+    }
+  }
 
   function handleUploadButtonClick() {
     fileInputRef.current?.click();
@@ -217,9 +240,10 @@ export function CardImage({
   // A resolved hosted URL is preferred outright over the imageBase-based
   // construction below -- there's only one hosted candidate per quality
   // tier (no further hosted variant to retry into), so a load failure here
-  // falls straight through to the same placeholder/uploaded-image handling
-  // as an exhausted imageBase, rather than into the variant chain below.
-  if (hostedUrl) {
+  // falls through to that imageBase-based construction instead (see
+  // handleHostedError), rather than getting stuck retrying the same broken
+  // hosted URL.
+  if (useHostedUrl) {
     return (
       <img
         src={hostedUrl}
@@ -227,7 +251,7 @@ export function CardImage({
         className={className}
         width={width}
         loading={loading}
-        onError={() => setExhausted(true)}
+        onError={handleHostedError}
       />
     );
   }

@@ -298,7 +298,7 @@ describe('CardImage', () => {
       );
     });
 
-    it('falls to the placeholder (not the imageBase variant chain) when the hosted image itself fails to load', () => {
+    it('falls back to the imageBase variant chain (not the placeholder) when the hosted image itself fails to load but imageBase is usable', () => {
       render(
         <CardImage
           imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
@@ -308,6 +308,38 @@ describe('CardImage', () => {
       );
       const img = screen.getByAltText('Charizard ex');
       fireEvent.error(img);
+      const retriedImg = screen.getByAltText('Charizard ex');
+      expect(retriedImg).toHaveAttribute(
+        'src',
+        'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+      );
+      expect(screen.queryByText(/no image available/i)).not.toBeInTheDocument();
+    });
+
+    it('falls all the way to the placeholder once the hosted image AND every imageBase variant have failed', () => {
+      render(
+        <CardImage
+          imageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      fireEvent.error(screen.getByAltText('Charizard ex')); // hosted URL fails
+      fireEvent.error(screen.getByAltText('Charizard ex')); // low/webp fails
+      fireEvent.error(screen.getByAltText('Charizard ex')); // high/png fails
+      expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+      expect(screen.queryByAltText('Charizard ex')).not.toBeInTheDocument();
+    });
+
+    it('falls straight to the placeholder when the hosted image fails and there is no imageBase to fall back to', () => {
+      render(
+        <CardImage
+          imageBase=""
+          hostedThumbUrl="https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/thumb.webp"
+          alt="Charizard ex"
+        />
+      );
+      fireEvent.error(screen.getByAltText('Charizard ex'));
       expect(screen.getByText(/no image available/i)).toBeInTheDocument();
       expect(screen.queryByAltText('Charizard ex')).not.toBeInTheDocument();
     });
