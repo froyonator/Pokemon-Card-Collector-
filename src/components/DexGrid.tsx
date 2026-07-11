@@ -1,11 +1,12 @@
 import { AnimatePresence } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
+import { loadStaticCardData } from '../api/staticDatabase';
 import { entriesForGenerations } from '../data/generations';
 import { loadAllCardData } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
-import { getCachedCards } from '../storage/cardCache';
+import { getCachedCards, setCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 import { BinderView } from './BinderView';
 import { CardZoomOverlay } from './CardZoomOverlay';
@@ -141,7 +142,15 @@ export function DexGrid({
     if (dexEntries.length === 0) return;
     // Per-dex-number check, not a per-language one: this is what makes a
     // newly-selected generation get auto-fetched even after this language
-    // was already cached for a previously-selected generation.
+    // was already cached for a previously-selected generation. Computed
+    // synchronously, exactly as before the static preload below existed --
+    // the preload can only ever turn a "missing" entry into a cached one,
+    // never the reverse, so this is always a superset of what's still
+    // genuinely missing once the (async) preload below has had its say. That
+    // is what lets isLoading/onLoadingChange/the abort-controller-per-
+    // generation setup right below stay perfectly synchronous, matching
+    // their exact pre-existing timing, instead of being delayed behind the
+    // preload's own await.
     const missingEntries = dexEntries.filter(
       (entry) => getCachedCards(language, entry.number) === undefined
     );
@@ -156,26 +165,90 @@ export function DexGrid({
 
     setIsLoading(true);
     onLoadingChange(true);
-    loadAllCardData(language, {
-      dexEntries: missingEntries,
-      rarities: [...activeSet],
-      owned,
-      wishlist,
-      signal: controller.signal,
-      onDexLoaded: () => {
+
+    // Guards the async preload-then-fetch work below against acting after
+    // this effect's own cleanup has run (unmount, or a re-run triggered by
+    // language/dexEntries changing again before the preload's single await
+    // resolves) -- without this, a stale attempt could still write into the
+    // cache or flip isLoading/onLoadingChange for a language/generation this
+    // component has already moved on from.
+    let cancelled = false;
+
+    (async () => {
+      // Preload step: check this app's own static, self-hosted card
+      // database (built ahead of time from TCGdex, see
+      // scripts/scraper/src/buildStaticDatabase.ts) for the entries computed
+      // as missing above, BEFORE falling back to the live TCGdex API fetch
+      // below. Writes pre-populate the exact same cache missingEntries was
+      // just computed from, so any dex number the static file covers is
+      // subtracted from the live fetch's own work below instead of being
+      // re-fetched live. Any dex number it doesn't cover (a real gap -- e.g.
+      // nl/ru/pl have no static file at all, and even covered languages can
+      // be missing individual dex numbers) simply falls through to that live
+      // fetch completely unchanged. Also guarded by the loadGeneration
+      // check, on top of `cancelled`, so a Refresh-Data click that bumps the
+      // generation independently (without going through this effect's own
+      // cleanup) still correctly abandons a stale preload's contribution.
+      const staticData = await loadStaticCardData(language);
+      if (cancelled || loadGeneration.current !== thisGeneration) return;
+
+      let stillMissing = missingEntries;
+      if (staticData) {
+        const remaining: typeof missingEntries = [];
+        let wroteAny = false;
+        for (const entry of missingEntries) {
+          const cards = staticData[entry.number];
+          if (cards === undefined) {
+            remaining.push(entry);
+            continue;
+          }
+          setCachedCards(language, entry.number, cards);
+          wroteAny = true;
+        }
+        stillMissing = remaining;
+        // Bumped here -- even for a partial preload, and even when (in the
+        // branch below) it turns out to cover 100% of what was missing --
+        // so the tile grid's cardsByDexNumber memo (keyed on dataVersion)
+        // actually re-reads the cache and renders what the preload just
+        // wrote, instead of waiting on some unrelated later trigger.
+        // Deliberately NOT calling markFullPrintHistoryFetched anywhere
+        // here: "Show all cards" must still do its own live fetch on first
+        // use, exactly as today -- this preload only ever replaces the
+        // curated default load.
+        if (wroteAny) setDataVersion((v) => v + 1);
+      }
+
+      if (stillMissing.length === 0) {
+        setIsLoading(false);
+        onLoadingChange(false);
+        return;
+      }
+
+      loadAllCardData(language, {
+        dexEntries: stillMissing,
+        rarities: [...activeSet],
+        owned,
+        wishlist,
+        signal: controller.signal,
+        onDexLoaded: () => {
+          if (loadGeneration.current !== thisGeneration) return;
+          scheduleDataVersionBump();
+        },
+      }).finally(() => {
         if (loadGeneration.current !== thisGeneration) return;
-        scheduleDataVersionBump();
-      },
-    }).finally(() => {
-      if (loadGeneration.current !== thisGeneration) return;
-      setIsLoading(false);
-      onLoadingChange(false);
-      // A final catch-all flush: cheap no-op if nothing changed since the
-      // last onDexLoaded-triggered bump, but guarantees the last dex
-      // number's data is reflected even if its onDexLoaded fired in the
-      // same frame as unmount or some other edge case.
-      setDataVersion((v) => v + 1);
-    });
+        setIsLoading(false);
+        onLoadingChange(false);
+        // A final catch-all flush: cheap no-op if nothing changed since the
+        // last onDexLoaded-triggered bump, but guarantees the last dex
+        // number's data is reflected even if its onDexLoaded fired in the
+        // same frame as unmount or some other edge case.
+        setDataVersion((v) => v + 1);
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // onLoadingChange deliberately omitted: this effect should only re-run
     // when the actual data to load changes (language/dexEntries), not
     // whenever the parent happens to pass a new function identity for the

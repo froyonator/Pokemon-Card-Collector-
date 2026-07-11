@@ -6,6 +6,9 @@ import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { setCachedCards } from '../storage/cardCache';
 import { loadAllCardData } from '../state/loadCardData';
+import { loadStaticCardData } from '../api/staticDatabase';
+import { GEN1_DEX } from '../data/gen1Dex';
+import type { CardRecord } from '../types';
 
 // Wraps the real loadAllCardData in a vi.fn so most tests below get its
 // genuine behavior unchanged (delegating straight through, driven by the
@@ -21,6 +24,20 @@ vi.mock('../state/loadCardData', async () => {
     loadAllCardData: vi.fn(actual.loadAllCardData),
   };
 });
+
+// Fully mocked (not wrapping the real implementation, unlike loadAllCardData
+// above): the real fetch-based implementation, including its own per-language
+// memoization, is covered on its own in staticDatabase.test.ts. Defaulting to
+// `null` here means every pre-existing test below -- none of which know or
+// care about the static preload -- gets exactly the same "no static data
+// available" outcome the auto-load effect always saw before this preload step
+// existed, without depending on how the shared fetch mock in beforeEach
+// happens to respond to a `data/cards/<language>.json` URL. Individual tests
+// below override this per-call via mockResolvedValueOnce/mockImplementationOnce
+// to exercise the full/partial/failed-preload paths deliberately.
+vi.mock('../api/staticDatabase', () => ({
+  loadStaticCardData: vi.fn(async () => null),
+}));
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -523,6 +540,124 @@ describe('DexGrid', () => {
     expect(
       screen.queryByRole('dialog', { name: /card options for charizard/i })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('Static database preload', () => {
+  function staticRecord(dexNumber: number, name: string): CardRecord {
+    return {
+      id: `static-${dexNumber}`,
+      name,
+      dexNumber,
+      setId: 'static-set',
+      setName: 'Static Set',
+      localId: String(dexNumber),
+      rarity: 'Ultra Rare',
+      imageBase: `https://example.com/static/${dexNumber}`,
+      language: 'en',
+    };
+  }
+
+  // Precisely extracts the dex numbers actually queried by the live TCGdex
+  // fetch, parsing each call's real `dexId` query param (e.g. "eq:1")
+  // rather than doing a substring search over the raw URL string -- a naive
+  // `url.includes('dexId=eq%3A1')` check would incorrectly also match dex
+  // numbers 10-19, 100-151, etc. (their own query strings, e.g.
+  // "dexId=eq%3A10", contain "dexId=eq%3A1" as a literal prefix).
+  function queriedDexNumbers(): Set<number> {
+    const nums = new Set<number>();
+    for (const call of (fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      let parsed: URL;
+      try {
+        parsed = new URL(String(call[0]));
+      } catch {
+        continue;
+      }
+      const match = parsed.searchParams.get('dexId')?.match(/^eq:(\d+)$/);
+      if (match) nums.add(Number(match[1]));
+    }
+    return nums;
+  }
+
+  it('skips the live fetch entirely when the static database covers every dex number for this language', async () => {
+    const fullCoverage: Record<number, CardRecord[]> = {};
+    for (const entry of GEN1_DEX) {
+      fullCoverage[entry.number] = [staticRecord(entry.number, entry.name)];
+    }
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(fullCoverage);
+    // loadAllCardData's mock (declared at the top of this file) is never
+    // reset between tests, so its call count carries over from every test
+    // that ran before this one -- a delta against this snapshot, not an
+    // absolute count, is what actually proves THIS render made no new call.
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    // Full static coverage means every dex number was already satisfied by
+    // the preload -- the live path (loadAllCardData, and therefore the
+    // network fetch it would have driven) should never run at all.
+    expect(vi.mocked(loadAllCardData).mock.calls.length).toBe(loadAllCardDataCallsBefore);
+    // fetch itself, unlike loadAllCardData, IS a fresh vi.fn() every test
+    // (re-stubbed in this file's top-level beforeEach and unstubbed in
+    // afterEach), so an absolute assertion here is safe.
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('only live-fetches the dex numbers the static database does not cover', async () => {
+    // Bulbasaur (#1) is covered by the static file; Charizard (#6) is a
+    // real gap in it (e.g. a thin language, or a dex number the static
+    // build genuinely has no data for) and must still fall through to the
+    // existing live fetch, exactly as if no static preload existed.
+    const partialCoverage: Record<number, CardRecord[]> = {
+      1: [staticRecord(1, 'Bulbasaur')],
+    };
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(partialCoverage);
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    const queried = queriedDexNumbers();
+    // Bulbasaur came from the static preload -- the live path must never
+    // have queried its dex number.
+    expect(queried.has(1)).toBe(false);
+    // Charizard was NOT covered by the static file -- it still goes out
+    // over the live path, unchanged.
+    expect(queried.has(6)).toBe(true);
+  });
+
+  it('falls back to the existing full live-fetch behavior, completely unchanged, when the static database preload fails', async () => {
+    // Explicit, even though it matches this file's own default mock: makes
+    // the scenario under test unambiguous, as a dedicated regression guard
+    // for every other (pre-existing) test in this file, which all exercise
+    // this exact "static preload unavailable" path already.
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(null);
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+    const callsDuringThisTest = vi.mocked(loadAllCardData).mock.calls.slice(loadAllCardDataCallsBefore);
+    expect(callsDuringThisTest).toHaveLength(1);
+    const [, options] = callsDuringThisTest[0];
+    expect(options?.dexEntries).toEqual(GEN1_DEX);
   });
 });
 
