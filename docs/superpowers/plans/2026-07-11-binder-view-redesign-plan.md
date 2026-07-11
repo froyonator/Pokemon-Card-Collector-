@@ -1131,6 +1131,8 @@ git commit -m "Size binder slots from measured space instead of stretched grid t
 
 Per the approved design: a spread of two pages splits the available screen down the center (each half sized as large as possible, page *container* proportions not fixed to any particular shape); a lone first page (nothing to spread with) uses the full width instead of being confined to half.
 
+**Prerequisite queued ahead of this task (already committed separately, before this task starts — not part of this task's own diff, noted here so Step 1 below isn't a silent no-op):** `src/App.module.css`'s `.shell` rule changed `align-items: flex-start` to `align-items: stretch`, and `.main` gained `min-height: 0`. Reason: Step 1's `.binder { height: 100% }` needs `.main` (its parent) to have a real, non-content-derived height to resolve that percentage against — with the old `flex-start`, `.main`'s height was auto/content-driven, which is what let Task 3's measured sizing collapse into a circular content-drives-measurement-drives-content loop (confirmed live: `.spread` and its grid tracks collapsed to single-digit/low-double-digit pixels). `.sidebar` is unaffected by the `.shell` change since it already sets its own `align-self: flex-start` in `Sidebar.module.css`. If this change is somehow missing from `src/App.module.css` when this task starts, add it back before Step 1, or `height: 100%` will resolve to `auto` and the collapse will still happen.
+
 - [ ] **Step 1: Update `.spread`'s CSS to stretch its children to fill height, and let each `.page` grow to fill its share of the row**
 
 ```css
