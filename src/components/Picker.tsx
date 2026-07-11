@@ -1,9 +1,10 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { loadAllPrintingsForDex } from '../state/loadCardData';
 import { resizeImageForUpload } from '../state/imageResize';
 import { buildTcgplayerSearchUrl } from '../state/tcgplayerSearch';
 import { useAppStore } from '../state/store';
+import { useCardTilt, type UseCardTiltResult } from '../state/useCardTilt';
 import type { CardRecord, Condition } from '../types';
 import { CardImage } from './CardImage';
 import { ConditionPicker } from './ConditionPicker';
@@ -35,6 +36,22 @@ function mergeCardsById(curated: CardRecord[], full: CardRecord[]): CardRecord[]
   for (const card of curated) merged.set(card.id, card);
   for (const card of full) merged.set(card.id, card);
   return Array.from(merged.values());
+}
+
+// A thin wrapper so useCardTilt (a hook) can be called once per card without
+// calling hooks inside the displayedCards.map() loop below, which would
+// break the Rules of Hooks as the number of cards changes across renders
+// (e.g. toggling "Show all cards"). Each instance is its own component with
+// a stable hook call order, no matter how many cards are rendered.
+function PickerCardTilt({
+  disabled,
+  children,
+}: {
+  disabled: boolean;
+  children: (tilt: UseCardTiltResult) => ReactNode;
+}) {
+  const tilt = useCardTilt({ disabled });
+  return <>{children(tilt)}</>;
 }
 
 export function Picker({
@@ -238,6 +255,21 @@ export function Picker({
             {displayedCards.map((card) => {
               const isOwned = owned?.cardId === card.id;
               const isWishlisted = wishlist?.cardId === card.id;
+              // Mirrors CardImage's own `!imageBase` check for hasNoImage --
+              // the holo tilt effect would look broken tilting a placeholder
+              // that's really just Search/Upload buttons. The other half of
+              // CardImage's hasNoImage (both real image variants failing to
+              // load after the fact) is runtime-only state private to
+              // CardImage, not tracked here, since it'd need new plumbing
+              // for what's otherwise a rare CDN-failure edge case.
+              const hasNoImage = !card.imageBase;
+              const baseCardBodyClass = isSelectMode
+                ? selectedCardIds.has(card.id)
+                  ? styles.cardBodyMultiSelected
+                  : styles.cardBody
+                : isOwned
+                  ? styles.cardBodySelected
+                  : styles.cardBody;
               return (
                 <div key={card.id} className={styles.card}>
                   <button
@@ -253,69 +285,80 @@ export function Picker({
                   >
                     {isWishlisted ? '★' : '☆'}
                   </button>
-                  {/* A plain <button> here would nest the placeholder's own
-                      Search/Upload/Remove <button>s (rendered by CardImage
-                      below) inside this outer button, which is invalid HTML
-                      and trips React's validateDOMNesting warning. A div
-                      with an explicit button role, tabIndex, and matching
-                      keyboard handling preserves the same click/keyboard-
-                      activation behavior without that nesting. */}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isSelectMode ? selectedCardIds.has(card.id) : undefined}
-                    className={
-                      isSelectMode
-                        ? selectedCardIds.has(card.id)
-                          ? styles.cardBodyMultiSelected
-                          : styles.cardBody
-                        : isOwned
-                          ? styles.cardBodySelected
-                          : styles.cardBody
-                    }
-                    onClick={() => (isSelectMode ? toggleCardSelected(card.id) : setPendingCard(card))}
-                    onKeyDown={(event) => {
-                      // A keydown event bubbles up from whatever element is
-                      // actually focused, regardless of CardImage's own
-                      // click-propagation stop (that only stops click, not
-                      // keydown). Without this target check, tabbing to the
-                      // nested Search/Upload/Remove button and pressing
-                      // Enter or Space would fire that button's own action
-                      // AND this handler, spuriously opening the condition
-                      // picker alongside it. Only react when the event
-                      // originated on this div itself, i.e. this div (not a
-                      // focusable descendant of it) is the focused element.
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        if (isSelectMode) {
-                          toggleCardSelected(card.id);
-                        } else {
-                          setPendingCard(card);
+                  <PickerCardTilt disabled={hasNoImage}>
+                    {(tilt) => (
+                      // A plain <button> here would nest the placeholder's
+                      // own Search/Upload/Remove <button>s (rendered by
+                      // CardImage below) inside this outer button, which is
+                      // invalid HTML and trips React's validateDOMNesting
+                      // warning. A div with an explicit button role,
+                      // tabIndex, and matching keyboard handling preserves
+                      // the same click/keyboard-activation behavior without
+                      // that nesting.
+                      <div
+                        ref={tilt.ref}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isSelectMode ? selectedCardIds.has(card.id) : undefined}
+                        className={
+                          tilt.isActive
+                            ? `${baseCardBodyClass} ${styles.cardTilting}`
+                            : baseCardBodyClass
                         }
-                      }
-                    }}
-                  >
-                    <CardImage
-                      imageBase={card.imageBase}
-                      uploadedImageUri={uploadedImages[card.id]}
-                      alt={`${card.name} from ${card.setName}`}
-                      className={styles.cardImage}
-                      onSearchImage={() =>
-                        window.open(buildTcgplayerSearchUrl(card), '_blank', 'noopener,noreferrer')
-                      }
-                      onUploadImage={(file) => {
-                        resizeImageForUpload(file)
-                          .then((dataUri) => setUploadedImage(card.id, dataUri))
-                          .catch(() => setWarning("Couldn't use that image file. Try a different one."));
-                      }}
-                      onRemoveUploadedImage={() => setUploadedImage(card.id, null)}
-                    />
-                    <span>
-                      {card.setName} #{card.localId}
-                    </span>
-                    <span className={styles.rarity}>{card.rarity}</span>
-                  </div>
+                        style={tilt.style}
+                        onMouseMove={tilt.onMouseMove}
+                        onMouseLeave={tilt.onMouseLeave}
+                        onClick={() =>
+                          isSelectMode ? toggleCardSelected(card.id) : setPendingCard(card)
+                        }
+                        onKeyDown={(event) => {
+                          // A keydown event bubbles up from whatever element
+                          // is actually focused, regardless of CardImage's
+                          // own click-propagation stop (that only stops
+                          // click, not keydown). Without this target check,
+                          // tabbing to the nested Search/Upload/Remove
+                          // button and pressing Enter or Space would fire
+                          // that button's own action AND this handler,
+                          // spuriously opening the condition picker
+                          // alongside it. Only react when the event
+                          // originated on this div itself, i.e. this div
+                          // (not a focusable descendant of it) is the
+                          // focused element.
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            if (isSelectMode) {
+                              toggleCardSelected(card.id);
+                            } else {
+                              setPendingCard(card);
+                            }
+                          }
+                        }}
+                      >
+                        <CardImage
+                          imageBase={card.imageBase}
+                          uploadedImageUri={uploadedImages[card.id]}
+                          alt={`${card.name} from ${card.setName}`}
+                          className={styles.cardImage}
+                          onSearchImage={() =>
+                            window.open(buildTcgplayerSearchUrl(card), '_blank', 'noopener,noreferrer')
+                          }
+                          onUploadImage={(file) => {
+                            resizeImageForUpload(file)
+                              .then((dataUri) => setUploadedImage(card.id, dataUri))
+                              .catch(() =>
+                                setWarning("Couldn't use that image file. Try a different one.")
+                              );
+                          }}
+                          onRemoveUploadedImage={() => setUploadedImage(card.id, null)}
+                        />
+                        <span>
+                          {card.setName} #{card.localId}
+                        </span>
+                        <span className={styles.rarity}>{card.rarity}</span>
+                      </div>
+                    )}
+                  </PickerCardTilt>
                   <select
                     className={styles.classify}
                     aria-label={`Classify ${card.name} (${card.setName} #${card.localId}) as`}

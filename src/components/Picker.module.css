@@ -118,6 +118,7 @@
 
 .cardBody,
 .cardBodySelected {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -147,8 +148,41 @@
 }
 
 .cardBodyMultiSelected {
+  position: relative;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+/* The holo tilt effect (see src/state/useCardTilt.ts) drives these two
+   custom properties per-frame from JS; the fallback values keep the shine
+   fully transparent and centered on a card the effect hasn't touched. */
+.cardBody::after,
+.cardBodySelected::after,
+.cardBodyMultiSelected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at var(--tilt-shine-x, 50%) var(--tilt-shine-y, 50%),
+      rgba(255, 253, 248, 0.6),
+      transparent 55%
+    ),
+    var(--holo-gradient);
+  background-blend-mode: screen;
+  mix-blend-mode: soft-light;
+  opacity: var(--tilt-shine-opacity, 0);
+  transition: opacity var(--transition-base);
+}
+
+/* While the cursor is actively moving over a tilting card, the transform
+   set inline by useCardTilt must track the cursor 1:1 -- the base
+   transition above (meant for the mouse-leave reset) would otherwise make
+   every frame lag behind the cursor. */
+.cardTilting {
+  transition: none;
 }
 
 .cardBody img,

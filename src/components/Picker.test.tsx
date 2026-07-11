@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Picker } from './Picker';
@@ -508,5 +508,54 @@ describe('Picker', () => {
     await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
     await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
     expect(fetchImpl.mock.calls.every(([url]) => url.includes('/ja/'))).toBe(true);
+  });
+
+  describe('holo tilt effect', () => {
+    function getCardBody(altText: RegExp) {
+      return screen.getByAltText(altText).closest('[role="button"]') as HTMLElement;
+    }
+
+    it('tracks mouse movement over a card, updating its 3D tilt and shine position', () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      const cardBody = getCardBody(/charizard ex from 151/i);
+      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+
+      expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('0');
+
+      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+
+      expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).not.toBe('0');
+      expect(cardBody.style.getPropertyValue('--tilt-shine-x')).toBe('100%');
+      expect(cardBody.style.getPropertyValue('--tilt-shine-y')).toBe('0%');
+      expect(cardBody.style.transform).toContain('rotateX');
+      expect(cardBody.style.transform).toContain('rotateY');
+    });
+
+    it('resets the tilt and hides the shine again when the cursor leaves the card', () => {
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+      const cardBody = getCardBody(/charizard ex from 151/i);
+      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+
+      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+      expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).not.toBe('0');
+
+      fireEvent.mouseLeave(cardBody);
+
+      expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('0');
+      expect(cardBody.style.transform).toContain('rotateX(0deg)');
+      expect(cardBody.style.transform).toContain('rotateY(0deg)');
+    });
+
+    it('does not apply the tilt effect to a card showing the "no image" placeholder', () => {
+      const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
+      render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
+      const cardBody = screen.getByText(/no image available/i).closest('[role="button"]') as HTMLElement;
+      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+
+      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+
+      expect(cardBody.style.transform).toBe('');
+      expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('');
+    });
   });
 });
