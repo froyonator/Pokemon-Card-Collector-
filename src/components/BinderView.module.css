@@ -10,14 +10,29 @@
   gap: var(--space-4);
   max-width: 100%;
   overflow-x: auto;
+  perspective: 2400px;
 }
 
 .page {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-4);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: #050403;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* The left page of a spread hinges on its RIGHT edge (the spine); the right
+   page (or a lone first page, which has no left-hand partner) hinges on its
+   LEFT edge. Framer Motion's rotateY needs a matching transform-origin here
+   to actually pivot at that edge instead of the element's center. */
+.pageLeft {
+  transform-origin: right center;
+}
+
+.pageRight {
+  transform-origin: left center;
 }
 
 .nav {
