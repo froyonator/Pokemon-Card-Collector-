@@ -1,7 +1,6 @@
-import type { CardPricing, CardRecord } from '../types';
+import type { CardRecord } from '../types';
 
 const CARD_CACHE_KEY = 'pcc:cardCache:v1';
-const PRICE_CACHE_KEY = 'pcc:priceCache:v1';
 const FULL_PRINT_HISTORY_KEY = 'pcc:fullPrintHistory:v1';
 
 interface CardCacheShape {
@@ -17,10 +16,6 @@ interface CardCacheShape {
 // toggle skip re-fetching once it's already been run for that Pokemon.
 interface FullPrintHistoryCacheShape {
   [key: string]: boolean;
-}
-
-interface PriceCacheShape {
-  [cardId: string]: CardPricing;
 }
 
 // In-memory cache of the parsed blob for each localStorage key, so repeated
@@ -127,17 +122,6 @@ export function setCachedCards(language: string, dexNumber: number, cards: CardR
   const cache = readJson<CardCacheShape>(CARD_CACHE_KEY, {});
   cache[cardCacheKey(language, dexNumber)] = cards;
   writeJson(CARD_CACHE_KEY, cache);
-}
-
-export function getCachedPricing(cardId: string): CardPricing | undefined {
-  const cache = readJson<PriceCacheShape>(PRICE_CACHE_KEY, {});
-  return cache[cardId];
-}
-
-export function setCachedPricing(cardId: string, pricing: CardPricing): void {
-  const cache = readJson<PriceCacheShape>(PRICE_CACHE_KEY, {});
-  cache[cardId] = pricing;
-  writeJson(PRICE_CACHE_KEY, cache);
 }
 
 export function clearCardCache(): void {

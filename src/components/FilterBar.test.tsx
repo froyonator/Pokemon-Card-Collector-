@@ -8,7 +8,6 @@ import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 function resetStore() {
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
@@ -36,12 +35,6 @@ describe('FilterBar', () => {
     render(<FilterBar />);
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'ja');
     expect(useAppStore.getState().language).toBe('ja');
-  });
-
-  it('changes the currency', async () => {
-    render(<FilterBar />);
-    await userEvent.selectOptions(screen.getByLabelText('Currency'), 'AUD');
-    expect(useAppStore.getState().currency).toBe('AUD');
   });
 
   it('opens the Manage Groups panel', async () => {

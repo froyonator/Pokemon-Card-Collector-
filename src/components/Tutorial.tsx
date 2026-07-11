@@ -12,7 +12,7 @@ const STEPS: Step[] = [
   {
     target: '[data-tutorial="filter-bar"]',
     content:
-      'Use these filters to choose which generations you collect, which rarity groups count as special art, which card language you collect, and which currency prices are shown in.',
+      'Use these filters to choose which generations you collect, which rarity groups count as special art, and which card language you collect.',
   },
   {
     target: '[data-tutorial="view-toggle"]',

@@ -5,7 +5,6 @@ import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
 const baseState = {
   language: 'en',
-  currency: 'USD' as const,
   activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
   groups: DEFAULT_RARITY_GROUPS,
   owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint' as const, addedAt: '' } },
@@ -72,7 +71,6 @@ describe('parseImportPayload', () => {
     const payload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: ['x'],
       groups: [{ id: 'x', name: 'y' }],
       owned: {},
@@ -88,7 +86,6 @@ describe('parseImportPayload', () => {
     const payload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [1, 2],
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -104,7 +101,6 @@ describe('parseImportPayload', () => {
     const payload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
       groups: DEFAULT_RARITY_GROUPS,
       owned: [],
@@ -120,7 +116,6 @@ describe('parseImportPayload', () => {
     const preFeaturePayload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -135,7 +130,6 @@ describe('parseImportPayload', () => {
     const preFeaturePayload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -158,7 +152,6 @@ describe('parseImportPayload', () => {
     const preFeaturePayload = {
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -191,7 +184,6 @@ describe('binders in export/import', () => {
   it('buildExportPayload includes binders and activeBinderId', () => {
     const payload = buildExportPayload({
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},
@@ -210,7 +202,6 @@ describe('binders in export/import', () => {
     const raw = JSON.stringify({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},
@@ -230,7 +221,6 @@ describe('binders in export/import', () => {
     const raw = JSON.stringify({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},
@@ -250,7 +240,6 @@ describe('binders in export/import', () => {
     const raw = JSON.stringify({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},

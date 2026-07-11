@@ -10,12 +10,6 @@
   font-size: var(--text-md);
 }
 
-.note {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
 .options {
   display: grid;
   grid-template-columns: 1fr 1fr;

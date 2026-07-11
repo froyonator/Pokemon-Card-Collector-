@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { WishlistTable } from './WishlistTable';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
-import { setCachedCards, setCachedPricing } from '../storage/cardCache';
+import { setCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
 const charizardCard: CardRecord = {
@@ -22,15 +22,8 @@ const charizardCard: CardRecord = {
 beforeEach(() => {
   localStorage.clear();
   setCachedCards('en', 6, [charizardCard]);
-  setCachedPricing('sv03.5-199', {
-    cardId: 'sv03.5-199',
-    cardmarketEurAvg: 372.8,
-    tcgplayerUsdMarket: 200,
-    fetchedAt: '',
-  });
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
@@ -38,21 +31,12 @@ beforeEach(() => {
     hasUnsavedChanges: false,
     wishlist: { 6: { dexNumber: 6, cardId: 'sv03.5-199', addedAt: '' } },
   });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ amount: 1, base: 'USD', date: '', rates: { EUR: 0.87, AUD: 1.44, GBP: 0.75, CAD: 1.35 } }),
-    })
-  );
 });
 
 describe('WishlistTable', () => {
-  it('shows a row per wishlisted card and a running total', async () => {
+  it('shows a row per wishlisted card', async () => {
     render(<WishlistTable />);
     expect(await screen.findByText('Charizard')).toBeInTheDocument();
-    expect(screen.getByText(/total to complete wishlist/i)).toHaveTextContent('200.00 USD');
   });
 
   it('removes a wishlist entry when Remove is clicked', async () => {

@@ -5,26 +5,10 @@ export interface TcgdexCardBrief {
   image?: string;
 }
 
-export interface TcgdexPricingTcgplayerVariant {
-  marketPrice?: number | null;
-}
-
-export interface TcgdexPricing {
-  cardmarket?: {
-    avg?: number | null;
-    updated?: string;
-  };
-  tcgplayer?: {
-    updated?: string;
-    [variant: string]: TcgdexPricingTcgplayerVariant | string | undefined;
-  };
-}
-
 export interface TcgdexCardDetail extends TcgdexCardBrief {
   rarity?: string;
   dexId?: number[];
   set: { id: string; name: string };
-  pricing?: TcgdexPricing;
 }
 
 const TCGDEX_BASE = 'https://api.tcgdex.net/v2';
@@ -131,21 +115,6 @@ export function cardImageUrl(
   ext: 'png' | 'webp' = 'webp'
 ): string {
   return `${baseImage}/${quality}.${ext}`;
-}
-
-export function extractTcgplayerMarketPrice(pricing: TcgdexPricing | undefined): number | null {
-  if (!pricing?.tcgplayer) return null;
-  for (const [key, value] of Object.entries(pricing.tcgplayer)) {
-    if (key === 'updated') continue;
-    if (value && typeof value === 'object' && typeof value.marketPrice === 'number') {
-      return value.marketPrice;
-    }
-  }
-  return null;
-}
-
-export function extractCardmarketAvgPrice(pricing: TcgdexPricing | undefined): number | null {
-  return pricing?.cardmarket?.avg ?? null;
 }
 
 export interface TcgdexSetBrief {

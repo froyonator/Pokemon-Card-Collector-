@@ -3,14 +3,12 @@ import {
   clearCardCache,
   getAllCachedRarities,
   getCachedCards,
-  getCachedPricing,
   hasCachedDataForLanguage,
   isLatestWriteGeneration,
   reserveWriteGeneration,
   setCachedCards,
-  setCachedPricing,
 } from './cardCache';
-import type { CardPricing, CardRecord } from '../types';
+import type { CardRecord } from '../types';
 
 const sampleCard: CardRecord = {
   id: 'sv03.5-199',
@@ -46,13 +44,6 @@ const commonCardJa: CardRecord = {
   rarity: 'Common',
   imageBase: 'https://assets.tcgdex.net/ja/sv/sv2a/001',
   language: 'ja',
-};
-
-const samplePricing: CardPricing = {
-  cardId: 'sv03.5-199',
-  cardmarketEurAvg: 372.8,
-  tcgplayerUsdMarket: 699.99,
-  fetchedAt: '2026-07-09T00:00:00.000Z',
 };
 
 beforeEach(() => {
@@ -95,17 +86,6 @@ describe('hasCachedDataForLanguage', () => {
     setCachedCards('en', 6, [sampleCard]);
     expect(hasCachedDataForLanguage('en')).toBe(true);
     expect(hasCachedDataForLanguage('ja')).toBe(false);
-  });
-});
-
-describe('pricing cache', () => {
-  it('returns undefined for a card that has not been priced', () => {
-    expect(getCachedPricing('sv03.5-199')).toBeUndefined();
-  });
-
-  it('round-trips pricing for a card id', () => {
-    setCachedPricing('sv03.5-199', samplePricing);
-    expect(getCachedPricing('sv03.5-199')).toEqual(samplePricing);
   });
 });
 

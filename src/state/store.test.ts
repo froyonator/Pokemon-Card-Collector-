@@ -5,7 +5,6 @@ import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 function resetStore() {
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
@@ -186,14 +185,6 @@ describe('toggleGeneration', () => {
   });
 });
 
-describe('bumpPriceVersion', () => {
-  it('increments the price version counter', () => {
-    const before = useAppStore.getState().priceVersion;
-    useAppStore.getState().bumpPriceVersion();
-    expect(useAppStore.getState().priceVersion).toBe(before + 1);
-  });
-});
-
 describe('setCardOverride', () => {
   it('assigns a card to a group, overriding its raw rarity', () => {
     useAppStore.getState().setCardOverride('svp-044', 'full-art');
@@ -257,7 +248,6 @@ describe('replaceUserData', () => {
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'ja',
-      currency: 'EUR',
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -278,7 +268,6 @@ describe('replaceUserData', () => {
     });
     const state = useAppStore.getState();
     expect(state.language).toBe('ja');
-    expect(state.currency).toBe('EUR');
     expect(state.owned[6]).toBeUndefined();
     expect(state.cardOverrides).toEqual({ 'other-card': 'rainbow-gold' });
     expect(state.uploadedImages).toEqual({ 'other-card': 'data:image/jpeg;base64,NEW' });
@@ -290,7 +279,6 @@ describe('replaceUserData', () => {
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},
@@ -316,7 +304,6 @@ describe('replaceUserData', () => {
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},
@@ -445,7 +432,6 @@ describe('replaceUserData with binders', () => {
     useAppStore.getState().replaceUserData({
       version: 1,
       language: 'en',
-      currency: 'USD',
       activeGroupIds: [],
       groups: [],
       owned: {},

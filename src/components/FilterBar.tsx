@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { GENERATIONS } from '../data/generations';
-import { CURRENCIES, SUPPORTED_LANGUAGES, type Currency } from '../types';
+import { SUPPORTED_LANGUAGES } from '../types';
 import { useAppStore } from '../state/store';
 import { ManageGroupsPanel } from './ManageGroupsPanel';
 import styles from './FilterBar.module.css';
@@ -11,8 +11,6 @@ export function FilterBar() {
   const toggleActiveGroup = useAppStore((s) => s.toggleActiveGroup);
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
-  const currency = useAppStore((s) => s.currency);
-  const setCurrency = useAppStore((s) => s.setCurrency);
   const selectedGenerations = useAppStore((s) => s.selectedGenerations);
   const toggleGeneration = useAppStore((s) => s.toggleGeneration);
 
@@ -57,17 +55,6 @@ export function FilterBar() {
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang.code} value={lang.code}>
               {lang.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        Currency
-        <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
             </option>
           ))}
         </select>

@@ -121,8 +121,8 @@ export default function App() {
           The other three panels don't hold any tutorial anchors and don't
           share DexGrid's expensive full-cache-blob mount cost, so they're
           left conditionally rendered as before — mounting them unconditionally
-          would only add unnecessary background price-rate fetches for tabs
-          the user hasn't opened yet. */}
+          would only add unnecessary background fetches for tabs the user
+          hasn't opened yet. */}
       <div hidden={activeTab !== 'grid'}>
         <DexGrid />
       </div>

@@ -8,7 +8,6 @@ import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 function resetStore() {
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     selectedGenerations: [1],
@@ -42,12 +41,11 @@ function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 describe('Sidebar', () => {
   beforeEach(resetStore);
 
-  it('shows the filter bar controls (generations, rarity groups, language, currency)', () => {
+  it('shows the filter bar controls (generations, rarity groups, language)', () => {
     renderSidebar();
     expect(screen.getByText('Generations')).toBeInTheDocument();
     expect(screen.getByText('Card rarity groups')).toBeInTheDocument();
     expect(screen.getByText('Language')).toBeInTheDocument();
-    expect(screen.getByText('Currency')).toBeInTheDocument();
   });
 
   it('shows the view toggle and calls onSetView when a different view is picked', async () => {

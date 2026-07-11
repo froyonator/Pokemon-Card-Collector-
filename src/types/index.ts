@@ -12,13 +12,6 @@ export interface CardRecord {
   language: string;
 }
 
-export interface CardPricing {
-  cardId: string;
-  cardmarketEurAvg: number | null;
-  tcgplayerUsdMarket: number | null;
-  fetchedAt: string;
-}
-
 export type Condition =
   'Mint' | 'Near Mint' | 'Lightly Played' | 'Moderately Played' | 'Heavily Played' | 'Damaged';
 
@@ -68,10 +61,6 @@ export interface Binder {
   config: BinderConfig;
   customOrder: BinderSlotEntry[] | null;
 }
-
-export type Currency = 'USD' | 'EUR' | 'AUD' | 'GBP' | 'CAD';
-
-export const CURRENCIES: Currency[] = ['USD', 'EUR', 'AUD', 'GBP', 'CAD'];
 
 export interface Language {
   code: string;

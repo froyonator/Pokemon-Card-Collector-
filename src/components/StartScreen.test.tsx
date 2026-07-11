@@ -8,7 +8,6 @@ import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 beforeEach(() => {
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {},
@@ -33,7 +32,6 @@ describe('StartScreen', () => {
     const payload = {
       version: 1,
       language: 'ja',
-      currency: 'EUR',
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
       owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
@@ -56,7 +54,6 @@ describe('StartScreen', () => {
     const payload = {
       version: 1,
       language: 'ja',
-      currency: 'EUR',
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},

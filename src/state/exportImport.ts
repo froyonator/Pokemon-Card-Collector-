@@ -1,4 +1,4 @@
-import type { Binder, BinderSlotEntry, Currency, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
+import type { Binder, BinderSlotEntry, OwnedRecord, RarityGroup, WishlistRecord } from '../types';
 import type { ExportedUserData } from './store';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 
@@ -6,7 +6,6 @@ export type { ExportedUserData } from './store';
 
 export interface ExportableState {
   language: string;
-  currency: Currency;
   activeGroupIds: string[];
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
@@ -22,7 +21,6 @@ export function buildExportPayload(state: ExportableState): ExportedUserData {
   return {
     version: 1,
     language: state.language,
-    currency: state.currency,
     activeGroupIds: state.activeGroupIds,
     groups: state.groups,
     owned: state.owned,
@@ -106,7 +104,7 @@ export function parseImportPayload(raw: string): ExportedUserData {
   if (data.version !== 1) {
     throw new Error('Unsupported export file version.');
   }
-  if (typeof data.language !== 'string' || typeof data.currency !== 'string') {
+  if (typeof data.language !== 'string') {
     throw new Error('This file does not look like a valid export.');
   }
   // Shape-check the fields that get written straight into app state by

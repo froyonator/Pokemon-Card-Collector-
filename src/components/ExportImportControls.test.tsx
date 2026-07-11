@@ -12,7 +12,6 @@ afterEach(() => {
 beforeEach(() => {
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: { 6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '' } },
@@ -36,7 +35,6 @@ describe('ExportImportControls', () => {
     const payload = {
       version: 1,
       language: 'ja',
-      currency: 'EUR',
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},
@@ -53,7 +51,6 @@ describe('ExportImportControls', () => {
     expect(await screen.findByRole('dialog', { name: 'Confirm import' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Overwrite and import' }));
     expect(useAppStore.getState().language).toBe('ja');
-    expect(useAppStore.getState().currency).toBe('EUR');
     expect(useAppStore.getState().activeGroupIds).toEqual(['full-art']);
     expect(useAppStore.getState().owned).toEqual({});
     expect(useAppStore.getState().selectedGenerations).toEqual([1, 2]);
@@ -64,7 +61,6 @@ describe('ExportImportControls', () => {
     const payload = {
       version: 1,
       language: 'ja',
-      currency: 'EUR',
       activeGroupIds: ['full-art'],
       groups: DEFAULT_RARITY_GROUPS,
       owned: {},

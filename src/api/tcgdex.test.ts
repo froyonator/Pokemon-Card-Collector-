@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   cardImageUrl,
   deriveSetId,
-  extractCardmarketAvgPrice,
-  extractTcgplayerMarketPrice,
   fetchAllCardsForDex,
   fetchCardDetail,
   fetchCardsForDexAndRarity,
@@ -156,33 +154,6 @@ describe('cardImageUrl', () => {
     expect(cardImageUrl('https://assets.tcgdex.net/en/sv/sv03.5/199', 'high', 'png')).toBe(
       'https://assets.tcgdex.net/en/sv/sv03.5/199/high.png'
     );
-  });
-});
-
-describe('extractTcgplayerMarketPrice', () => {
-  it('reads the market price from the first variant that has one', () => {
-    const price = extractTcgplayerMarketPrice({
-      tcgplayer: {
-        updated: '2026-07-09',
-        'unlimited-holofoil': { marketPrice: 570.67 },
-      },
-    });
-    expect(price).toBe(570.67);
-  });
-
-  it('returns null when there is no tcgplayer pricing', () => {
-    expect(extractTcgplayerMarketPrice(undefined)).toBeNull();
-    expect(extractTcgplayerMarketPrice({})).toBeNull();
-  });
-});
-
-describe('extractCardmarketAvgPrice', () => {
-  it('reads the cardmarket average', () => {
-    expect(extractCardmarketAvgPrice({ cardmarket: { avg: 372.8 } })).toBe(372.8);
-  });
-
-  it('returns null when there is no cardmarket pricing', () => {
-    expect(extractCardmarketAvgPrice(undefined)).toBeNull();
   });
 });
 

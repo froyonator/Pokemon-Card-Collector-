@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { CollectionTable } from './CollectionTable';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
-import { setCachedCards, setCachedPricing } from '../storage/cardCache';
+import { setCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
 const charizardCard: CardRecord = {
@@ -35,21 +35,8 @@ beforeEach(() => {
   localStorage.clear();
   setCachedCards('en', 6, [charizardCard]);
   setCachedCards('en', 25, [pikachuCard]);
-  setCachedPricing('sv03.5-199', {
-    cardId: 'sv03.5-199',
-    cardmarketEurAvg: 372.8,
-    tcgplayerUsdMarket: 200,
-    fetchedAt: '',
-  });
-  setCachedPricing('swsh35-74', {
-    cardId: 'swsh35-74',
-    cardmarketEurAvg: 100,
-    tcgplayerUsdMarket: 500,
-    fetchedAt: '',
-  });
   useAppStore.setState({
     language: 'en',
-    currency: 'USD',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
     groups: DEFAULT_RARITY_GROUPS,
     owned: {
@@ -60,14 +47,6 @@ beforeEach(() => {
     selectedGenerations: [1],
     hasUnsavedChanges: false,
   });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ amount: 1, base: 'USD', date: '', rates: { EUR: 0.87, AUD: 1.44, GBP: 0.75, CAD: 1.35 } }),
-    })
-  );
 });
 
 describe('CollectionTable', () => {
@@ -79,10 +58,10 @@ describe('CollectionTable', () => {
     expect(screen.getByText('Mint')).toBeInTheDocument();
   });
 
-  it('sorts by price when the Price header is clicked', async () => {
+  it('sorts by name when the Name header is clicked', async () => {
     render(<CollectionTable />);
     await screen.findByText('Charizard');
-    await userEvent.click(screen.getByRole('button', { name: 'Price' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Name' }));
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('Charizard');
   });

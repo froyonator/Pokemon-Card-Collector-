@@ -7,7 +7,6 @@ import type {
   BinderConfig,
   BinderSlotEntry,
   Condition,
-  Currency,
   OwnedRecord,
   RarityGroup,
   WishlistRecord,
@@ -33,7 +32,6 @@ function createDefaultBinder(name: string, language: string): Binder {
 export interface ExportedUserData {
   version: 1;
   language: string;
-  currency: Currency;
   activeGroupIds: string[];
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
@@ -55,7 +53,6 @@ export const USER_DATA_STORAGE_KEY = 'pcc:userData:v1';
 
 export interface AppState {
   language: string;
-  currency: Currency;
   activeGroupIds: string[];
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
@@ -68,7 +65,6 @@ export interface AppState {
   hasUnsavedChanges: boolean;
 
   setLanguage: (language: string) => void;
-  setCurrency: (currency: Currency) => void;
   toggleActiveGroup: (groupId: string) => void;
   setGroups: (groups: RarityGroup[]) => void;
   toggleGeneration: (id: number) => void;
@@ -87,9 +83,6 @@ export interface AppState {
   toggleWishlist: (dexNumber: number, cardId: string) => ToggleWishlistResult;
   removeWishlist: (dexNumber: number) => void;
 
-  priceVersion: number;
-  bumpPriceVersion: () => void;
-
   markChangesSaved: () => void;
   replaceUserData: (data: ExportedUserData) => void;
 }
@@ -100,7 +93,6 @@ export const useAppStore = create<AppState>()(
       const seedBinder = createDefaultBinder('My Binder', 'en');
       return {
         language: 'en',
-        currency: 'USD',
         // 'not-usable' is a manual-only bucket (see defaultRarityGroups.ts)
         // and deliberately excluded here: a brand-new user should never have
         // it silently active, since a card in that group is meant to
@@ -129,11 +121,9 @@ export const useAppStore = create<AppState>()(
         uploadedImages: {},
         binders: [seedBinder],
         activeBinderId: seedBinder.id,
-        priceVersion: 0,
         hasUnsavedChanges: false,
 
         setLanguage: (language) => set({ language }),
-        setCurrency: (currency) => set({ currency }),
         toggleActiveGroup: (groupId) =>
           set((state) => ({
             activeGroupIds: state.activeGroupIds.includes(groupId)
@@ -264,14 +254,11 @@ export const useAppStore = create<AppState>()(
             return { wishlist, hasUnsavedChanges: true };
           }),
 
-        bumpPriceVersion: () => set((state) => ({ priceVersion: state.priceVersion + 1 })),
-
         markChangesSaved: () => set({ hasUnsavedChanges: false }),
 
         replaceUserData: (data) =>
           set({
             language: data.language,
-            currency: data.currency,
             activeGroupIds: data.activeGroupIds,
             groups: data.groups,
             owned: data.owned,
@@ -289,7 +276,6 @@ export const useAppStore = create<AppState>()(
       name: USER_DATA_STORAGE_KEY,
       partialize: (state) => ({
         language: state.language,
-        currency: state.currency,
         activeGroupIds: state.activeGroupIds,
         groups: state.groups,
         owned: state.owned,

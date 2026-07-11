@@ -11,7 +11,6 @@ import styles from './ExportImportControls.module.css';
 
 export function ExportImportControls() {
   const language = useAppStore((s) => s.language);
-  const currency = useAppStore((s) => s.currency);
   const activeGroupIds = useAppStore((s) => s.activeGroupIds);
   const groups = useAppStore((s) => s.groups);
   const owned = useAppStore((s) => s.owned);
@@ -31,7 +30,6 @@ export function ExportImportControls() {
   function handleExport() {
     const payload = buildExportPayload({
       language,
-      currency,
       activeGroupIds,
       groups,
       owned,

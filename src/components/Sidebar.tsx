@@ -15,9 +15,9 @@ export interface SidebarProps {
 }
 
 // Holds every control that affects what the Dex Grid shows: the
-// generation/rarity/language/currency filters (FilterBar, unchanged
-// internally, just relocated here from being a standalone bar above the
-// grid), the view mode toggle, the refresh button, and -- while Binder view
+// generation/rarity/language filters (FilterBar, unchanged internally, just
+// relocated here from being a standalone bar above the grid), the view mode
+// toggle, the refresh button, and -- while Binder view
 // is active -- every Binder Settings control too. Collapses to a thin strip
 // so it doesn't have to compete with the grid for space once the user
 // already knows what they want, and stays pinned via `position: sticky` so
