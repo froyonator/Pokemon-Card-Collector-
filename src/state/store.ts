@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 import type {
@@ -12,6 +12,7 @@ import type {
   RarityGroup,
   WishlistRecord,
 } from '../types';
+import type { StateStorage } from 'zustand/middleware';
 
 export const DEFAULT_BINDER_CONFIG: BinderConfig = {
   rows: 3,
@@ -52,6 +53,37 @@ export type ToggleWishlistResult = { ok: true } | { ok: false; reason: string };
 // duplicated as an independent string literal, so the two can't drift apart.
 export const USER_DATA_STORAGE_KEY = 'pcc:userData:v1';
 
+// Where a corrupted USER_DATA_STORAGE_KEY value gets copied to (see
+// onRehydrateStorage below) before the persist middleware's own hydration
+// failure leaves the in-memory store at fresh-install defaults -- which then
+// gets written straight back to USER_DATA_STORAGE_KEY on the user's very
+// first store-mutating action, permanently overwriting whatever was in the
+// corrupted blob. Exported so a future recovery UI has a stable key to read.
+export const USER_DATA_CORRUPTED_BACKUP_KEY = `${USER_DATA_STORAGE_KEY}:corrupted-backup`;
+
+// zustand's default `createJSONStorage(() => localStorage)` calls
+// localStorage.setItem directly with no error handling: a QuotaExceededError
+// (realistically triggerable -- see SlotImageEditor's uncompressed custom
+// slot image uploads) throws uncaught, even though the in-memory zustand
+// state has already updated by the time the write is attempted, making the
+// UI look like the save succeeded while the persisted write silently failed.
+// This wraps localStorage so a failed write is logged instead of throwing,
+// and reuses zustand's real getItem/removeItem unchanged.
+const resilientLocalStorage: StateStorage = {
+  getItem: (name) => localStorage.getItem(name),
+  setItem: (name, value) => {
+    try {
+      localStorage.setItem(name, value);
+    } catch (error) {
+      console.error(
+        `Failed to save Collector's Ledger data to localStorage (key "${name}"). Your most recent change may be lost on reload.`,
+        error
+      );
+    }
+  },
+  removeItem: (name) => localStorage.removeItem(name),
+};
+
 export interface AppState {
   language: string;
   activeGroupIds: string[];
@@ -91,6 +123,25 @@ export interface AppState {
 
   markChangesSaved: () => void;
   replaceUserData: (data: ExportedUserData) => void;
+}
+
+// Named (rather than inlined into the persist() options below) so migrate's
+// identity no-op can reference its return type directly, instead of casting
+// through `unknown`/`any` to satisfy PersistOptions' `migrate` signature.
+function partializeUserData(state: AppState) {
+  return {
+    language: state.language,
+    activeGroupIds: state.activeGroupIds,
+    groups: state.groups,
+    owned: state.owned,
+    wishlist: state.wishlist,
+    selectedGenerations: state.selectedGenerations,
+    cardOverrides: state.cardOverrides,
+    uploadedImages: state.uploadedImages,
+    binders: state.binders,
+    activeBinderId: state.activeBinderId,
+    hasUnsavedChanges: state.hasUnsavedChanges,
+  };
 }
 
 export const useAppStore = create<AppState>()(
@@ -297,19 +348,46 @@ export const useAppStore = create<AppState>()(
     },
     {
       name: USER_DATA_STORAGE_KEY,
-      partialize: (state) => ({
-        language: state.language,
-        activeGroupIds: state.activeGroupIds,
-        groups: state.groups,
-        owned: state.owned,
-        wishlist: state.wishlist,
-        selectedGenerations: state.selectedGenerations,
-        cardOverrides: state.cardOverrides,
-        uploadedImages: state.uploadedImages,
-        binders: state.binders,
-        activeBinderId: state.activeBinderId,
-        hasUnsavedChanges: state.hasUnsavedChanges,
-      }),
+      // Bumped whenever the persisted shape changes (e.g. the binders[]/
+      // activeBinderId migration in 5f5a0c1, which shipped without a version
+      // bump and relied entirely on zustand's shallow-merge default). migrate
+      // is currently an identity no-op -- there is nothing to transform yet
+      // -- but it exists so the *next* breaking change has a real hook to
+      // extend instead of relying on shallow-merge luck again.
+      version: 1,
+      migrate: (persistedState, _version): ReturnType<typeof partializeUserData> =>
+        persistedState as ReturnType<typeof partializeUserData>,
+      // Wraps localStorage.setItem so a failed write (e.g. QuotaExceededError
+      // from a large uploaded image) is logged instead of throwing uncaught.
+      storage: createJSONStorage(() => resilientLocalStorage),
+      // Zustand's persist middleware swallows a JSON.parse failure on the
+      // stored value with zero console output when this isn't set, leaving
+      // the store silently at fresh-install defaults -- indistinguishable
+      // from a genuinely new user. Once the user makes any change, that
+      // fresh-default state gets written back to USER_DATA_STORAGE_KEY,
+      // permanently overwriting the corrupted (but possibly recoverable)
+      // original. This surfaces the failure loudly and preserves the raw
+      // corrupted string under USER_DATA_CORRUPTED_BACKUP_KEY first, so a
+      // future recovery path is at least possible.
+      onRehydrateStorage: () => (_state, error) => {
+        if (!error) return;
+        console.error(
+          `Failed to load persisted data from localStorage key "${USER_DATA_STORAGE_KEY}"; falling back to defaults. The raw value has been preserved at "${USER_DATA_CORRUPTED_BACKUP_KEY}" for recovery.`,
+          error
+        );
+        try {
+          const raw = localStorage.getItem(USER_DATA_STORAGE_KEY);
+          if (raw !== null) {
+            localStorage.setItem(USER_DATA_CORRUPTED_BACKUP_KEY, raw);
+          }
+        } catch (backupError) {
+          console.error(
+            'Failed to back up corrupted persisted data before it was overwritten:',
+            backupError
+          );
+        }
+      },
+      partialize: partializeUserData,
     }
   )
 );

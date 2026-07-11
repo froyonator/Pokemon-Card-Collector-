@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAppStore } from './store';
+import { useAppStore, USER_DATA_STORAGE_KEY } from './store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 
 function resetStore() {
@@ -546,5 +546,53 @@ describe('replaceUserData with binders', () => {
     });
     expect(useAppStore.getState().binders).toEqual(imported);
     expect(useAppStore.getState().activeBinderId).toBe('a');
+  });
+});
+
+describe('persist config resilience', () => {
+  it('sets a version and a migrate function, so a future breaking schema change has a real hook instead of relying on shallow-merge alone', () => {
+    const options = useAppStore.persist.getOptions();
+    expect(options.version).toBe(1);
+    expect(typeof options.migrate).toBe('function');
+  });
+
+  it('logs an error and backs up a malformed persisted value instead of silently discarding it on rehydration', async () => {
+    localStorage.clear();
+    localStorage.setItem(USER_DATA_STORAGE_KEY, 'not valid json{');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.resetModules();
+    const {
+      useAppStore: freshStore,
+      USER_DATA_STORAGE_KEY: freshKey,
+      USER_DATA_CORRUPTED_BACKUP_KEY: freshBackupKey,
+    } = await import('./store');
+
+    expect(errorSpy).toHaveBeenCalled();
+    expect(localStorage.getItem(freshBackupKey)).toBe('not valid json{');
+    // The corrupted original is left untouched by hydration itself -- it
+    // only gets overwritten once the user makes a change (a separate,
+    // already-existing write path this test isn't exercising).
+    expect(localStorage.getItem(freshKey)).toBe('not valid json{');
+    // Rehydration falls back to fresh defaults rather than crashing or
+    // leaving the store stuck uninitialized.
+    expect(freshStore.getState().owned).toEqual({});
+
+    errorSpy.mockRestore();
+  });
+
+  it('does not crash and logs an error when localStorage.setItem fails (e.g. QuotaExceededError) while persisting a change', () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => useAppStore.getState().markOwned(6, 'sv03-223', 'Near Mint')).not.toThrow();
+    // The in-memory state still updates even though the persisted write failed.
+    expect(useAppStore.getState().owned[6]).toMatchObject({ cardId: 'sv03-223' });
+    expect(errorSpy).toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

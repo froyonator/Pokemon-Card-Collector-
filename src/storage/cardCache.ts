@@ -63,7 +63,30 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown): void {
   const raw = JSON.stringify(value);
-  localStorage.setItem(key, raw);
+  try {
+    localStorage.setItem(key, raw);
+  } catch (error) {
+    // A QuotaExceededError (or any other setItem failure) must not throw
+    // uncaught here -- fail loudly to the console instead of crashing the
+    // caller or silently pretending the write succeeded.
+    //
+    // Explicitly delete (not just leave alone) any existing parsedCache
+    // entry for this key: every writeJson caller follows the same
+    // read-then-mutate-then-write pattern (`const cache = readJson(KEY,
+    // {}); cache[k] = v; writeJson(KEY, cache)`), and readJson hands back
+    // the exact object it cached internally, not a copy. That `cache`
+    // object -- already mutated with the new value by the time it reaches
+    // here -- is therefore the very same object sitting in parsedCache's
+    // `parsed` field for this key (from that same readJson call). If this
+    // setItem failure were left to just skip re-caching, that pre-existing
+    // entry would still be reachable and would already reflect the
+    // never-persisted mutation via that aliasing, silently defeating the
+    // "don't pretend it succeeded" goal above. Deleting it forces the next
+    // read to re-derive fresh from localStorage's real, unchanged content.
+    parsedCache.delete(key);
+    console.error(`Failed to write to localStorage (key "${key}"):`, error);
+    return;
+  }
   // Cache the write's own value directly (not just invalidate-and-let-the-
   // next-read-reparse) so a write is reflected immediately without an
   // unnecessary redundant JSON.parse of what we just serialized ourselves.

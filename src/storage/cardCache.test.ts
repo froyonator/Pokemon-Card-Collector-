@@ -193,6 +193,21 @@ describe('write-generation guard (coordinates loadAllCardData vs. loadAllPrintin
   });
 });
 
+describe('writeJson resilience (QuotaExceededError must not crash or fail silently)', () => {
+  it('setCachedCards does not throw when localStorage.setItem fails, and logs the failure', () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => setCachedCards('en', 6, [sampleCard])).not.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+});
+
 describe('getAllCachedRarities', () => {
   it('returns an empty array when nothing has been cached', () => {
     expect(getAllCachedRarities()).toEqual([]);
