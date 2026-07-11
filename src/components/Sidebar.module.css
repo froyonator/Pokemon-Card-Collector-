@@ -29,17 +29,6 @@
   letter-spacing: -0.01em;
 }
 
-.layout {
-  display: flex;
-  gap: var(--space-5);
-  align-items: flex-start;
-}
-
-.main {
-  flex: 1;
-  min-width: 0;
-}
-
 .collapseToggle {
   align-self: flex-end;
 }

@@ -5,21 +5,21 @@ import styles from './Sidebar.module.css';
 
 export type DexView = 'sprite' | 'card' | 'binder';
 
-export interface SidebarTab {
-  id: string;
+export interface SidebarTab<TabId extends string = string> {
+  id: TabId;
   label: string;
 }
 
-export interface SidebarProps {
+export interface SidebarProps<TabId extends string = string> {
   view: DexView;
   onSetView: (view: DexView) => void;
   isLoading: boolean;
   onRefresh: () => void;
   isManualArrangeActive: boolean;
   onToggleManualArrange: () => void;
-  activeTab: string;
-  tabs: SidebarTab[];
-  onTabChange: (tabId: string) => void;
+  activeTab: TabId;
+  tabs: SidebarTab<TabId>[];
+  onTabChange: (tabId: TabId) => void;
   // False on every tab except Dex Grid: the filters/view-toggle/binder-settings
   // sections only make sense while the Dex Grid is what's actually on screen.
   // The title and tab nav above them stay visible regardless -- they're the
@@ -36,7 +36,7 @@ export interface SidebarProps {
 // Collapses to a thin strip so it doesn't have to compete with the grid for
 // space once the user already knows what they want, and stays pinned via
 // `position: sticky` so it's still reachable after scrolling down a long grid.
-export function Sidebar({
+export function Sidebar<TabId extends string = string>({
   view,
   onSetView,
   isLoading,
@@ -47,7 +47,7 @@ export function Sidebar({
   tabs,
   onTabChange,
   showDexGridControls,
-}: SidebarProps) {
+}: SidebarProps<TabId>) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
@@ -63,82 +63,83 @@ export function Sidebar({
       >
         {isCollapsed ? '»' : '«'}
       </button>
-      {!isCollapsed && (
+      {/* Title and tab nav are outside the isCollapsed gate below -- unlike
+          the filter/view/binder-settings sections, they must stay visible
+          (and clickable) even while the sidebar is collapsed, since the tabs
+          are the only way to navigate between Dex Grid/Collection/Wishlist/
+          Summary. */}
+      {!isCollapsed && <h1 className={styles.title}>Collector&apos;s Ledger</h1>}
+
+      <nav className={styles.tabs} data-tutorial="tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            aria-pressed={activeTab === tab.id}
+            onClick={() => onTabChange(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {!isCollapsed && showDexGridControls && (
         <>
-          <h1 className={styles.title}>Collector&apos;s Ledger</h1>
+          <hr className={styles.divider} />
 
-          <nav className={styles.tabs} data-tutorial="tabs">
-            {tabs.map((tab) => (
+          <div data-tutorial="filter-bar">
+            <FilterBar />
+          </div>
+
+          <hr className={styles.divider} />
+
+          <fieldset className={styles.section}>
+            <legend>View</legend>
+            <div
+              className={styles.viewToggle}
+              role="radiogroup"
+              aria-label="View"
+              data-tutorial="view-toggle"
+            >
               <button
-                key={tab.id}
                 type="button"
-                aria-pressed={activeTab === tab.id}
-                onClick={() => onTabChange(tab.id)}
+                aria-pressed={view === 'sprite'}
+                onClick={() => onSetView('sprite')}
               >
-                {tab.label}
+                Sprite view
               </button>
-            ))}
-          </nav>
+              <button
+                type="button"
+                aria-pressed={view === 'card'}
+                onClick={() => onSetView('card')}
+              >
+                Card view
+              </button>
+              <button
+                type="button"
+                aria-pressed={view === 'binder'}
+                onClick={() => onSetView('binder')}
+              >
+                Binder view
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              data-tutorial="refresh-data"
+            >
+              {isLoading ? 'Refreshing...' : 'Refresh Data'}
+            </button>
+          </fieldset>
 
-          {showDexGridControls && (
+          {view === 'binder' && (
             <>
               <hr className={styles.divider} />
-
-              <div data-tutorial="filter-bar">
-                <FilterBar />
-              </div>
-
-              <hr className={styles.divider} />
-
-              <fieldset className={styles.section}>
-                <legend>View</legend>
-                <div
-                  className={styles.viewToggle}
-                  role="radiogroup"
-                  aria-label="View"
-                  data-tutorial="view-toggle"
-                >
-                  <button
-                    type="button"
-                    aria-pressed={view === 'sprite'}
-                    onClick={() => onSetView('sprite')}
-                  >
-                    Sprite view
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={view === 'card'}
-                    onClick={() => onSetView('card')}
-                  >
-                    Card view
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={view === 'binder'}
-                    onClick={() => onSetView('binder')}
-                  >
-                    Binder view
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={isLoading}
-                  data-tutorial="refresh-data"
-                >
-                  {isLoading ? 'Refreshing...' : 'Refresh Data'}
-                </button>
-              </fieldset>
-
-              {view === 'binder' && (
-                <>
-                  <hr className={styles.divider} />
-                  <BinderSettings
-                    isManualArrangeActive={isManualArrangeActive}
-                    onToggleManualArrange={onToggleManualArrange}
-                  />
-                </>
-              )}
+              <BinderSettings
+                isManualArrangeActive={isManualArrangeActive}
+                onToggleManualArrange={onToggleManualArrange}
+              />
             </>
           )}
         </>

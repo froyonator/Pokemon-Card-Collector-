@@ -88,6 +88,24 @@ describe('Sidebar', () => {
     expect(screen.getByText('Generations')).toBeInTheDocument();
   });
 
+  it('keeps the tab nav visible and clickable after collapsing the sidebar', async () => {
+    const onTabChange = vi.fn();
+    renderSidebar({
+      tabs: [
+        { id: 'grid', label: 'Dex Grid' },
+        { id: 'collection', label: 'My Collection' },
+      ],
+      onTabChange,
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+
+    const collectionTab = screen.getByRole('button', { name: 'My Collection' });
+    expect(collectionTab).toBeInTheDocument();
+    await userEvent.click(collectionTab);
+    expect(onTabChange).toHaveBeenCalledWith('collection');
+  });
+
   it('renders the app title and every tab, marking the active one pressed', () => {
     render(
       <Sidebar

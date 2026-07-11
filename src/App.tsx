@@ -103,7 +103,7 @@ export default function App() {
         onToggleManualArrange={() => setIsManualArrangeActive((active) => !active)}
         activeTab={activeTab}
         tabs={TABS}
-        onTabChange={(tabId) => setActiveTab(tabId as Tab)}
+        onTabChange={setActiveTab}
         showDexGridControls={activeTab === 'grid'}
       />
 
