@@ -8,6 +8,7 @@ import { useAppStore } from '../state/store';
 import { getCachedCards } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 import { BinderView } from './BinderView';
+import { CardZoomOverlay } from './CardZoomOverlay';
 import { Picker } from './Picker';
 import type { DexView } from './Sidebar';
 import { Tile } from './Tile';
@@ -41,6 +42,12 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
   // grid instead, so that path keeps using the global language exactly as
   // it always has.
   const [openPickerLanguage, setOpenPickerLanguage] = useState<string | undefined>(undefined);
+  // The card currently shown large in CardZoomOverlay, opened via a Tile's
+  // Enlarge button. Kept here rather than in Tile (which stays
+  // presentational) so this overlay -- and the specific CardRecord it shows
+  // -- is owned by the same component that already resolves ownedCard per
+  // dex entry in the grid map below.
+  const [zoomedCard, setZoomedCard] = useState<CardRecord | null>(null);
   // Kept local (in addition to reporting every transition up via
   // onLoadingChange for Sidebar's Refresh button, now rendered outside this
   // component) because the tile grid below needs this exact value, in the
@@ -284,6 +291,7 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}
                   uploadedImageUri={ownedCard ? uploadedImages[ownedCard.id] : undefined}
+                  onEnlarge={ownedCard ? () => setZoomedCard(ownedCard) : undefined}
                   onClick={() => {
                     setOpenDexNumber(entry.number);
                     setOpenPickerLanguage(undefined);
@@ -316,6 +324,13 @@ export function DexGrid({ view, isManualArrangeActive, onLoadingChange, refreshR
           />
         )}
       </AnimatePresence>
+      {zoomedCard && (
+        <CardZoomOverlay
+          card={zoomedCard}
+          uploadedImageUri={uploadedImages[zoomedCard.id]}
+          onClose={() => setZoomedCard(null)}
+        />
+      )}
     </div>
   );
 }

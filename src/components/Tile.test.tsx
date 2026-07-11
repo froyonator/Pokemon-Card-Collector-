@@ -198,4 +198,88 @@ describe('Tile', () => {
     );
     expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'false');
   });
+
+  describe('enlarge button', () => {
+    it('shows an Enlarge button for an owned card in card view', () => {
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteUrl="https://example.com/6.png"
+          state="owned"
+          view="card"
+          ownedCardImageBase="https://example.com/card"
+          onEnlarge={() => {}}
+          onClick={() => {}}
+        />
+      );
+      expect(screen.getByRole('button', { name: /enlarge charizard card/i })).toBeInTheDocument();
+    });
+
+    it('does not show an Enlarge button in sprite view, even for an owned card', () => {
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteUrl="https://example.com/6.png"
+          state="owned"
+          view="sprite"
+          ownedCardImageBase="https://example.com/card"
+          onEnlarge={() => {}}
+          onClick={() => {}}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /enlarge/i })).not.toBeInTheDocument();
+    });
+
+    it('does not show an Enlarge button for an unowned tile in card view', () => {
+      render(
+        <Tile
+          dexNumber={1}
+          name="Bulbasaur"
+          spriteUrl="https://example.com/1.png"
+          state="available"
+          view="card"
+          onEnlarge={() => {}}
+          onClick={() => {}}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /enlarge/i })).not.toBeInTheDocument();
+    });
+
+    it('does not show an Enlarge button when no onEnlarge callback is provided, even for an owned card-view tile', () => {
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteUrl="https://example.com/6.png"
+          state="owned"
+          view="card"
+          ownedCardImageBase="https://example.com/card"
+          onClick={() => {}}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /enlarge/i })).not.toBeInTheDocument();
+    });
+
+    it("calls onEnlarge, and not the tile's own onClick, when Enlarge is clicked", async () => {
+      const onEnlarge = vi.fn();
+      const onClick = vi.fn();
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteUrl="https://example.com/6.png"
+          state="owned"
+          view="card"
+          ownedCardImageBase="https://example.com/card"
+          onEnlarge={onEnlarge}
+          onClick={onClick}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /enlarge charizard card/i }));
+      expect(onEnlarge).toHaveBeenCalledTimes(1);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+  });
 });

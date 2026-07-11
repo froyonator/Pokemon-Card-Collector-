@@ -1,3 +1,7 @@
+.tileWrapper {
+  position: relative;
+}
+
 .tile {
   display: flex;
   flex-direction: column;
@@ -112,4 +116,33 @@
   font-weight: 600;
   color: var(--color-text);
   text-align: center;
+}
+
+/* Mirrors Picker's own .enlarge button (position, colors, hover scale),
+   just smaller to match Tile's more compact card art. Anchored to
+   .tileWrapper, not .tile itself, since this is a DOM sibling of .tile
+   rather than a child of it (see the comment in Tile.tsx). */
+.enlarge {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  background: rgba(20, 14, 10, 0.55);
+  color: var(--color-text);
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.enlarge:hover {
+  transform: scale(1.12);
+  background: rgba(20, 14, 10, 0.75);
 }

@@ -9,6 +9,7 @@ import type { CardRecord, Condition } from '../types';
 import { CardImage } from './CardImage';
 import { CardZoomOverlay } from './CardZoomOverlay';
 import { ConditionPicker } from './ConditionPicker';
+import { MagnifyIcon } from './icons/TabIcons';
 import styles from './Picker.module.css';
 
 export interface PickerProps {
@@ -53,19 +54,6 @@ function PickerCardTilt({
 }) {
   const tilt = useCardTilt({ disabled });
   return <>{children(tilt)}</>;
-}
-
-// Hand-drawn magnifying-glass icon for the "Enlarge" button, matching the
-// stroke/viewBox conventions of src/components/icons/TabIcons.tsx (inline
-// SVG, no icon library, sized with currentColor so it inherits the button's
-// color across light/dark mode and hover state).
-function MagnifyIcon() {
-  return (
-    <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
-      <circle cx="8.3" cy="8.3" r="5.3" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M12.4 12.4L17 17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 export function Picker({

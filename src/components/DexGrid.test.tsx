@@ -390,7 +390,12 @@ describe('DexGrid', () => {
     // No "Refresh Data" click here: this is the exact self-healing step the
     // fix removes the need for.
     await waitFor(() => {
-      const tile = screen.getByRole('button', { name: /charizard/i });
+      // Anchored to the tile's leading dex-number text (e.g. "#006"),
+      // which the Enlarge button rendered beside an owned Card-view tile
+      // does not have -- a bare /charizard/i now matches both, since
+      // Enlarge's own accessible name ("Enlarge Charizard card") also
+      // contains "charizard".
+      const tile = screen.getByRole('button', { name: /^#\d+ .*charizard/i });
       const img = within(tile).getByRole('img', { name: /charizard card/i });
       expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/svp/044/low.webp');
     });
@@ -417,9 +422,51 @@ describe('DexGrid', () => {
 
     render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
 
-    const tile = await screen.findByRole('button', { name: /charizard/i });
+    // Anchored to the tile's leading dex-number text, same as the test
+    // above -- a bare /charizard/i also matches the Enlarge button now
+    // rendered beside this owned Card-view tile.
+    const tile = await screen.findByRole('button', { name: /^#\d+ .*charizard/i });
     const img = within(tile).getByRole('img', { name: /charizard card/i });
     expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,UPLOADED');
+  });
+
+  it('clicking Enlarge on an owned Card-view tile opens the zoom overlay for that card, without also opening the Picker', async () => {
+    setCachedCards('en', 6, [
+      {
+        id: 'sv03.5-199',
+        name: 'Charizard ex',
+        dexNumber: 6,
+        setId: 'sv03.5',
+        setName: '151',
+        localId: '199',
+        rarity: 'Special illustration rare',
+        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({
+      owned: {
+        6: { dexNumber: 6, cardId: 'sv03.5-199', condition: 'Near Mint', addedAt: '2024-01-01' },
+      },
+    });
+
+    render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    // Waits for the tile itself to confirm the grid has actually rendered
+    // this owned card before looking for its Enlarge button specifically
+    // (a distinct accessible name, so no scoping needed to disambiguate it
+    // from the tile).
+    await screen.findByRole('button', { name: /^#\d+ .*charizard/i });
+    await userEvent.click(screen.getByRole('button', { name: /enlarge charizard card/i }));
+
+    const zoomDialog = await screen.findByRole('dialog', { name: 'Charizard ex enlarged' });
+    expect(within(zoomDialog).getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+      'src',
+      'https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp'
+    );
+    expect(
+      screen.queryByRole('dialog', { name: /card options for charizard/i })
+    ).not.toBeInTheDocument();
   });
 });
 
