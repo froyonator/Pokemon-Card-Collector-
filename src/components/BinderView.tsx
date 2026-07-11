@@ -259,6 +259,10 @@ export function BinderView({
   // state exactly (same reasoning: BinderSlot stays presentational, so this
   // lives here instead).
   const [zoomedCard, setZoomedCard] = useState<CardRecord | null>(null);
+  // The actual binder pages, not the toolbar around them -- see
+  // handleClickCapture below for why only clicks landing in here get
+  // swallowed.
+  const spreadRef = useRef<HTMLDivElement>(null);
 
   // Keyboard: 'g' enters zoom mode, Escape exits it. Attached to `window`
   // rather than a specific element since the user can press 'g' with focus
@@ -275,15 +279,29 @@ export function BinderView({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Any click anywhere exits zoom mode and swallows that specific click so it
-  // doesn't also activate whatever was underneath it (e.g. opening a binder
-  // slot's Picker) -- captured on window in the CAPTURE phase, so it runs
-  // before the click reaches its actual target and can be stopped there.
+  // Any click anywhere exits zoom mode. A click that lands on the binder
+  // pages themselves (.spread, via spreadRef) also gets swallowed --
+  // stopped and prevented -- so it doesn't also activate whatever was
+  // underneath it (e.g. opening a binder slot's Picker). Captured on window
+  // in the CAPTURE phase, so it runs before the click reaches its actual
+  // target and can be stopped there.
+  //
+  // A click OUTSIDE .spread is left alone (still exits zoom mode, but isn't
+  // stopped/prevented): the zoom slider itself, the page-nav/"Keep empty"
+  // buttons, and -- once this component is mounted inside the full app --
+  // Binder Settings' controls are all real, deliberate interactions a user
+  // might reasonably make while zoom mode happens to still be active, not a
+  // click-through to something unexpected underneath. Swallowing those too
+  // silently ate the click's own effect (e.g. toggling Manual arrange),
+  // requiring a confusing second click to actually do anything -- confirmed
+  // live in the browser before this exemption was added.
   useEffect(() => {
     if (!isZoomModeActive) return;
     function handleClickCapture(event: MouseEvent) {
-      event.stopPropagation();
-      event.preventDefault();
+      if (spreadRef.current?.contains(event.target as Node)) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
       setIsZoomModeActive(false);
     }
     window.addEventListener('click', handleClickCapture, { capture: true });
@@ -299,15 +317,21 @@ export function BinderView({
 
   useEffect(() => {
     setSpreadIndex(0);
-    // A selection or in-progress drag is a position WITHIN this specific
-    // binder's current layout. Switching to a different binder, or changing
-    // this binder's own rows/columns/fillDirection (which changes what a
-    // given slotIndex even refers to), makes a leftover index dangerously
-    // stale -- without this, a pending "Keep empty" from a previous binder
-    // or layout could silently write a blank into the WRONG binder or the
-    // WRONG position once acted on.
+    // A selection, in-progress drag, or open custom-image editor is a
+    // position WITHIN this specific binder's current layout. Switching to a
+    // different binder, or changing this binder's own
+    // rows/columns/fillDirection (which changes what a given slotIndex even
+    // refers to), makes a leftover index dangerously stale -- without this,
+    // a pending "Keep empty" or a still-open SlotImageEditor from a
+    // previous binder or layout could silently write into the WRONG binder
+    // or the WRONG position once acted on. zoomedCard isn't index-based (it
+    // holds a full CardRecord, so it can't corrupt the wrong slot), but it's
+    // cleared too so an Enlarge overlay from a previous binder doesn't
+    // linger after switching away from it.
     setDragFromIndex(null);
     setSelectedIndex(null);
+    setEditingSlotIndex(null);
+    setZoomedCard(null);
   }, [activeBinder.id, activeBinder.config]);
 
   const nameByDexNumber = useMemo(() => {
@@ -435,6 +459,7 @@ export function BinderView({
           <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
         </div>
         <div
+          ref={spreadRef}
           className={styles.spread}
           onWheel={handleWheel}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}

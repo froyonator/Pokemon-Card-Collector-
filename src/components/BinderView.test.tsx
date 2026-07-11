@@ -307,6 +307,59 @@ describe('BinderView manual arrange', () => {
     expect(useAppStore.getState().binders.find((b) => b.id === 'b')?.customOrder).toBeNull();
   });
 
+  it('switching the active binder while the custom-image editor is open closes it, so Save cannot write into the new binder at a stale slot index', async () => {
+    useAppStore.setState({
+      binders: [
+        {
+          id: 'a',
+          name: 'Binder A',
+          language: 'en',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'blank' },
+            { type: 'pokemon', dexNumber: 1 },
+            { type: 'pokemon', dexNumber: 2 },
+            { type: 'pokemon', dexNumber: 3 },
+          ],
+        },
+        {
+          id: 'b',
+          name: 'Binder B',
+          language: 'ja',
+          config: { rows: 2, columns: 2, pageCount: 3, fillDirection: 'horizontal' },
+          customOrder: [
+            { type: 'blank' },
+            { type: 'pokemon', dexNumber: 4 },
+            { type: 'pokemon', dexNumber: 5 },
+            { type: 'blank' },
+          ],
+        },
+      ],
+      activeBinderId: 'a',
+    });
+    const { rerender } = render(
+      <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /add a custom image to this slot/i }));
+    expect(screen.getByRole('dialog', { name: /edit custom binder slot image/i })).toBeInTheDocument();
+
+    act(() => {
+      useAppStore.getState().setActiveBinder('b');
+    });
+    rerender(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+
+    expect(
+      screen.queryByRole('dialog', { name: /edit custom binder slot image/i })
+    ).not.toBeInTheDocument();
+    // Binder B's own slot 0 is also a blank -- if the stale-index bug were
+    // present, the editor would have stayed open (still holding binder A's
+    // editingSlotIndex) and a subsequent Save could have silently written
+    // into binder B's slot 0 instead.
+    expect(useAppStore.getState().binders.find((b) => b.id === 'b')?.customOrder?.[0]).toEqual({
+      type: 'blank',
+    });
+  });
+
   it('an existing blank also shifts forward when a new blank is inserted before it', async () => {
     useAppStore.setState({
       binders: [
@@ -408,5 +461,23 @@ describe('zoom', () => {
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     expect(screen.queryByText(/scroll to zoom/i)).not.toBeInTheDocument();
     expect(onSlotClick).not.toHaveBeenCalled();
+  });
+
+  it('clicking a nav control (not a binder page) while in zoom mode exits zoom mode but does not swallow that click', async () => {
+    render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    await userEvent.keyboard('g');
+    expect(screen.getByText(/scroll to zoom/i)).toBeInTheDocument();
+
+    // "Next page" lives in .nav, a sibling of .spread (the binder pages
+    // themselves) -- a real click on it is a deliberate control interaction,
+    // not a click-through to something unexpected underneath, so it should
+    // both exit zoom mode AND still actually advance the page. The same
+    // exemption is what lets a user click the zoom slider itself, or (once
+    // this component is mounted inside the full app) a Binder Settings
+    // control, without the click being silently eaten first.
+    await userEvent.click(screen.getByRole('button', { name: /next page/i }));
+
+    expect(screen.queryByText(/scroll to zoom/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument();
   });
 });
