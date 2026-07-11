@@ -75,6 +75,7 @@ export function BinderSlot({
           alt={`${pokemonName} card`}
           className={styles.cardImage}
           loading="lazy"
+          preferHighQuality
         />
       ) : (
         isRevealed &&
