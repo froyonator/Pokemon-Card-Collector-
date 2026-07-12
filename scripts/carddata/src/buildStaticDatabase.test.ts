@@ -1,5 +1,13 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { mergeResolvedAssets, recordToCardRecords, type CardRecord, type PrimarySourceSnapshotRecord } from './buildStaticDatabase';
+import {
+  mergeResolvedAssets,
+  outputPathForLanguage,
+  parseGenerationFlag,
+  recordToCardRecords,
+  type CardRecord,
+  type PrimarySourceSnapshotRecord,
+} from './buildStaticDatabase';
 import type { ResolvedAssets } from './resolveCardAssets';
 
 const baseRecord: PrimarySourceSnapshotRecord = {
@@ -75,6 +83,24 @@ describe('recordToCardRecords', () => {
     const cards = recordToCardRecords(mixedRecord);
     expect(cards.map((card) => card.dexNumber)).toEqual([151]);
   });
+
+  it('defaults to the Gen1 range (1-151) when no range is given', () => {
+    const mixedRecord: PrimarySourceSnapshotRecord = { ...baseRecord, dexId: [1, 152] };
+    expect(recordToCardRecords(mixedRecord).map((c) => c.dexNumber)).toEqual([1]);
+  });
+
+  it('slices by an explicit generation range instead, e.g. Gen2 (152-251)', () => {
+    const mixedRecord: PrimarySourceSnapshotRecord = { ...baseRecord, dexId: [1, 151, 152, 251, 252] };
+    const gen2Range = { generation: 2, min: 152, max: 251 };
+    const cards = recordToCardRecords(mixedRecord, gen2Range);
+    expect(cards.map((card) => card.dexNumber)).toEqual([152, 251]);
+  });
+
+  it('emits nothing for a range that matches none of the record\'s dexIds', () => {
+    const record: PrimarySourceSnapshotRecord = { ...baseRecord, dexId: [1] };
+    const gen5Range = { generation: 5, min: 494, max: 649 };
+    expect(recordToCardRecords(record, gen5Range)).toEqual([]);
+  });
 });
 
 describe('mergeResolvedAssets', () => {
@@ -105,5 +131,42 @@ describe('mergeResolvedAssets', () => {
     const original = { ...card };
     mergeResolvedAssets(card, { thumbUrl: 'https://example.invalid/thumb.webp' });
     expect(card).toEqual(original);
+  });
+});
+
+describe('outputPathForLanguage', () => {
+  const outputDir = path.join('public', 'data', 'cards');
+
+  it('keeps the existing Gen1 convention (<outputDir>/<language>.json) when generation is null', () => {
+    expect(outputPathForLanguage(outputDir, 'en', null)).toBe(path.join(outputDir, 'en.json'));
+  });
+
+  it('nests Gen2-9 under a per-language subdirectory as <outputDir>/<language>/gen<N>.json', () => {
+    expect(outputPathForLanguage(outputDir, 'en', 2)).toBe(path.join(outputDir, 'en', 'gen2.json'));
+    expect(outputPathForLanguage(outputDir, 'ja', 9)).toBe(path.join(outputDir, 'ja', 'gen9.json'));
+  });
+});
+
+describe('parseGenerationFlag', () => {
+  it('returns null (Gen1) for no arguments', () => {
+    expect(parseGenerationFlag([])).toBeNull();
+  });
+
+  it('parses --gen <N> for N in 2-9', () => {
+    expect(parseGenerationFlag(['--gen', '2'])).toBe(2);
+    expect(parseGenerationFlag(['--gen', '9'])).toBe(9);
+  });
+
+  it('rejects --gen 1 (Gen1 is built by the default, flag-less invocation)', () => {
+    expect(() => parseGenerationFlag(['--gen', '1'])).toThrow();
+  });
+
+  it('rejects out-of-range or non-numeric values', () => {
+    expect(() => parseGenerationFlag(['--gen', '10'])).toThrow();
+    expect(() => parseGenerationFlag(['--gen', 'x'])).toThrow();
+  });
+
+  it('rejects an unknown flag', () => {
+    expect(() => parseGenerationFlag(['--bogus'])).toThrow();
   });
 });

@@ -8,29 +8,12 @@ import {
   isPokemonCard,
   isSafePrimarySourceId,
   primarySourceUrl,
+  SUPPORTED_LANGUAGES,
   validatePrimarySourceCard,
   type PrimarySourceCardDetail,
   type PrimarySourceSetBrief,
   type PrimarySourceSetDetail,
 } from './primarySource';
-
-const SUPPORTED_LANGUAGES = new Set([
-  'en',
-  'ja',
-  'fr',
-  'de',
-  'es',
-  'it',
-  'pt',
-  'nl',
-  'pl',
-  'ru',
-  'ko',
-  'zh-tw',
-  'zh-cn',
-  'id',
-  'th',
-]);
 
 function parseArguments(args: string[]): { language: string; setId?: string; delayMs: number } {
   const language = args.shift();

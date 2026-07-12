@@ -1,5 +1,26 @@
 export const PRIMARY_SOURCE_API_BASE = 'https://api.tcgdex.net/v2';
 
+// The full set of languages the primary source's API serves and this
+// pipeline knows how to snapshot. Shared by snapshotPrimarySource.ts (Gen1)
+// and snapshotAllGens.ts (Gen2-9) so the two never drift apart.
+export const SUPPORTED_LANGUAGES = new Set([
+  'en',
+  'ja',
+  'fr',
+  'de',
+  'es',
+  'it',
+  'pt',
+  'nl',
+  'pl',
+  'ru',
+  'ko',
+  'zh-tw',
+  'zh-cn',
+  'id',
+  'th',
+]);
+
 export interface PrimarySourceSetBrief {
   id: string;
   name: string;

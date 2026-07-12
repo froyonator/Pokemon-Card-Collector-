@@ -6,13 +6,16 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "generate-dex": "tsx src/generateFullDex.ts",
     "enumerate-sets": "tsx src/enumerateSets.ts",
     "snapshot-primary": "tsx src/snapshotPrimarySource.ts",
+    "snapshot-all-gens": "tsx src/snapshotAllGens.ts",
     "snapshot-english-fallback": "tsx src/snapshotEnglishFallback.ts",
     "snapshot-japanese-fallback": "tsx src/snapshotJapaneseFallback.ts",
     "harvest-set": "tsx src/scrapeSet.ts",
     "harvest": "tsx src/harvest/runHarvest.ts",
     "harvest:merge": "tsx src/harvest/mergeHarvest.ts",
+    "harvest:local-images": "tsx src/harvest/localImageFill.ts",
     "build-database": "tsx src/buildStaticDatabase.ts"
   },
   "devDependencies": {

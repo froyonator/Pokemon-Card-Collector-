@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rangeForGeneration, type GenRange } from './data/genRanges';
 import {
   loadFallbackAssetIndexes,
   resolveCardAssets,
@@ -52,9 +53,14 @@ export interface PrimarySourceSnapshotRecord {
 }
 
 // Gen1's own range -- see src/data/gen1Dex.ts (the app's authoritative list,
-// numbered 1-151 inclusive) for what this must stay in sync with.
+// numbered 1-151 inclusive) for what this must stay in sync with. Kept as
+// the DEFAULT range below (not replaced by src/data/genRanges.ts's gen-1
+// entry) so the Gen1 build path's behavior is byte-for-byte unchanged by
+// this module's Gen2-9 extension -- see this task's own "do not regenerate
+// the Gen1 outputs" constraint.
 const MIN_DEX_NUMBER = 1;
 const MAX_DEX_NUMBER = 151;
+const GEN1_RANGE: GenRange = { generation: 1, min: MIN_DEX_NUMBER, max: MAX_DEX_NUMBER };
 
 /**
  * Pure transform: one snapshot record.json -> zero or more CardRecords.
@@ -68,16 +74,23 @@ const MAX_DEX_NUMBER = 151;
  * dexId array has more than one entry (e.g. a TAG TEAM/GX card depicting
  * multiple Pokemon) -- each in-range dex number gets its own entry, deduped
  * against nothing, since the same card genuinely belongs under each of those
- * dex numbers. Out-of-range dex numbers (outside 1-151, i.e. not a Gen1
- * Pokemon) are dropped individually rather than disqualifying the whole
- * record, so a Gen1/non-Gen1 mixed dexId array still yields the Gen1 part.
+ * dex numbers. Out-of-range dex numbers are dropped individually rather
+ * than disqualifying the whole record, so a mixed-generation dexId array
+ * still yields whichever part is in `range`.
+ *
+ * `range` defaults to Gen1 (1-151) so every existing call site (and every
+ * existing test) keeps its exact original behavior; the Gen2-9 build path
+ * below passes an explicit range from src/data/genRanges.ts.
  */
-export function recordToCardRecords(record: PrimarySourceSnapshotRecord): CardRecord[] {
+export function recordToCardRecords(
+  record: PrimarySourceSnapshotRecord,
+  range: GenRange = GEN1_RANGE
+): CardRecord[] {
   if (!Array.isArray(record.dexId) || record.dexId.length === 0) return [];
 
   const cards: CardRecord[] = [];
   for (const dexNumber of record.dexId) {
-    if (!Number.isInteger(dexNumber) || dexNumber < MIN_DEX_NUMBER || dexNumber > MAX_DEX_NUMBER) {
+    if (!Number.isInteger(dexNumber) || dexNumber < range.min || dexNumber > range.max) {
       continue;
     }
     cards.push({
@@ -144,15 +157,18 @@ export interface LanguageBuildStats {
 /**
  * Walks one language's snapshot directory, transforms every record.json into
  * CardRecords grouped by dex number, and writes the compact result to
- * `<outputDir>/<language>.json`.
+ * `outputPath`. Shared core for both the Gen1 build (below, via
+ * `buildLanguage`) and the Gen2-9 build (via `buildLanguageForGeneration`) --
+ * only where the snapshot lives, where the output goes, which dex range
+ * applies, and which fallback asset indexes to consult differ between them.
  */
-async function buildLanguage(
+async function buildLanguageCore(
   language: string,
-  snapshotDirName: string,
-  outputDir: string,
-  fallbackIndexes: FallbackAssetIndexes
+  languageDir: string,
+  outputPath: string,
+  fallbackIndexes: FallbackAssetIndexes,
+  range: GenRange
 ): Promise<LanguageBuildStats> {
-  const languageDir = path.join('data', snapshotDirName, language);
   const recordFiles = await findRecordFiles(languageDir);
 
   const grouped: Record<number, CardRecord[]> = {};
@@ -172,11 +188,15 @@ async function buildLanguage(
       continue;
     }
 
-    const cards = recordToCardRecords(raw as PrimarySourceSnapshotRecord);
+    const cards = recordToCardRecords(raw as PrimarySourceSnapshotRecord, range);
     for (const card of cards) {
       // Merges in a better hosted image (and, for Japanese, a better name)
       // when one is available -- see resolveCardAssets.ts and
-      // mergeResolvedAssets above.
+      // mergeResolvedAssets above. `fallbackIndexes` is empty ({}) for a
+      // Gen2-9 build (see buildLanguageForGeneration), so this still
+      // constructs a primary-source hosted URL whenever the card's own
+      // imageBase is present, but never attempts the Gen1-only cross-source
+      // fallback matching.
       const resolvedCard = mergeResolvedAssets(card, resolveCardAssets(card, fallbackIndexes));
       (grouped[resolvedCard.dexNumber] ??= []).push(resolvedCard);
       cardsEmitted++;
@@ -185,17 +205,67 @@ async function buildLanguage(
 
   const dexNumbersCovered = Object.keys(grouped).length;
   const json = JSON.stringify(grouped);
-  const outputPath = path.join(outputDir, `${language}.json`);
+  await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, json, 'utf8');
   const outputBytes = Buffer.byteLength(json, 'utf8');
+  const dexNumbersInRange = range.max - range.min + 1;
 
   console.log(
     `[${language}] files scanned: ${recordFiles.length}, cards emitted: ${cardsEmitted}, ` +
-      `dex numbers covered: ${dexNumbersCovered}/${MAX_DEX_NUMBER}, ` +
+      `dex numbers covered: ${dexNumbersCovered}/${dexNumbersInRange}, ` +
       `output size: ${(outputBytes / 1024).toFixed(1)} KB`
   );
 
   return { language, filesScanned: recordFiles.length, cardsEmitted, dexNumbersCovered, outputBytes };
+}
+
+/** Gen1 build: reads one of the immutable, timestamp-named snapshot directories in LANGUAGE_SNAPSHOTS below, writes `<outputDir>/<language>.json`. Behavior is byte-for-byte unchanged from before this module's Gen2-9 extension. */
+async function buildLanguage(
+  language: string,
+  snapshotDirName: string,
+  outputDir: string,
+  fallbackIndexes: FallbackAssetIndexes
+): Promise<LanguageBuildStats> {
+  const languageDir = path.join('data', snapshotDirName, language);
+  const outputPath = path.join(outputDir, `${language}.json`);
+  return buildLanguageCore(language, languageDir, outputPath, fallbackIndexes, GEN1_RANGE);
+}
+
+/**
+ * Gen2-9 build: reads the resumable data/snapshot-all-gens/<language>/
+ * directory produced by snapshotAllGens.ts, writes
+ * `<outputDir>/<language>/gen<N>.json`. No fallback asset indexes are
+ * consulted -- those cross-source match indexes were built (and validated)
+ * against Gen1 data only; applying their dex-number-based heuristics outside
+ * that range risks a wrong match, so a Gen2-9 card only ever gets a hosted
+ * URL when the primary source's own imageBase supplies one. The live
+ * imageBase-based fetch path (src/api/tcgdex.ts) keeps working unchanged for
+ * whatever's left un-hosted.
+ */
+async function buildLanguageForGeneration(
+  language: string,
+  generation: number,
+  outputDir: string
+): Promise<LanguageBuildStats> {
+  const languageDir = path.join('data', 'snapshot-all-gens', language);
+  const outputPath = outputPathForLanguage(outputDir, language, generation);
+  return buildLanguageCore(language, languageDir, outputPath, {}, rangeForGeneration(generation));
+}
+
+/**
+ * Pure: where a language's static database file goes. `generation === null`
+ * is the existing Gen1 convention (`<outputDir>/<language>.json`, untouched);
+ * any other generation goes under its own per-language subdirectory
+ * (`<outputDir>/<language>/gen<N>.json`), per this task's fixed output
+ * format.
+ */
+export function outputPathForLanguage(
+  outputDir: string,
+  language: string,
+  generation: number | null
+): string {
+  if (generation === null) return path.join(outputDir, `${language}.json`);
+  return path.join(outputDir, language, `gen${generation}.json`);
 }
 
 // Real, published snapshot directories under scripts/carddata/data/ -- see
@@ -226,14 +296,39 @@ const LANGUAGE_SNAPSHOTS: ReadonlyArray<{ language: string; snapshotDirName: str
   { language: 'ko', snapshotDirName: 'tcgdex-2026-07-11T08-34-51-800Z' },
 ];
 
-async function main(): Promise<void> {
-  // Run via `npm run build-database` from scripts/carddata (its own package,
-  // matching every snapshot-* script's cwd assumption -- see
-  // snapshotPrimarySource.ts's `path.join('data', snapshotId)`), so the repo
-  // root is two levels up.
-  const outputDir = path.resolve(process.cwd(), '..', '..', 'public', 'data', 'cards');
-  await mkdir(outputDir, { recursive: true });
+/** Pure: `--gen <N>` CLI parsing. Returns null for the default (Gen1) invocation, matching outputPathForLanguage's own null convention. */
+export function parseGenerationFlag(argv: string[]): number | null {
+  const args = [...argv];
+  let generation: number | null = null;
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag === '--gen') {
+      const value = args.shift();
+      const parsed = value ? Number(value) : NaN;
+      if (!Number.isInteger(parsed) || parsed < 2 || parsed > 9) {
+        throw new Error('--gen must be an integer 2-9 (the default, flag-less invocation builds Gen1).');
+      }
+      generation = parsed;
+      continue;
+    }
+    throw new Error(`Unknown option: ${flag}`);
+  }
+  return generation;
+}
 
+/** Languages that actually have a Gen2-9 snapshot directory to build from -- data/snapshot-all-gens/<language>/, produced by snapshotAllGens.ts. Not every language snapshotAllGens.ts supports has necessarily been run yet, so this discovers what's really on disk rather than assuming every LANGUAGE_SNAPSHOTS entry has a Gen2-9 counterpart. */
+async function discoverSnapshotAllGensLanguages(): Promise<string[]> {
+  const root = path.join('data', 'snapshot-all-gens');
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+}
+
+async function buildGen1(outputDir: string): Promise<void> {
   // Loaded once for the whole run, not once per card -- every language's
   // build below shares these same two indexes.
   console.log('Loading cross-source fallback asset indexes...');
@@ -246,6 +341,42 @@ async function main(): Promise<void> {
   }
 
   console.log(`Grand total output size across ${LANGUAGE_SNAPSHOTS.length} languages: ${(grandTotalBytes / 1024).toFixed(1)} KB`);
+}
+
+async function buildGeneration(generation: number, outputDir: string): Promise<void> {
+  const languages = await discoverSnapshotAllGensLanguages();
+  if (languages.length === 0) {
+    console.log(
+      `No data/snapshot-all-gens/<language>/ directories found -- run "npm run snapshot-all-gens -- <language>" first.`
+    );
+    return;
+  }
+
+  let grandTotalBytes = 0;
+  for (const language of languages) {
+    const stats = await buildLanguageForGeneration(language, generation, outputDir);
+    grandTotalBytes += stats.outputBytes;
+  }
+
+  console.log(
+    `Grand total gen${generation} output size across ${languages.length} language(s): ${(grandTotalBytes / 1024).toFixed(1)} KB`
+  );
+}
+
+async function main(): Promise<void> {
+  // Run via `npm run build-database` from scripts/carddata (its own package,
+  // matching every snapshot-* script's cwd assumption -- see
+  // snapshotPrimarySource.ts's `path.join('data', snapshotId)`), so the repo
+  // root is two levels up.
+  const generation = parseGenerationFlag(process.argv.slice(2));
+  const outputDir = path.resolve(process.cwd(), '..', '..', 'public', 'data', 'cards');
+  await mkdir(outputDir, { recursive: true });
+
+  if (generation === null) {
+    await buildGen1(outputDir);
+  } else {
+    await buildGeneration(generation, outputDir);
+  }
 }
 
 // Guards the CLI run behind an entry-module check -- buildStaticDatabase.test.ts
