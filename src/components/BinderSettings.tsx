@@ -27,8 +27,16 @@ export function BinderSettings({
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
 
   return (
-    <div className={styles.settings} role="group" aria-label="Binder settings">
-      <h3 className={styles.heading}>Binder settings</h3>
+    // The whole panel folds behind one summary row, exactly like the
+    // Filters section above it: fully expanded, this panel alone pushed
+    // the sidebar past a typical viewport's height and forced an internal
+    // scrollbar -- explicitly unacceptable for this sidebar (reported,
+    // sternly, twice). Open by default would defeat that, so it starts
+    // closed; everything inside is a set-and-forget control or one click
+    // away.
+    <details className={styles.settingsGroup}>
+      <summary>Binder settings</summary>
+      <div className={styles.settings} role="group" aria-label="Binder settings">
       <label className={styles.row}>
         Switch binder
         <select
@@ -81,6 +89,15 @@ export function BinderSettings({
           ))}
         </select>
       </label>
+      {/* Layout and Cover fold away by default, same as FilterBar's own
+          Generations / Card rarity groups sections: expanded, this panel's
+          full control set overran a typical viewport and forced the sidebar
+          into an internal scrollbar -- explicitly unacceptable for this
+          sidebar (reported, sternly). Both are set-and-forget settings, not
+          per-visit controls, so collapsed-by-default costs nothing. */}
+      <details className={styles.group}>
+        <summary>Layout</summary>
+        <div className={styles.groupBody}>
       <GridSizePicker
         rows={activeBinder.config.rows}
         columns={activeBinder.config.columns}
@@ -116,11 +133,15 @@ export function BinderSettings({
           Vertical
         </button>
       </div>
+        </div>
+      </details>
 
       {/* How this binder's closed cover looks on the shelf (BinderShelf):
           leather color, spine lettering, and an optional picture mounted on
           the front. All cosmetic, all persisted with the binder itself. */}
-      <h4 className={styles.subheading}>Cover</h4>
+      <details className={styles.group}>
+        <summary>Cover</summary>
+        <div className={styles.groupBody}>
       <div className={styles.swatches} role="radiogroup" aria-label="Cover color">
         {COVER_COLORS.map((swatch) => (
           <button
@@ -172,6 +193,9 @@ export function BinderSettings({
           Remove cover picture
         </button>
       )}
-    </div>
+        </div>
+      </details>
+      </div>
+    </details>
   );
 }

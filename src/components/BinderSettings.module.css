@@ -1,20 +1,54 @@
+/* The one always-visible row: the panel's own collapsed summary, styled to
+   match FilterBar's top-level "Filters" summary exactly. */
+.settingsGroup {
+  border: none;
+}
+
+.settingsGroup > summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-text-faint);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: color var(--transition-fast);
+}
+
+.settingsGroup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settingsGroup > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.settingsGroup[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.settingsGroup > summary:hover {
+  color: var(--color-text-muted);
+}
+
 .settings {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3);
+  margin-top: var(--space-2);
   border-radius: var(--radius-md);
   background: var(--color-surface-sunken);
-}
-
-.heading {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 650;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0;
 }
 
 .row {
@@ -28,14 +62,55 @@
   gap: var(--space-1);
 }
 
-.subheading {
-  font-family: var(--font-body);
+/* Collapsed-by-default disclosure groups (Layout, Cover) -- same visual
+   pattern as FilterBar's Generations / Card rarity groups sections, so the
+   whole sidebar reads as one system. */
+.group {
+  border: none;
+}
+
+.group > summary {
+  cursor: pointer;
   font-size: var(--text-xs);
   font-weight: 700;
-  color: var(--color-text-faint);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  margin: var(--space-2) 0 0;
+  color: var(--color-text-faint);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: color var(--transition-fast);
+}
+
+.group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.group > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.group[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.group > summary:hover {
+  color: var(--color-text-muted);
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
 }
 
 .swatches {

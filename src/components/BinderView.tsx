@@ -277,14 +277,22 @@ const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function Bin
   );
 }));
 
-// The state a turning leaf needs: which way it swings and which page is
-// printed on each of its two faces. Faces are always real pages -- the
-// flipped sheet always carries the outgoing page on its front and the
-// incoming page on its back, whichever direction it turns.
+// The state a turning leaf needs: which way it swings, which page is
+// printed on each of its two faces, and what the spread looked like BEFORE
+// the turn. Faces are always real pages -- the flipped sheet always
+// carries the outgoing page on its front and the incoming page on its
+// back, whichever direction it turns. fromLeft/fromRight exist because the
+// half the leaf is about to LAND ON must keep showing the outgoing page
+// until the leaf covers it: swapping both halves to the destination the
+// instant navigation starts made the covered side visibly "turn into
+// itself" with a jarring content pop (reported live), since its new
+// content appeared long before the leaf arrived.
 interface FlipState {
   direction: 'forward' | 'backward';
   frontPage: number;
   backPage: number;
+  fromLeft: number | undefined;
+  fromRight: number | undefined;
 }
 
 export function BinderView({
@@ -370,6 +378,13 @@ export function BinderView({
         setIsZoomModeActive(true);
       } else if (event.key === 'Escape') {
         setIsZoomModeActive(false);
+        // Escape is the universal "get me out": it also resets the zoom
+        // LEVEL, not just zoom mode. Before this, a runaway zoom (slider
+        // dragged to max) left the binder blown up with no keyboard rescue
+        // -- Escape only exited the mode, and the zoom slider itself could
+        // sit under the scaled content (reported live as "can't do
+        // anything or see anything").
+        setZoom(1);
         if (isManualArrangeActive) {
           onExitManualArrange?.();
           setSelectedIndex(null);
@@ -557,14 +572,26 @@ export function BinderView({
     if (to > from) {
       // Forward: the sheet on the right lifts and swings left over the
       // rings. Its front face carries the outgoing right page; its back
-      // face carries the incoming left page, landing exactly on top of the
-      // identical settled content already rendered beneath it.
+      // face carries the incoming left page, landing on the half that
+      // keeps showing the OUTGOING left page (fromLeft) until covered.
       if (fromHalves.right === undefined || toHalves.left === undefined) return;
-      setFlip({ direction: 'forward', frontPage: fromHalves.right, backPage: toHalves.left });
+      setFlip({
+        direction: 'forward',
+        frontPage: fromHalves.right,
+        backPage: toHalves.left,
+        fromLeft: fromHalves.left,
+        fromRight: fromHalves.right,
+      });
     } else {
       // Backward: the mirror image -- the left sheet swings right.
       if (fromHalves.left === undefined || toHalves.right === undefined) return;
-      setFlip({ direction: 'backward', frontPage: fromHalves.left, backPage: toHalves.right });
+      setFlip({
+        direction: 'backward',
+        frontPage: fromHalves.left,
+        backPage: toHalves.right,
+        fromLeft: fromHalves.left,
+        fromRight: fromHalves.right,
+      });
     }
   }
 
@@ -834,92 +861,123 @@ export function BinderView({
     );
   }
 
+  // What each half DISPLAYS while a leaf is in flight is NOT the settled
+  // (destination) state: the half the leaf will land on keeps showing the
+  // OUTGOING page until it's physically covered -- forward keeps the old
+  // left page under the incoming leaf, backward keeps the old right page.
+  // The revealed half (the one the leaf lifts away from) shows the new page
+  // immediately, exposed underneath as the leaf rises. At completion the
+  // covered half swaps to the destination page in the same render that
+  // unmounts the leaf, whose landed back face is pixel-identical content --
+  // so the swap is invisible.
+  const displayLeft = flip
+    ? flip.direction === 'forward'
+      ? flip.fromLeft
+      : currentHalves.left
+    : currentHalves.left;
+  const displayRight = flip
+    ? flip.direction === 'forward'
+      ? currentHalves.right
+      : flip.fromRight
+    : currentHalves.right;
+
   return (
     <>
       <div className={styles.binder}>
-        <div
-          ref={spreadRef}
-          className={styles.spread}
-          onWheel={handleWheel}
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
-        >
-          {/* The binder's ring spine: decorative hardware in the center
-              channel. Rendered before the halves so it never unmounts
-              during a page turn. */}
-          <div className={styles.spine} aria-hidden="true">
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-          </div>
-          {/* Both halves always exist; a half with no page shows the inside
-              of the binder cover (spread 1's empty left, or the empty right
-              after flipping past a lone final page) -- see spreadHalves. */}
-          <div className={styles.half}>
-            {currentHalves.left !== undefined ? (
-              <BinderPage
-                key={currentHalves.left}
-                pageIndex={currentHalves.left}
-                entries={pages[currentHalves.left] ?? []}
-                side="left"
-                {...sharedPageProps}
-              />
-            ) : (
-              <div className={styles.coverInside} aria-hidden="true" />
-            )}
-          </div>
-          <div className={styles.half}>
-            {currentHalves.right !== undefined ? (
-              <BinderPage
-                key={currentHalves.right}
-                pageIndex={currentHalves.right}
-                entries={pages[currentHalves.right] ?? []}
-                side="right"
-                {...sharedPageProps}
-              />
-            ) : (
-              <div className={styles.coverInside} aria-hidden="true" />
-            )}
-          </div>
-          {/* The turning leaf: a two-faced sheet hinged at the rings. Front
-              face = the page being turned away; back face = the incoming
-              page, pre-flipped so it reads correctly as the leaf lands on
-              the settled, identical content already beneath it. Purely
-              decorative (the real pages above own all interaction and
-              accessible names). */}
-          {flip && (
-            <motion.div
-              key={`${flip.frontPage}-${flip.backPage}`}
-              className={[
-                styles.leaf,
-                flip.direction === 'forward' ? styles.leafForward : styles.leafBackward,
-              ].join(' ')}
-              aria-hidden="true"
-              initial={{ rotateY: 0 }}
-              animate={{ rotateY: flip.direction === 'forward' ? -180 : 180 }}
-              transition={{ duration: FLIP_MS / 1000, ease: FLIP_EASE }}
-              onAnimationComplete={() => setFlip(null)}
-            >
-              <div className={styles.leafFace}>
+        <div ref={spreadRef} className={styles.spread} onWheel={handleWheel}>
+          {/* The zoom scale lives on this INNER wrapper, not the shell:
+              scaling the shell itself painted the binder over the sidebar,
+              nav, and everything else at high zoom (reported live as the
+              binder "enlarging to full screen with everything else gone").
+              The shell's own overflow scrolls the scaled content instead. */}
+          <div
+            className={styles.spreadScale}
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
+          >
+            {/* The binder's ring spine: decorative hardware in the center
+                channel. Rendered before the halves so it never unmounts
+                during a page turn. */}
+            <div className={styles.spine} aria-hidden="true">
+              <span className={styles.ring} />
+              <span className={styles.ring} />
+              <span className={styles.ring} />
+              <span className={styles.ring} />
+            </div>
+            {/* Both halves always exist; a half with no page shows the inside
+                of the binder cover (spread 1's empty left, or the empty right
+                after flipping past a lone final page) -- see spreadHalves and
+                displayLeft/displayRight above. */}
+            <div className={styles.half}>
+              {displayLeft !== undefined ? (
                 <BinderPage
-                  pageIndex={flip.frontPage}
-                  entries={pages[flip.frontPage] ?? []}
-                  side={flip.direction === 'forward' ? 'right' : 'left'}
-                  decorative
+                  key={displayLeft}
+                  pageIndex={displayLeft}
+                  entries={pages[displayLeft] ?? []}
+                  side="left"
                   {...sharedPageProps}
                 />
-              </div>
-              <div className={styles.leafFaceBack}>
+              ) : (
+                <div className={styles.coverInside} aria-hidden="true" />
+              )}
+            </div>
+            <div className={styles.half}>
+              {displayRight !== undefined ? (
                 <BinderPage
-                  pageIndex={flip.backPage}
-                  entries={pages[flip.backPage] ?? []}
-                  side={flip.direction === 'forward' ? 'left' : 'right'}
-                  decorative
+                  key={displayRight}
+                  pageIndex={displayRight}
+                  entries={pages[displayRight] ?? []}
+                  side="right"
                   {...sharedPageProps}
                 />
+              ) : (
+                <div className={styles.coverInside} aria-hidden="true" />
+              )}
+            </div>
+            {/* The turning leaf: a two-faced sheet hinged at the rings.
+                Front face = the page being turned away; back face = the
+                incoming page, pre-flipped so it lands showing the right
+                content. Wrapped in an overflow-clipping layer because the
+                leaf's rotating 3D projection extends past its own box --
+                unclipped, that transient overhang toggled the spread's
+                scrollbar on and off mid-flip, visibly shoving the pages
+                sideways and covering the spine rings (reported live).
+                Purely decorative: the real pages above own all interaction
+                and accessible names. */}
+            {flip && (
+              <div className={styles.leafClip} aria-hidden="true">
+                <motion.div
+                  key={`${flip.frontPage}-${flip.backPage}`}
+                  className={[
+                    styles.leaf,
+                    flip.direction === 'forward' ? styles.leafForward : styles.leafBackward,
+                  ].join(' ')}
+                  initial={{ rotateY: 0 }}
+                  animate={{ rotateY: flip.direction === 'forward' ? -180 : 180 }}
+                  transition={{ duration: FLIP_MS / 1000, ease: FLIP_EASE }}
+                  onAnimationComplete={() => setFlip(null)}
+                >
+                  <div className={styles.leafFace}>
+                    <BinderPage
+                      pageIndex={flip.frontPage}
+                      entries={pages[flip.frontPage] ?? []}
+                      side={flip.direction === 'forward' ? 'right' : 'left'}
+                      decorative
+                      {...sharedPageProps}
+                    />
+                  </div>
+                  <div className={styles.leafFaceBack}>
+                    <BinderPage
+                      pageIndex={flip.backPage}
+                      entries={pages[flip.backPage] ?? []}
+                      side={flip.direction === 'forward' ? 'left' : 'right'}
+                      decorative
+                      {...sharedPageProps}
+                    />
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          )}
+            )}
+          </div>
         </div>
         <div className={styles.nav}>
           <button

@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useReducedMotion } from 'framer-motion';
 import { BinderView } from './BinderView';
 import { useAppStore } from '../state/store';
 import { setCachedCards } from '../storage/cardCache';
@@ -18,6 +19,18 @@ import type { DexEntry } from '../data/gen1Dex';
 vi.mock('../state/loadImageDimensions', () => ({
   loadImageDimensions: vi.fn().mockResolvedValue({ width: 400, height: 400 }),
 }));
+
+// useReducedMotion -> true by default for this whole file: BinderView skips
+// the leaf-turn animation entirely under reduced motion, making every
+// navigation land instantly -- which is exactly the deterministic behavior
+// the dozens of non-animation tests here need (a real leaf takes ~850ms of
+// real time to settle, during which the covered half still shows the
+// OUTGOING page by design). The dedicated "page turning" describe block
+// flips this to false to test the leaf itself, asynchronously.
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion');
+  return { ...actual, useReducedMotion: vi.fn(() => true) };
+});
 
 const dexEntries: DexEntry[] = [
   { number: 1, name: 'Bulbasaur' },
@@ -56,7 +69,12 @@ function activeBinderCustomOrder() {
 }
 
 describe('BinderView', () => {
-  beforeEach(resetStore);
+  beforeEach(() => {
+    resetStore();
+    // Re-pinned every test (not just at module setup) so the "page turning"
+    // block's own false doesn't leak into whichever test runs after it.
+    vi.mocked(useReducedMotion).mockReturnValue(true);
+  });
 
   it('shows page 1 alone on first render', () => {
     render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
@@ -145,40 +163,68 @@ describe('BinderView', () => {
       });
     });
 
-    it('moving forward settles the destination spread immediately and flies a decorative leaf', async () => {
+    it('moving forward keeps the OLD left page under the incoming leaf, reveals the new right page, and settles invisibly', async () => {
+      vi.mocked(useReducedMotion).mockReturnValue(false);
       const { container } = render(
         <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
       );
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
+      await waitFor(() => expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument(), {
+        timeout: 2500,
+      });
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
 
-      // The settled halves are already the destination pages...
-      expect(screen.getByLabelText(/page 4/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/page 5/i)).toBeInTheDocument();
-      // ...and each accessible page name exists exactly once, even though a
-      // leaf carrying decorative page copies is (or was just) in flight.
-      expect(screen.getAllByLabelText(/page 4/i)).toHaveLength(1);
+      // Mid-flight: a forward-hinged decorative leaf is flying...
       const leaf = container.querySelector('[class*="leafForward"]');
-      if (leaf) {
-        expect(leaf).toHaveAttribute('aria-hidden', 'true');
-      }
+      expect(leaf).not.toBeNull();
+      expect(container.querySelector('[class*="leafClip"]')).toHaveAttribute('aria-hidden', 'true');
+      // ...the half it will land on still shows the OUTGOING page (swapping
+      // it to the destination immediately made the covered side visibly
+      // "turn into itself" -- the reported bug)...
+      expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument();
+      // ...the half it lifted away from already reveals the NEW page...
+      expect(screen.getByLabelText(/page 5/i)).toBeInTheDocument();
+      // ...and the new left page exists only as the leaf's unlabeled,
+      // decorative back face until the leaf lands.
+      expect(screen.queryByLabelText(/page 4/i)).not.toBeInTheDocument();
+
+      // Settled: the covered half swaps to the destination page in the same
+      // render that unmounts the leaf.
+      await waitFor(() => expect(screen.getByLabelText(/page 4/i)).toBeInTheDocument(), {
+        timeout: 2500,
+      });
+      await waitFor(() =>
+        expect(container.querySelector('[class*="leafForward"]')).toBeNull()
+      );
+      expect(screen.getAllByLabelText(/page 4/i)).toHaveLength(1);
     });
 
-    it('moving backward settles the destination spread immediately, with a backward-hinged leaf', async () => {
+    it('moving backward keeps the OLD right page under the incoming leaf and reveals the new left page', async () => {
+      vi.mocked(useReducedMotion).mockReturnValue(false);
       const { container } = render(
         <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
       );
-      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
-      await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
+      // Jump straight to spread [3,4] (instant, no leaf), then flip back.
+      fireEvent.change(screen.getByRole('slider', { name: /go to spread/i }), {
+        target: { value: '3' },
+      });
+      expect(screen.getByLabelText(/page 4/i)).toBeInTheDocument();
+
       await userEvent.click(screen.getByRole('button', { name: /previous page/i })); // -> spread [1,2]
 
+      // Mid-flight: backward-hinged leaf; covered right half still shows
+      // the OUTGOING page 5; revealed left half already shows page 2.
+      expect(container.querySelector('[class*="leafBackward"]')).not.toBeNull();
+      expect(screen.getByLabelText(/page 5/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/page 3/i)).toBeInTheDocument();
-      expect(screen.getAllByLabelText(/page 2/i)).toHaveLength(1);
-      const leaf = container.querySelector('[class*="leafBackward"]');
-      if (leaf) {
-        expect(leaf).toHaveAttribute('aria-hidden', 'true');
-      }
+      expect(screen.queryByLabelText(/page 3/i)).not.toBeInTheDocument();
+
+      await waitFor(() => expect(screen.getByLabelText(/page 3/i)).toBeInTheDocument(), {
+        timeout: 2500,
+      });
+      await waitFor(() =>
+        expect(container.querySelector('[class*="leafBackward"]')).toBeNull()
+      );
     });
 
     it('a lone first page hangs on the right of the rings; a lone final page hangs on the left', async () => {

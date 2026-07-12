@@ -1,7 +1,12 @@
 import styles from './BinderZoomControl.module.css';
 
 export const MIN_ZOOM = 0.5;
-export const MAX_ZOOM = 3;
+// 2x, down from 3x: at 3x even a modest binder blew up past every other
+// piece of UI (pre-containment, the scale sat on the binder shell itself
+// and painted right over the sidebar and nav -- reported live as "enlarged
+// to full screen, everything else gone"). The scale is contained to the
+// binder shell now, but 3x is still far past any useful inspection zoom.
+export const MAX_ZOOM = 2;
 
 export interface BinderZoomControlProps {
   zoom: number;

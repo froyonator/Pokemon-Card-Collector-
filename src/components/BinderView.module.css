@@ -30,9 +30,8 @@
    unchanged from the pre-redesign rules (see .binder's comment above). */
 .spread {
   display: flex;
-  gap: var(--space-6);
-  overflow-x: auto;
-  perspective: 2400px;
+  align-items: stretch;
+  overflow: auto;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -48,6 +47,21 @@
     inset 0 1px 0 rgba(255, 225, 180, 0.08),
     inset 0 0 60px rgba(0, 0, 0, 0.45),
     var(--shadow-lg);
+}
+
+/* The scalable interior: pages, spine, and the turning leaf all live in
+   here, and the zoom slider's scale() is applied to THIS element (inline,
+   from BinderView.tsx). The shell above keeps its own box and simply
+   scrolls the scaled content -- putting the transform on the shell itself
+   let a high zoom paint the binder over the sidebar and nav. */
+.spreadScale {
+  display: flex;
+  gap: var(--space-6);
+  perspective: 2400px;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Stitching, inset just inside the leather hem. */
@@ -195,6 +209,23 @@
   opacity: 0.65;
 }
 
+/* Clip layer for the turning leaf: the leaf's rotating 3D projection
+   extends beyond its own box, and unclipped that transient overhang
+   toggled the shell's scrollbar on/off mid-flip -- visibly shoving the
+   pages sideways and hiding the spine rings until the flip finished.
+   Clipping at the interior's bounds keeps the flip's footprint stable;
+   the fraction of the swinging page lost at the frame's edge is the same
+   crop a real binder's cover would make. */
+.leafClip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+  /* The clip layer must not flatten the 3D transform it contains. */
+  perspective: 2400px;
+}
+
 /* The turning leaf: an absolutely-positioned two-faced sheet occupying
    exactly one half's box, hinged at the spine edge. Framer Motion drives
    its rotateY; the transform-origin here decides which edge is the hinge.
@@ -202,22 +233,21 @@
    pages that already exist beneath it. */
 .leaf {
   position: absolute;
-  top: var(--space-5);
-  bottom: var(--space-5);
+  top: 0;
+  bottom: 0;
   transform-style: preserve-3d;
   pointer-events: none;
-  z-index: 5;
   filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.55));
 }
 
 .leafForward {
   left: calc(50% + var(--space-6) / 2);
-  right: var(--space-5);
+  right: 0;
   transform-origin: left center;
 }
 
 .leafBackward {
-  left: var(--space-5);
+  left: 0;
   right: calc(50% + var(--space-6) / 2);
   transform-origin: right center;
 }
@@ -247,11 +277,13 @@
 
 /* The ring spine: a shadowed channel down the centerline with four metal
    rings. Sits behind the pages' spine edges (they overlap it slightly), so
-   the rings read as passing through the punched holes. */
+   the rings read as passing through the punched holes. Anchored to
+   .spreadScale (its positioned parent), which spans the shell's padded
+   content area -- so inset 0 here, not the shell's padding offsets. */
 .spine {
   position: absolute;
-  top: var(--space-5);
-  bottom: var(--space-5);
+  top: 0;
+  bottom: 0;
   left: 50%;
   width: 44px;
   transform: translateX(-50%);

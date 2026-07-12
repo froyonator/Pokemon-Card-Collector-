@@ -40,9 +40,13 @@
   max-height: calc(100vh - var(--space-4) * 2);
   overflow-y: auto;
   overflow-x: hidden;
-  transition:
-    width var(--transition-base),
-    padding var(--transition-base);
+  /* Deliberately NO width/padding transition on collapse/expand: animating
+     the width made the neighboring grid re-evaluate its auto-fill columns
+     on every frame of the 220ms tween, strobing the tiles through several
+     intermediate layouts (reported live as "very jarring and blocky").
+     Snapping the width gives one clean reflow, and the tiles' own Framer
+     `layout` springs animate them smoothly into their new positions --
+     the motion lives on the content, not the container. */
 }
 
 .sidebar.collapsed {
