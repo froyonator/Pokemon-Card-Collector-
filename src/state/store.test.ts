@@ -158,14 +158,18 @@ describe('setGroups', () => {
 });
 
 describe('default activeGroupIds seed (fresh install)', () => {
-  it('excludes not-usable, unlike every other default group', async () => {
+  it('excludes not-usable and standard-prints, unlike every other default group', async () => {
     localStorage.clear();
     vi.resetModules();
     const { useAppStore: freshStore } = await import('./store');
     const seeded = freshStore.getState().activeGroupIds;
     expect(seeded).not.toContain('not-usable');
+    // standard-prints exists so sparse-data languages are viewable on
+    // demand -- active by default it would flood the curated special-art
+    // views with commons.
+    expect(seeded).not.toContain('standard-prints');
     for (const group of DEFAULT_RARITY_GROUPS) {
-      if (group.id === 'not-usable') continue;
+      if (group.id === 'not-usable' || group.id === 'standard-prints') continue;
       expect(seeded).toContain(group.id);
     }
   });
@@ -552,8 +556,21 @@ describe('replaceUserData with binders', () => {
 describe('persist config resilience', () => {
   it('sets a version and a migrate function, so a future breaking schema change has a real hook instead of relying on shallow-merge alone', () => {
     const options = useAppStore.persist.getOptions();
-    expect(options.version).toBe(1);
+    expect(options.version).toBe(2);
     expect(typeof options.migrate).toBe('function');
+  });
+
+  it('the v1->v2 migration appends newly-added default rarity groups to persisted groups, leaving them INACTIVE', async () => {
+    const options = useAppStore.persist.getOptions();
+    // A v1 user's persisted groups predate 'standard-prints'.
+    const v1State = {
+      groups: [{ id: 'full-art', name: 'Full Art', rarities: ['Ultra Rare'] }],
+      activeGroupIds: ['full-art'],
+    };
+    const migrated = (await options.migrate!(v1State, 1)) as typeof v1State;
+    expect(migrated.groups.some((g) => g.id === 'standard-prints')).toBe(true);
+    // Present but NOT activated -- the user's own active set is untouched.
+    expect(migrated.activeGroupIds).toEqual(['full-art']);
   });
 
   it('logs an error and backs up a malformed persisted value instead of silently discarding it on rehydration', async () => {

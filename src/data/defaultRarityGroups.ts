@@ -47,6 +47,21 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     // action, not automatic rarity matching.
     rarities: [],
   },
+  {
+    // Ordinary base-print rarities, plus cards whose source recorded no
+    // rarity at all. INACTIVE by default (excluded from store.ts's
+    // activeGroupIds seed, like not-usable above): this app's default lens
+    // is special/full-art collecting, and flooding the curated views with
+    // commons would bury it. It exists so sparse-data languages are
+    // viewable AT ALL -- several (both Chinese variants, Thai, Indonesian,
+    // Korean) carry ONLY these rarities, so before this group every one of
+    // their cards was silently filtered out of every view: reported live,
+    // twice, as "I can't see any Chinese cards". One tick of this chip in
+    // Filters shows them.
+    id: 'standard-prints',
+    name: 'Standard prints',
+    rarities: ['Common', 'Uncommon', 'Rare', 'Unknown', 'None'],
+  },
 ];
 
 export function fetchRarityList(groups: RarityGroup[] = DEFAULT_RARITY_GROUPS): string[] {

@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_RARITY_GROUPS, fetchRarityList, isKnownPocketRarity } from './defaultRarityGroups';
 
 describe('DEFAULT_RARITY_GROUPS', () => {
-  it('has 5 groups with unique ids', () => {
-    expect(DEFAULT_RARITY_GROUPS).toHaveLength(5);
+  it('has 6 groups with unique ids', () => {
+    expect(DEFAULT_RARITY_GROUPS).toHaveLength(6);
     const ids = new Set(DEFAULT_RARITY_GROUPS.map((g) => g.id));
-    expect(ids.size).toBe(5);
+    expect(ids.size).toBe(6);
+  });
+
+  it('seeds standard-prints with the base-print rarities plus the two "source recorded nothing" values', () => {
+    const group = DEFAULT_RARITY_GROUPS.find((g) => g.id === 'standard-prints');
+    expect(group?.rarities).toEqual(['Common', 'Uncommon', 'Rare', 'Unknown', 'None']);
   });
 
   it('seeds not-usable with an empty rarities list', () => {

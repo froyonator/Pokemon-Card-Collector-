@@ -159,8 +159,14 @@ export const useAppStore = create<AppState>()(
         // and deliberately excluded here: a brand-new user should never have
         // it silently active, since a card in that group is meant to
         // disappear from the Picker's available options, not appear by
-        // default alongside the other groups.
-        activeGroupIds: DEFAULT_RARITY_GROUPS.filter((g) => g.id !== 'not-usable').map((g) => g.id),
+        // default alongside the other groups. 'standard-prints' (ordinary
+        // commons/uncommons/rarity-less cards) is likewise seeded INACTIVE:
+        // it exists so sparse-data languages are viewable at all, not to
+        // flood the default special-art views -- see its own comment in
+        // defaultRarityGroups.ts.
+        activeGroupIds: DEFAULT_RARITY_GROUPS.filter(
+          (g) => g.id !== 'not-usable' && g.id !== 'standard-prints'
+        ).map((g) => g.id),
         groups: DEFAULT_RARITY_GROUPS,
         owned: {},
         wishlist: {},
@@ -362,13 +368,28 @@ export const useAppStore = create<AppState>()(
       name: USER_DATA_STORAGE_KEY,
       // Bumped whenever the persisted shape changes (e.g. the binders[]/
       // activeBinderId migration in 5f5a0c1, which shipped without a version
-      // bump and relied entirely on zustand's shallow-merge default). migrate
-      // is currently an identity no-op -- there is nothing to transform yet
-      // -- but it exists so the *next* breaking change has a real hook to
-      // extend instead of relying on shallow-merge luck again.
-      version: 1,
-      migrate: (persistedState): ReturnType<typeof partializeUserData> =>
-        persistedState as ReturnType<typeof partializeUserData>,
+      // bump and relied entirely on zustand's shallow-merge default).
+      //
+      // v1 -> v2: the 'standard-prints' default rarity group was added to
+      // DEFAULT_RARITY_GROUPS, but `groups` is persisted wholesale -- an
+      // existing user's saved groups would never gain it (and sparse-data
+      // languages would stay invisible for them forever). The migration
+      // appends any default group missing from the persisted list, while
+      // deliberately NOT touching activeGroupIds: the new group arrives
+      // present-but-inactive, exactly like a fresh install.
+      version: 2,
+      migrate: (persistedState): ReturnType<typeof partializeUserData> => {
+        const state = persistedState as ReturnType<typeof partializeUserData>;
+        if (Array.isArray(state?.groups)) {
+          const existingIds = new Set(state.groups.map((g) => g.id));
+          for (const group of DEFAULT_RARITY_GROUPS) {
+            if (!existingIds.has(group.id)) {
+              state.groups = [...state.groups, group];
+            }
+          }
+        }
+        return state;
+      },
       // Wraps localStorage.setItem so a failed write (e.g. QuotaExceededError
       // from a large uploaded image) is logged instead of throwing uncaught.
       storage: createJSONStorage(() => resilientLocalStorage),
