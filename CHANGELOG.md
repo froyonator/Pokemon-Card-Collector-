@@ -7,20 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-12
+
 ### Added
 
-- A "Search" button and an "Upload image" control on the "no image available" placeholder for cards TCGdex has no image for. Search opens a TCGplayer site search for the card in a new tab; an uploaded image is resized and saved into your export/backup file, so it survives across devices.
+- A self-hosted static card database that loads your collection almost instantly, with full coverage for 12 card languages. Anything not yet in the static set falls back to the live lookup automatically, so nothing goes missing.
+- Self-hosted card images alongside the static database, with a graceful fallback to the live image source if a hosted image is ever missing.
+- A "Standard prints" rarity group, making base-rarity cards viewable for languages that previously had no viewable group at all: both Chinese variants, Thai, Indonesian, and Korean. Existing settings are migrated automatically, no action needed on your part.
+- A major expansion of the Japanese and Traditional Chinese card databases (roughly 1,565 to 3,831 and 432 to 1,811 Gen 1 cards respectively), with card images sourced from official catalogs.
 - Binder view: a page-spread layout of your collection, sized and shaped like a real trading card binder. Supports multiple named binders, each with its own card language (e.g. a Japanese binder alongside an English one), independent grid size and page count, and horizontal or vertical fill order.
-- Manual arrange mode in Binder view: drag and drop to reorder Pokemon, or mark a slot "Keep empty" to leave a gap, matching how you've actually organized a physical binder.
-- A persistent sidebar holding every Dex Grid control (generation, rarity group, and language filters, view mode, Refresh Data) plus, while Binder view is active, all binder settings — replacing the old top toolbar.
+- A binder bookshelf home screen with 3D binder covers you can customize (color, spine, and a picture), plus one-click creation of new binders.
+- Real page-flip physics in Binder view: pages turn on a spine hinge like a real binder, and a lone trailing page now displays alone instead of pairing awkwardly with a blank.
+- A page scrubber and jump-to-page control for quickly navigating long binders.
+- Manual arrange mode in Binder view: drag and drop to reorder Pokemon, mark a slot "Keep empty" to leave a gap, or give an empty slot its own custom filler image, matching how you've actually organized a physical binder.
+- Click to enlarge any owned card in Card view or the picker, with a subtle glint, sheen, and parallax shadow effect, plus a caption.
+- A corner dock consolidating export, import, the repo link, and the tutorial into one tidy control cluster.
+- A "Search" button and an "Upload image" control on the "no image available" placeholder for cards with no image on record. Search opens a card marketplace search for the card in a new tab; an uploaded image is resized and saved into your export/backup file, so it survives across devices.
 - A "Not Usable" rarity group, off by default, plus a multi-select mode in the picker ("Select cards") to bulk-assign several cards to it at once. Cards in this group are hidden from the picker's available options until you turn the group back on.
-- Cards from sets where TCGdex has no Pokedex-number link on record (e.g. Ascended Heroes) are now found by "Show all cards", via a name-based fallback search alongside the usual dex-number lookup.
+- Cards from sets with no Pokedex-number link on record (e.g. Ascended Heroes) are now found by "Show all cards", via a name-based fallback search alongside the usual dex-number lookup.
 
 ### Changed
 
+- A full visual redesign: one dark "collector's study" theme in place of the earlier light/dark split, with new typography and card-stock textures throughout.
+- The sidebar was redesigned with labelled tabs, chip-style filters, a true icon-only collapsed rail, no more internal scrollbar, and Binder settings folded in alongside everything else.
 - Renamed the app from "Pokemon Card Collector" to "Collector's Ledger".
 - The Dex Grid's "owned" and "no card released yet" tile colors were gold and red, which read as too similar at a glance. Owned is now a distinct green; unavailable is now a neutral grey.
-- Fixed the Manage Groups panel rendering behind the Dex Grid instead of on top of it after the sidebar was introduced.
 
 ### Removed
 
@@ -28,7 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A user-uploaded replacement image for a card with no real TCGdex image now shows up in Card view, not just inside the picker.
+- Zoom in Binder view and the card enlarge overlay is now contained to the card itself, Escape resets it, and the maximum zoom level is more sensible.
+- Dropdown menus and tile-state colors now have enough contrast to read clearly in every case.
+- The per-tile loading flash during Refresh Data is back, now a small Poke Ball animation that catches its tile's color.
+- Fixed the Manage Groups panel rendering behind the Dex Grid instead of on top of it after the sidebar was introduced.
+- A user-uploaded replacement image for a card with no other image now shows up in Card view, not just inside the picker.
+- Sixteen smaller reliability fixes: binders with corrupted or invalid settings no longer crash the app, Refresh Data no longer silently drops cards you own or wishlist that fall outside the current catalog, your saved collection is now protected with a backup copy if it's ever found corrupted, a language change mid-search in the picker can no longer show the wrong results, and general performance tuning cuts unnecessary re-rendering across the grid and binder.
 
 ## [0.1.0] - 2026-07-11
 
