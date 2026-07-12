@@ -11,6 +11,8 @@
     "snapshot-english-fallback": "tsx src/snapshotEnglishFallback.ts",
     "snapshot-japanese-fallback": "tsx src/snapshotJapaneseFallback.ts",
     "harvest-set": "tsx src/scrapeSet.ts",
+    "harvest": "tsx src/harvest/runHarvest.ts",
+    "harvest:merge": "tsx src/harvest/mergeHarvest.ts",
     "build-database": "tsx src/buildStaticDatabase.ts"
   },
   "devDependencies": {
