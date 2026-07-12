@@ -6,8 +6,15 @@ import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { getCachedCards, reserveWriteGeneration, setCachedCards } from '../storage/cardCache';
 import { loadAllCardData } from '../state/loadCardData';
-import { loadStaticCardData, refreshStaticCardData } from '../api/staticDatabase';
+import {
+  loadStaticCardData,
+  loadStaticCardDataForGen,
+  refreshStaticCardData,
+  refreshStaticCardDataForGen,
+} from '../api/staticDatabase';
 import { GEN1_DEX } from '../data/gen1Dex';
+import { GEN2_DEX } from '../data/fullDex';
+import { GENERATIONS } from '../data/generations';
 import type { CardRecord } from '../types';
 
 // Wraps the real loadAllCardData in a vi.fn so most tests below get its
@@ -40,9 +47,16 @@ vi.mock('../state/loadCardData', async () => {
 // know or care about the static-first refresh path, gets exactly the
 // pre-existing "no static data available, fall back to the live path"
 // outcome. Tests further down override this per-call.
+//
+// loadStaticCardDataForGen/refreshStaticCardDataForGen (Gen 2+) default to
+// null for the identical reason: every pre-existing test here selects only
+// Gen 1 (see the beforeEach below), so these two are never even reached by
+// them -- only the multi-generation tests further down override these.
 vi.mock('../api/staticDatabase', () => ({
   loadStaticCardData: vi.fn(async () => null),
+  loadStaticCardDataForGen: vi.fn(async () => null),
   refreshStaticCardData: vi.fn(async () => null),
+  refreshStaticCardDataForGen: vi.fn(async () => null),
 }));
 
 function jsonResponse(body: unknown) {
@@ -1038,4 +1052,153 @@ describe('Binder view', () => {
     expect(screen.getByText('Japanese Base Set #1')).toBeInTheDocument();
     expect(screen.queryByText('Base Set #1')).not.toBeInTheDocument();
   });
+});
+
+describe('Multi-generation static preload', () => {
+  function staticRecordFor(dexNumber: number, name: string): CardRecord {
+    return {
+      id: `static-${dexNumber}`,
+      name,
+      dexNumber,
+      setId: 'static-set',
+      setName: 'Static Set',
+      localId: String(dexNumber),
+      rarity: 'Ultra Rare',
+      imageBase: `https://example.com/static/${dexNumber}`,
+      language: 'en',
+    };
+  }
+
+  function fullCoverageFor(entries: { number: number; name: string }[]): Record<number, CardRecord[]> {
+    const coverage: Record<number, CardRecord[]> = {};
+    for (const entry of entries) {
+      coverage[entry.number] = [staticRecordFor(entry.number, entry.name)];
+    }
+    return coverage;
+  }
+
+  it('preloads two selected generations from their own static files, with zero live calls', async () => {
+    useAppStore.setState({ selectedGenerations: [1, 2] });
+
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(fullCoverageFor(GEN1_DEX));
+    vi.mocked(loadStaticCardDataForGen).mockImplementationOnce(async (_language, gen) =>
+      gen === 2 ? fullCoverageFor(GEN2_DEX) : null
+    );
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /chikorita/i })).toHaveClass(/tile--available/);
+    });
+    // The Gen 2 boundary species (Celebi, #251) rendering confirms the whole
+    // second generation's dex range is present, not just its first entry.
+    expect(screen.getByRole('button', { name: /celebi/i })).toBeInTheDocument();
+
+    // Gen 1's static loader was called with just the language, matching its
+    // existing single-argument signature -- Gen 2 went through the new
+    // per-generation loader instead.
+    expect(vi.mocked(loadStaticCardData)).toHaveBeenCalledWith('en');
+    expect(vi.mocked(loadStaticCardDataForGen)).toHaveBeenCalledWith('en', 2);
+    // Full static coverage on both selected generations means the live path
+    // never runs at all.
+    expect(vi.mocked(loadAllCardData).mock.calls.length).toBe(loadAllCardDataCallsBefore);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the live path only for the generation missing static coverage, leaving the statically-covered one alone', async () => {
+    useAppStore.setState({ selectedGenerations: [1, 2] });
+
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(fullCoverageFor(GEN1_DEX));
+    // Gen 2 has no static file yet (404) -- defaults to null already, but
+    // explicit here for clarity.
+    vi.mocked(loadStaticCardDataForGen).mockResolvedValueOnce(null);
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    // Chikorita has no static coverage, so it goes through the live fetch
+    // path (this file's default fetch mock resolves an empty card list for
+    // any URL it doesn't special-case) and ends up unavailable, not stuck
+    // loading forever.
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: /chikorita/i })).toHaveClass(/tile--unavailable/);
+      },
+      { timeout: 10000 }
+    );
+  });
+
+  it('refreshes two selected generations from their own static files via the gen-aware refresh functions', async () => {
+    useAppStore.setState({ selectedGenerations: [1, 2] });
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce(fullCoverageFor(GEN1_DEX));
+    vi.mocked(loadStaticCardDataForGen).mockResolvedValueOnce(fullCoverageFor(GEN2_DEX));
+
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /chikorita/i })).toHaveClass(/tile--available/);
+    });
+
+    const updatedGen1 = fullCoverageFor(GEN1_DEX);
+    updatedGen1[1] = [{ ...staticRecordFor(1, 'Bulbasaur'), id: 'refreshed-1' }];
+    const updatedGen2 = fullCoverageFor(GEN2_DEX);
+    updatedGen2[152] = [{ ...staticRecordFor(152, 'Chikorita'), id: 'refreshed-152' }];
+    vi.mocked(refreshStaticCardData).mockResolvedValueOnce(updatedGen1);
+    vi.mocked(refreshStaticCardDataForGen).mockResolvedValueOnce(updatedGen2);
+
+    // Same mounted instance, refreshRequestId bumped -- rerender (not a
+    // fresh render) so the component's own "skip the first render" ref
+    // (previousRefreshRequestId in DexGrid.tsx) actually sees the change and
+    // fires handleRefreshData, exactly like Sidebar's Refresh Data button
+    // bumping the prop on the live app would.
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    await waitFor(() => {
+      expect(vi.mocked(refreshStaticCardData)).toHaveBeenCalledWith('en');
+    });
+    expect(vi.mocked(refreshStaticCardDataForGen)).toHaveBeenCalledWith('en', 2);
+  });
+});
+
+describe('Scale: full National Pokedex selection', () => {
+  it('renders all 1025 tiles without hanging when every generation is selected', async () => {
+    useAppStore.setState({ selectedGenerations: GENERATIONS.map((g) => g.id) });
+
+    // Every generation resolves full static coverage (an empty card list per
+    // dex number is enough -- this test is about render scale, not card
+    // content), so the render never falls through to the live dex x rarity
+    // fetch fan-out for 1025 entries.
+    vi.mocked(loadStaticCardData).mockResolvedValueOnce({});
+    vi.mocked(loadStaticCardDataForGen).mockImplementation(async () => ({}));
+
+    render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+
+    // Pecharunt (#1025) is the very last entry across every generation --
+    // finding it confirms the full range rendered, not just an early subset.
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: /pecharunt/i })).toBeInTheDocument();
+      },
+      { timeout: 15000 }
+    );
+    expect(screen.getAllByRole('button')).toHaveLength(1025);
+  }, 20000);
 });

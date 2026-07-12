@@ -1,8 +1,14 @@
 import { AnimatePresence } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
-import { loadStaticCardData, refreshStaticCardData } from '../api/staticDatabase';
-import { entriesForGenerations } from '../data/generations';
+import {
+  loadStaticCardData,
+  loadStaticCardDataForGen,
+  refreshStaticCardData,
+  refreshStaticCardDataForGen,
+} from '../api/staticDatabase';
+import type { DexEntry } from '../data/gen1Dex';
+import { entriesForGenerations, generationForDexNumber } from '../data/generations';
 import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
@@ -19,6 +25,33 @@ import { Picker } from './Picker';
 import type { DexView } from './Sidebar';
 import { Tile } from './Tile';
 import styles from './DexGrid.module.css';
+
+// Fetches, for every distinct generation represented among `entries`, the
+// right static file -- Gen 1's shared per-language file via `loadGen1`, Gen
+// 2-9's own data/cards/<language>/gen<N>.json via `loadGen` -- and returns a
+// lookup from generation id to that generation's result (`null` when that
+// generation has no static file yet, exactly like an uncovered language).
+// Shared by both the auto-load preload and Refresh Data below so a mixed
+// selection (e.g. Gen 1 + Gen 3) fetches each generation's own file instead
+// of one of them silently reusing another's data. An entry whose generation
+// can't be determined (see generationForDexNumber) is treated as Gen 1's --
+// not reachable with today's contiguous GENERATIONS ranges, but a safe
+// default rather than a thrown error if that ever changes.
+async function staticDataByGeneration(
+  language: string,
+  entries: DexEntry[],
+  loadGen1: (language: string) => Promise<Record<number, CardRecord[]> | null>,
+  loadGen: (language: string, gen: number) => Promise<Record<number, CardRecord[]> | null>
+): Promise<Map<number, Record<number, CardRecord[]> | null>> {
+  const generationIds = [...new Set(entries.map((entry) => generationForDexNumber(entry.number) ?? 1))];
+  const results = await Promise.all(
+    generationIds.map(async (gen) => {
+      const data = gen === 1 ? await loadGen1(language) : await loadGen(language, gen);
+      return [gen, data] as const;
+    })
+  );
+  return new Map(results);
+}
 
 export interface DexGridProps {
   view: DexView;
@@ -208,62 +241,76 @@ export function DexGrid({
       // check, on top of `cancelled`, so a Refresh-Data click that bumps the
       // generation independently (without going through this effect's own
       // cleanup) still correctly abandons a stale preload's contribution.
-      const staticData = await loadStaticCardData(language);
+      // Grouped per generation -- see staticDataByGeneration -- so a mixed
+      // selection (e.g. Gen 1 + Gen 3) preloads each generation from its own
+      // static file instead of one covering the other's dex numbers with
+      // whatever it happened to fetch. When only Gen 1 is selected this is
+      // exactly one fetch (loadStaticCardData(language)), identical to
+      // before per-generation loading existed.
+      const staticByGeneration = await staticDataByGeneration(
+        language,
+        missingEntries,
+        loadStaticCardData,
+        loadStaticCardDataForGen
+      );
       if (cancelled || loadGeneration.current !== thisGeneration) return;
 
-      let stillMissing = missingEntries;
-      if (staticData) {
-        // The static file is the COMPLETE truth for its language -- it was
-        // built from a full crawl of every set, so a dex number it doesn't
-        // mention genuinely has zero cards in that language, and caching
-        // that emptiness is as valid as caching cards. This is what makes a
-        // static-covered language load with ZERO live API calls: the
-        // previous "absent key -> fall through to the live fetch" reading
-        // still fired hundreds of live requests for thin languages (e.g.
-        // Chinese, where most dex numbers have no cards), which is exactly
-        // the latency the static database exists to eliminate. Languages
-        // with no static file at all (nl/ru/pl) never reach this branch and
-        // keep the full live path.
-        let wroteAny = false;
-        for (const entry of missingEntries) {
-          // preserveReferencedCards is a no-op here in practice today (a
-          // "missing" entry by definition has no prior cache entry for this
-          // language:dexNumber key yet, so there's nothing to preserve from)
-          // -- kept for defense-in-depth and so this write path and the
-          // static-first Refresh Data path below share one implementation
-          // instead of two, rather than assuming that invariant holds
-          // forever as this effect's own "missing" computation evolves.
-          const cards = preserveReferencedCards(
-            staticData[entry.number] ?? [],
-            entry.number,
-            owned,
-            wishlist,
-            language
-          );
-          const generation = reservedGenerations.get(entry.number);
-          // A competing writer (e.g. "Show all cards") reserved a newer
-          // generation for this dex number while this preload's fetch was
-          // in flight -- don't overwrite whatever it wrote, and don't
-          // live-fetch it either below: it's no longer this effect's job to
-          // resolve, and whatever that other writer produced is already
-          // correctly protected by its own generation check.
-          if (generation !== undefined && isLatestWriteGeneration(language, entry.number, generation)) {
-            setCachedCards(language, entry.number, cards);
-            wroteAny = true;
-          }
+      // The static file is the COMPLETE truth for its language and
+      // generation -- it was built from a full crawl of every set, so a dex
+      // number it doesn't mention genuinely has zero cards in that
+      // language, and caching that emptiness is as valid as caching cards.
+      // This is what makes a static-covered generation load with ZERO live
+      // API calls: the previous "absent key -> fall through to the live
+      // fetch" reading still fired hundreds of live requests for thin
+      // languages (e.g. Chinese, where most dex numbers have no cards),
+      // which is exactly the latency the static database exists to
+      // eliminate. A generation with no static file at all (e.g. nl/ru/pl's
+      // Gen 1, or any generation not yet deployed) never gets a write here
+      // and stays in stillMissing, keeping the full live path.
+      const stillMissing: DexEntry[] = [];
+      let wroteAny = false;
+      for (const entry of missingEntries) {
+        const gen = generationForDexNumber(entry.number) ?? 1;
+        const staticData = staticByGeneration.get(gen);
+        if (!staticData) {
+          stillMissing.push(entry);
+          continue;
         }
-        stillMissing = [];
-        // Bumped here -- even for a partial preload, and even when (in the
-        // branch below) it turns out to cover 100% of what was missing --
-        // so the tile grid's cardsByDexNumber memo (keyed on dataVersion)
-        // actually re-reads the cache and renders what the preload just
-        // wrote, instead of waiting on some unrelated later trigger.
-        // Deliberately NOT calling markFullPrintHistoryFetched anywhere
-        // here: "Show all cards" must still do its own live fetch on first
-        // use, exactly as today -- this preload only ever replaces the
-        // curated default load.
-        if (wroteAny) setDataVersion((v) => v + 1);
+        // preserveReferencedCards is a no-op here in practice today (a
+        // "missing" entry by definition has no prior cache entry for this
+        // language:dexNumber key yet, so there's nothing to preserve from)
+        // -- kept for defense-in-depth and so this write path and the
+        // static-first Refresh Data path below share one implementation
+        // instead of two, rather than assuming that invariant holds
+        // forever as this effect's own "missing" computation evolves.
+        const cards = preserveReferencedCards(
+          staticData[entry.number] ?? [],
+          entry.number,
+          owned,
+          wishlist,
+          language
+        );
+        const generation = reservedGenerations.get(entry.number);
+        // A competing writer (e.g. "Show all cards") reserved a newer
+        // generation for this dex number while this preload's fetch was
+        // in flight -- don't overwrite whatever it wrote, and don't
+        // live-fetch it either below: it's no longer this effect's job to
+        // resolve, and whatever that other writer produced is already
+        // correctly protected by its own generation check.
+        if (generation !== undefined && isLatestWriteGeneration(language, entry.number, generation)) {
+          setCachedCards(language, entry.number, cards);
+          wroteAny = true;
+        }
       }
+      // Bumped here -- even for a partial preload, and even when it turns
+      // out to cover 100% of what was missing -- so the tile grid's
+      // cardsByDexNumber memo (keyed on dataVersion) actually re-reads the
+      // cache and renders what the preload just wrote, instead of waiting
+      // on some unrelated later trigger. Deliberately NOT calling
+      // markFullPrintHistoryFetched anywhere here: "Show all cards" must
+      // still do its own live fetch on first use, exactly as today -- this
+      // preload only ever replaces the curated default load.
+      if (wroteAny) setDataVersion((v) => v + 1);
 
       if (stillMissing.length === 0) {
         setIsLoading(false);
@@ -342,43 +389,62 @@ export function DexGrid({
     }
 
     try {
-      // Bypasses loadStaticCardData's per-session memo (refreshStaticCardData
-      // always issues a fresh fetch and replaces the memo entry) -- the whole
-      // point of clicking Refresh Data is picking up newly deployed static
-      // data, not replaying whatever this session happened to fetch once
-      // before. A language the static database covers is refreshed entirely
-      // from that fresh static file, with ZERO live calls, mirroring the
-      // auto-load preload above exactly (including deliberately NOT calling
-      // clearFullPrintHistory). This is what makes Refresh Data fast: before
-      // this, it unconditionally ran the full live dex x rarity fan-out --
-      // 151 dex numbers x every active rarity -- even for a language the
-      // static database already covers completely.
-      const staticData = await refreshStaticCardData(language);
+      // Bypasses loadStaticCardData/loadStaticCardDataForGen's per-session
+      // memos (refreshStaticCardData/refreshStaticCardDataForGen always
+      // issue a fresh fetch and replace the memo entry) -- the whole point
+      // of clicking Refresh Data is picking up newly deployed static data,
+      // not replaying whatever this session happened to fetch once before.
+      // Grouped per generation -- see staticDataByGeneration -- so a mixed
+      // selection refreshes each generation from its own static file
+      // instead of one covering another's dex numbers. A generation the
+      // static database covers is refreshed entirely from that fresh
+      // static file, with ZERO live calls, mirroring the auto-load preload
+      // above exactly (including deliberately NOT calling
+      // clearFullPrintHistory). This is what makes Refresh Data fast:
+      // before this, it unconditionally ran the full live dex x rarity
+      // fan-out -- 151 dex numbers x every active rarity -- even for a
+      // language the static database already covers completely.
+      const staticByGeneration = await staticDataByGeneration(
+        language,
+        dexEntries,
+        refreshStaticCardData,
+        refreshStaticCardDataForGen
+      );
       if (loadGeneration.current !== thisGeneration) return;
 
-      if (staticData) {
-        for (const entry of dexEntries) {
-          const cards = preserveReferencedCards(
-            staticData[entry.number] ?? [],
-            entry.number,
-            owned,
-            wishlist,
-            language
-          );
-          const generation = reserveWriteGeneration(language, entry.number);
-          if (isLatestWriteGeneration(language, entry.number, generation)) {
-            setCachedCards(language, entry.number, cards);
-          }
-          onRefreshDexLoaded(entry.number);
+      // Entries whose generation has no static file (e.g. nl/ru/pl's Gen 1,
+      // or any generation not yet deployed) fall through to the unchanged
+      // live fetch below, across every active rarity, exactly as before the
+      // static-first path above existed. When every selected generation has
+      // a static file, liveEntries stays empty and loadAllCardData below is
+      // never called at all -- matching the old "return" behavior exactly
+      // for a Gen-1-only, static-covered session.
+      const liveEntries: DexEntry[] = [];
+      for (const entry of dexEntries) {
+        const gen = generationForDexNumber(entry.number) ?? 1;
+        const staticData = staticByGeneration.get(gen);
+        if (!staticData) {
+          liveEntries.push(entry);
+          continue;
         }
-        return;
+        const cards = preserveReferencedCards(
+          staticData[entry.number] ?? [],
+          entry.number,
+          owned,
+          wishlist,
+          language
+        );
+        const generation = reserveWriteGeneration(language, entry.number);
+        if (isLatestWriteGeneration(language, entry.number, generation)) {
+          setCachedCards(language, entry.number, cards);
+        }
+        onRefreshDexLoaded(entry.number);
       }
 
-      // No static file for this language (e.g. nl/ru/pl) -- unchanged live
-      // fetch across every active rarity, exactly as before the static-first
-      // path above existed.
+      if (liveEntries.length === 0) return;
+
       await loadAllCardData(language, {
-        dexEntries,
+        dexEntries: liveEntries,
         rarities: [...activeSet],
         owned,
         wishlist,

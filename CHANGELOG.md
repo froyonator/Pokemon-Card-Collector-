@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- All nine generations (Kanto through Paldea, dex #1 to #1025) are now selectable, not just Kanto. The generation filter is a true multi-select: pick any combination and the grid shows exactly those Pokemon. Existing collections are unaffected and keep showing Kanto only until you opt in to more.
+
 ### Fixed
 
 - "Refresh Data" was extremely slow for languages already covered by the built-in card database: it always re-fetched every Pokemon from the live source instead of reusing the fast local path the app already uses on startup. Refresh now re-checks the local database first and only falls back to the live source for languages it doesn't cover, matching the speed of the initial load.
