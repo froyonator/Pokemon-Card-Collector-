@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllCachedCardsForDex, loadAllCardData, loadAllPrintingsForDex } from './loadCardData';
+import {
+  getAllCachedCardsForDex,
+  loadAllCardData,
+  loadAllPrintingsForDex,
+  preserveReferencedCards,
+} from './loadCardData';
 import { loadStaticCardData } from '../api/staticDatabase';
 import { setCachedCards } from '../storage/cardCache';
 
@@ -952,5 +957,77 @@ describe('static-database enrichment of live fetches', () => {
     expect(cached).toHaveLength(1);
     expect(cached[0].hostedThumbUrl).toBe('https://example.com/hosted/199/thumb.webp');
     vi.mocked(loadStaticCardData).mockResolvedValue(null);
+  });
+});
+
+// Exported so DexGrid's own static-database write paths -- the auto-load
+// preload and the static-first Refresh Data path, neither of which routes
+// through loadAllCardData at all for a static-covered language -- share this
+// exact logic instead of each re-implementing it. loadAllCardData's own
+// "preserves an owned/wishlisted card..." tests above already cover this
+// indirectly through the curated live-fetch path (mergeReferencedCards);
+// these exercise the exported function directly.
+describe('preserveReferencedCards', () => {
+  const promoCard = {
+    id: 'svp-044',
+    name: 'Charmander',
+    dexNumber: 4,
+    setId: 'svp',
+    setName: 'SVP Black Star Promos',
+    localId: '044',
+    rarity: 'Promo',
+    imageBase: 'https://assets.tcgdex.net/en/sv/svp/044',
+    language: 'en',
+  };
+
+  it('appends an owned off-catalog card found in the existing cache but missing from the given cards', () => {
+    setCachedCards('en', 4, [promoCard]);
+    const result = preserveReferencedCards(
+      [],
+      4,
+      { 4: { dexNumber: 4, cardId: 'svp-044', condition: 'Near Mint', addedAt: '' } },
+      {},
+      'en'
+    );
+    expect(result.map((c) => c.id)).toEqual(['svp-044']);
+  });
+
+  it('appends a wishlisted off-catalog card the same way', () => {
+    setCachedCards('en', 4, [promoCard]);
+    const result = preserveReferencedCards(
+      [],
+      4,
+      {},
+      { 4: { dexNumber: 4, cardId: 'svp-044', addedAt: '' } },
+      'en'
+    );
+    expect(result.map((c) => c.id)).toEqual(['svp-044']);
+  });
+
+  it('does not duplicate a referenced card already present in the given cards', () => {
+    const result = preserveReferencedCards(
+      [promoCard],
+      4,
+      { 4: { dexNumber: 4, cardId: 'svp-044', condition: 'Near Mint', addedAt: '' } },
+      {},
+      'en'
+    );
+    expect(result.filter((c) => c.id === 'svp-044')).toHaveLength(1);
+  });
+
+  it('is a no-op when nothing is owned or wishlisted for this dex number', () => {
+    const result = preserveReferencedCards([], 4, {}, {}, 'en');
+    expect(result).toEqual([]);
+  });
+
+  it('is a no-op when the referenced card id is not findable anywhere in the existing cache (nothing to merge back in)', () => {
+    const result = preserveReferencedCards(
+      [],
+      4,
+      { 4: { dexNumber: 4, cardId: 'does-not-exist', condition: 'Near Mint', addedAt: '' } },
+      {},
+      'en'
+    );
+    expect(result).toEqual([]);
   });
 });

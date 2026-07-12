@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- "Refresh Data" was extremely slow for languages already covered by the built-in card database: it always re-fetched every Pokemon from the live source instead of reusing the fast local path the app already uses on startup. Refresh now re-checks the local database first and only falls back to the live source for languages it doesn't cover, matching the speed of the initial load.
+
 ## [0.2.0] - 2026-07-12
 
 ### Added

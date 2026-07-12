@@ -1,9 +1,9 @@
 import { AnimatePresence } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { spriteUrl } from '../api/pokeapi';
-import { loadStaticCardData } from '../api/staticDatabase';
+import { loadStaticCardData, refreshStaticCardData } from '../api/staticDatabase';
 import { entriesForGenerations } from '../data/generations';
-import { loadAllCardData } from '../state/loadCardData';
+import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
 import {
@@ -226,7 +226,20 @@ export function DexGrid({
         // keep the full live path.
         let wroteAny = false;
         for (const entry of missingEntries) {
-          const cards = staticData[entry.number] ?? [];
+          // preserveReferencedCards is a no-op here in practice today (a
+          // "missing" entry by definition has no prior cache entry for this
+          // language:dexNumber key yet, so there's nothing to preserve from)
+          // -- kept for defense-in-depth and so this write path and the
+          // static-first Refresh Data path below share one implementation
+          // instead of two, rather than assuming that invariant holds
+          // forever as this effect's own "missing" computation evolves.
+          const cards = preserveReferencedCards(
+            staticData[entry.number] ?? [],
+            entry.number,
+            owned,
+            wishlist,
+            language
+          );
           const generation = reservedGenerations.get(entry.number);
           // A competing writer (e.g. "Show all cards") reserved a newer
           // generation for this dex number while this preload's fetch was
@@ -312,23 +325,65 @@ export function DexGrid({
     setIsLoading(true);
     onLoadingChange(true);
     setPendingRefreshDex(new Set(dexEntries.map((entry) => entry.number)));
+
+    // Shared by both the static and live branches below, so a dex number's
+    // per-tile Poke Ball loading flash (pendingRefreshDex -- see its
+    // declaration above) drains identically no matter which branch actually
+    // produced its fresh data.
+    function onRefreshDexLoaded(dexNumber: number) {
+      if (loadGeneration.current !== thisGeneration) return;
+      scheduleDataVersionBump();
+      setPendingRefreshDex((prev) => {
+        if (!prev?.has(dexNumber)) return prev;
+        const next = new Set(prev);
+        next.delete(dexNumber);
+        return next;
+      });
+    }
+
     try {
+      // Bypasses loadStaticCardData's per-session memo (refreshStaticCardData
+      // always issues a fresh fetch and replaces the memo entry) -- the whole
+      // point of clicking Refresh Data is picking up newly deployed static
+      // data, not replaying whatever this session happened to fetch once
+      // before. A language the static database covers is refreshed entirely
+      // from that fresh static file, with ZERO live calls, mirroring the
+      // auto-load preload above exactly (including deliberately NOT calling
+      // clearFullPrintHistory). This is what makes Refresh Data fast: before
+      // this, it unconditionally ran the full live dex x rarity fan-out --
+      // 151 dex numbers x every active rarity -- even for a language the
+      // static database already covers completely.
+      const staticData = await refreshStaticCardData(language);
+      if (loadGeneration.current !== thisGeneration) return;
+
+      if (staticData) {
+        for (const entry of dexEntries) {
+          const cards = preserveReferencedCards(
+            staticData[entry.number] ?? [],
+            entry.number,
+            owned,
+            wishlist,
+            language
+          );
+          const generation = reserveWriteGeneration(language, entry.number);
+          if (isLatestWriteGeneration(language, entry.number, generation)) {
+            setCachedCards(language, entry.number, cards);
+          }
+          onRefreshDexLoaded(entry.number);
+        }
+        return;
+      }
+
+      // No static file for this language (e.g. nl/ru/pl) -- unchanged live
+      // fetch across every active rarity, exactly as before the static-first
+      // path above existed.
       await loadAllCardData(language, {
         dexEntries,
         rarities: [...activeSet],
         owned,
         wishlist,
         signal: controller.signal,
-        onDexLoaded: (dexNumber) => {
-          if (loadGeneration.current !== thisGeneration) return;
-          scheduleDataVersionBump();
-          setPendingRefreshDex((prev) => {
-            if (!prev?.has(dexNumber)) return prev;
-            const next = new Set(prev);
-            next.delete(dexNumber);
-            return next;
-          });
-        },
+        onDexLoaded: onRefreshDexLoaded,
       });
     } catch (err) {
       // loadAllCardData itself already resolves normally (rather than

@@ -6,7 +6,7 @@ import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { getCachedCards, reserveWriteGeneration, setCachedCards } from '../storage/cardCache';
 import { loadAllCardData } from '../state/loadCardData';
-import { loadStaticCardData } from '../api/staticDatabase';
+import { loadStaticCardData, refreshStaticCardData } from '../api/staticDatabase';
 import { GEN1_DEX } from '../data/gen1Dex';
 import type { CardRecord } from '../types';
 
@@ -35,8 +35,14 @@ vi.mock('../state/loadCardData', async () => {
 // happens to respond to a `data/cards/<language>.json` URL. Individual tests
 // below override this per-call via mockResolvedValueOnce/mockImplementationOnce
 // to exercise the full/partial/failed-preload paths deliberately.
+// refreshStaticCardData defaults to null for the same reason as
+// loadStaticCardData just above -- every pre-existing test, none of which
+// know or care about the static-first refresh path, gets exactly the
+// pre-existing "no static data available, fall back to the live path"
+// outcome. Tests further down override this per-call.
 vi.mock('../api/staticDatabase', () => ({
   loadStaticCardData: vi.fn(async () => null),
+  refreshStaticCardData: vi.fn(async () => null),
 }));
 
 function jsonResponse(body: unknown) {
@@ -770,6 +776,151 @@ describe('Static database preload', () => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--unavailable/);
     });
     expect(getCachedCards('en', 1)).toEqual([competingCard]);
+  });
+});
+
+describe('Refresh Data static-first path', () => {
+  function staticRecord(dexNumber: number, name: string): CardRecord {
+    return {
+      id: `static-${dexNumber}`,
+      name,
+      dexNumber,
+      setId: 'static-set',
+      setName: 'Static Set',
+      localId: String(dexNumber),
+      rarity: 'Ultra Rare',
+      imageBase: `https://example.com/static/${dexNumber}`,
+      language: 'en',
+    };
+  }
+
+  it('refreshes a static-covered language entirely from the static database, with zero live loadAllCardData calls', async () => {
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    const fullCoverage: Record<number, CardRecord[]> = {};
+    for (const entry of GEN1_DEX) {
+      fullCoverage[entry.number] = entry.number === 1 ? [staticRecord(1, 'Bulbasaur')] : [];
+    }
+    vi.mocked(refreshStaticCardData).mockResolvedValueOnce(fullCoverage);
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
+
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
+    });
+    // Charizard had cards from the initial live load, but the fresh static
+    // bucket (the complete truth for this language) says it has none now --
+    // the refresh must actually overwrite the tile's prior state, not just
+    // leave it alone.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--unavailable/);
+    });
+    expect(vi.mocked(loadAllCardData).mock.calls.length).toBe(loadAllCardDataCallsBefore);
+    expect(vi.mocked(refreshStaticCardData)).toHaveBeenCalledWith('en');
+  });
+
+  it('bypasses the static database session memo on refresh: refreshStaticCardData is called, not loadStaticCardData, for the refresh itself', async () => {
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    const loadStaticCallsBefore = vi.mocked(loadStaticCardData).mock.calls.length;
+    const refreshStaticCallsBefore = vi.mocked(refreshStaticCardData).mock.calls.length;
+    vi.mocked(refreshStaticCardData).mockResolvedValueOnce({});
+
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    await waitFor(() => {
+      expect(vi.mocked(refreshStaticCardData).mock.calls.length).toBe(refreshStaticCallsBefore + 1);
+    });
+    // The memoized loadStaticCardData path is never touched by the refresh
+    // itself -- refreshStaticCardData does its own fresh fetch instead of
+    // reusing (or feeding) that memo.
+    expect(vi.mocked(loadStaticCardData).mock.calls.length).toBe(loadStaticCallsBefore);
+  });
+
+  it('falls back to the full live fetch on refresh for a language with no static database coverage', async () => {
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    vi.mocked(refreshStaticCardData).mockResolvedValueOnce(null);
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
+
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    await waitFor(() => {
+      expect(vi.mocked(loadAllCardData).mock.calls.length).toBeGreaterThan(loadAllCardDataCallsBefore);
+    });
+    const callsDuringThisTest = vi.mocked(loadAllCardData).mock.calls.slice(loadAllCardDataCallsBefore);
+    expect(callsDuringThisTest).toHaveLength(1);
+    const [, options] = callsDuringThisTest[0];
+    expect(options?.dexEntries).toEqual(GEN1_DEX);
+  });
+
+  it('preserves an owned off-catalog card the fresh static bucket does not mention, during a static refresh', async () => {
+    // Same real reported bug loadCardData.test.ts covers for the curated
+    // live-fetch path (mergeReferencedCards), but for the static-first
+    // refresh path instead: mark an off-catalog promo card owned, then
+    // refresh on a language the static database covers. The static bucket
+    // (built from a full crawl) genuinely has no entry for this card, so the
+    // refresh must merge it back in from the existing cache rather than
+    // silently dropping it.
+    setCachedCards('en', 4, [
+      {
+        id: 'svp-044',
+        name: 'Charmander',
+        dexNumber: 4,
+        setId: 'svp',
+        setName: 'SVP Black Star Promos',
+        localId: '044',
+        rarity: 'Promo',
+        imageBase: 'https://assets.tcgdex.net/en/sv/svp/044',
+        language: 'en',
+      },
+    ]);
+    useAppStore.setState({
+      owned: { 4: { dexNumber: 4, cardId: 'svp-044', condition: 'Near Mint', addedAt: '' } },
+    });
+
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    const fullCoverage: Record<number, CardRecord[]> = {};
+    for (const entry of GEN1_DEX) {
+      fullCoverage[entry.number] = [];
+    }
+    vi.mocked(refreshStaticCardData).mockResolvedValueOnce(fullCoverage);
+
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    await waitFor(() => {
+      expect(getCachedCards('en', 4)?.map((c) => c.id)).toContain('svp-044');
+    });
   });
 });
 

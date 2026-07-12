@@ -140,41 +140,56 @@ async function enrichFromStatic(language: string, cards: CardRecord[]): Promise<
   });
 }
 
-// If this dex number has an owned and/or wishlisted card that this curated
-// fetch's own rarity results don't include (an off-catalog card only ever
+// If this dex number has an owned and/or wishlisted card that a curated
+// write's own set of cards doesn't include (an off-catalog card only ever
 // discovered via "Show all cards"), find it in whatever's cached right now
-// and append it, so the write below doesn't silently discard it -- see
+// and append it, so the write doesn't silently discard it -- see
 // LoadAllCardDataOptions.owned and .wishlist for the full rationale. Reads
-// the EXISTING cache, not accumulator.cards itself, since accumulator.cards
-// is exactly the curated-only set that's missing the card in the first
-// place; if a referenced card isn't findable there either (e.g. its cache
-// entry was already lost some other way), there's nothing to preserve for
-// it and it's skipped. Owned and wishlisted are checked independently (not
-// e.g. owned-then-wishlist-as-fallback) since, although a given dex number
-// is never both at once (`markOwned` always clears any existing wishlist
-// entry for that dex number), this function has no need to assume that
-// invariant to stay correct.
+// the EXISTING cache, not `cards` itself, since `cards` is exactly the
+// curated-only set that's missing the card in the first place; if a
+// referenced card isn't findable there either (e.g. its cache entry was
+// already lost some other way), there's nothing to preserve for it and it's
+// skipped. Owned and wishlisted are checked independently (not e.g.
+// owned-then-wishlist-as-fallback) since, although a given dex number is
+// never both at once (`markOwned` always clears any existing wishlist entry
+// for that dex number), this function has no need to assume that invariant
+// to stay correct.
+//
+// Exported (not just used internally by loadAllCardData below) so
+// DexGrid's own static-database write paths -- the auto-load preload and
+// the static-first Refresh Data path, neither of which route through
+// loadAllCardData at all for a static-covered language -- share this exact
+// same preservation logic instead of each re-implementing it.
+export function preserveReferencedCards(
+  cards: CardRecord[],
+  dexNumber: number,
+  owned: Record<number, OwnedRecord>,
+  wishlist: Record<number, WishlistRecord>,
+  language: string
+): CardRecord[] {
+  const referencedCardIds = [owned[dexNumber]?.cardId, wishlist[dexNumber]?.cardId].filter(
+    (cardId): cardId is string => cardId !== undefined
+  );
+  if (referencedCardIds.length === 0) return cards;
+
+  let result = cards;
+  let existingCards: CardRecord[] | undefined;
+  for (const cardId of referencedCardIds) {
+    if (result.some((card) => card.id === cardId)) continue;
+    existingCards ??= getCachedCards(language, dexNumber) ?? [];
+    const referencedCard = existingCards.find((card) => card.id === cardId);
+    if (referencedCard) result = [...result, referencedCard];
+  }
+  return result;
+}
+
 function mergeReferencedCards(
   accumulator: DexAccumulator,
   owned: Record<number, OwnedRecord>,
   wishlist: Record<number, WishlistRecord>,
   language: string
 ): CardRecord[] {
-  const referencedCardIds = [
-    owned[accumulator.entry.number]?.cardId,
-    wishlist[accumulator.entry.number]?.cardId,
-  ].filter((cardId): cardId is string => cardId !== undefined);
-  if (referencedCardIds.length === 0) return accumulator.cards;
-
-  let cards = accumulator.cards;
-  let existingCards: CardRecord[] | undefined;
-  for (const cardId of referencedCardIds) {
-    if (cards.some((card) => card.id === cardId)) continue;
-    existingCards ??= getCachedCards(language, accumulator.entry.number) ?? [];
-    const referencedCard = existingCards.find((card) => card.id === cardId);
-    if (referencedCard) cards = [...cards, referencedCard];
-  }
-  return cards;
+  return preserveReferencedCards(accumulator.cards, accumulator.entry.number, owned, wishlist, language);
 }
 
 export async function loadAllCardData(

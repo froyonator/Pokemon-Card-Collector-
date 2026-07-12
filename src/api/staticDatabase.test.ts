@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadStaticCardData } from './staticDatabase';
+import { loadStaticCardData, refreshStaticCardData } from './staticDatabase';
 import type { CardRecord } from '../types';
 
 const sampleCard: CardRecord = {
@@ -95,5 +95,58 @@ describe('loadStaticCardData', () => {
     const result = await loadStaticCardData('static-default-fetch-test');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ 6: [sampleCard] });
+  });
+});
+
+describe('refreshStaticCardData', () => {
+  it('always issues a fresh fetch, even when loadStaticCardData already memoized this language', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ 6: [sampleCard] }));
+    await loadStaticCardData('static-refresh-test', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const updatedCard = { ...sampleCard, name: 'Charizard ex (updated)' };
+    fetchImpl.mockResolvedValueOnce(jsonResponse({ 6: [updatedCard] }));
+    const result = await refreshStaticCardData('static-refresh-test', fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ 6: [updatedCard] });
+  });
+
+  it('replaces the session memo, so a later loadStaticCardData call for the same language sees the refreshed data instead of re-fetching or returning the stale first result', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ 6: [sampleCard] }));
+    await loadStaticCardData('static-refresh-memo-test', fetchImpl);
+
+    const updatedCard = { ...sampleCard, name: 'Charizard ex (updated)' };
+    fetchImpl.mockResolvedValueOnce(jsonResponse({ 6: [updatedCard] }));
+    await refreshStaticCardData('static-refresh-memo-test', fetchImpl);
+
+    const afterRefresh = await loadStaticCardData('static-refresh-memo-test', fetchImpl);
+    expect(afterRefresh).toEqual({ 6: [updatedCard] });
+    // Still just the two fetches from above -- this loadStaticCardData call
+    // reused the memo refreshStaticCardData replaced, rather than issuing a
+    // third fetch of its own.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves to null (not a throw) on a non-2xx response, same as loadStaticCardData', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(null, false, 404));
+    const result = await refreshStaticCardData('static-refresh-404-test', fetchImpl);
+    expect(result).toBeNull();
+  });
+
+  it('resolves to null (not a throw) on a network error', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const result = await refreshStaticCardData('static-refresh-network-error-test', fetchImpl);
+    expect(result).toBeNull();
+  });
+
+  it('builds the URL from BASE_URL, language, and the data/cards/<language>.json convention, same as loadStaticCardData', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ 6: [sampleCard] }));
+    await refreshStaticCardData('static-refresh-url-test', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [calledUrl] = fetchImpl.mock.calls[0];
+    expect(String(calledUrl)).toBe(`${import.meta.env.BASE_URL}data/cards/static-refresh-url-test.json`);
   });
 });
