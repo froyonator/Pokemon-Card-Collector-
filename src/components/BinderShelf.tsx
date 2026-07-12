@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_COVER_COLOR } from '../data/binderCovers';
+import { useBinderTilt } from '../state/useBinderTilt';
 import type { Binder } from '../types';
 import styles from './BinderShelf.module.css';
 
@@ -34,44 +35,9 @@ export function BinderShelf({ binders, onOpenBinder, onCreateBinder }: BinderShe
         <p className={styles.subheading}>Pick a binder to lay it open on the desk.</p>
       </header>
       <ul className={styles.row}>
-        {binders.map((binder) => {
-          const color = binder.cover?.color ?? DEFAULT_COVER_COLOR;
-          return (
-            <li key={binder.id} className={styles.slot}>
-              <button
-                type="button"
-                className={styles.book}
-                aria-label={`Open ${binder.name}`}
-                onClick={() => onOpenBinder(binder.id)}
-              >
-                <span className={styles.pagesEdge} aria-hidden="true" />
-                <span
-                  className={styles.cover}
-                  style={{ backgroundColor: color }}
-                  aria-hidden="true"
-                >
-                  <span className={styles.coverStitch} />
-                  {binder.cover?.coverImageUri ? (
-                    <img
-                      className={styles.coverPlate}
-                      src={binder.cover.coverImageUri}
-                      alt=""
-                    />
-                  ) : (
-                    <span className={styles.coverEmblem} />
-                  )}
-                  <span className={styles.coverTitle}>{binder.name}</span>
-                </span>
-                <span className={styles.spineStrip} style={{ backgroundColor: color }} aria-hidden="true">
-                  <span className={styles.spineText}>
-                    {binder.cover?.spineText || binder.name}
-                  </span>
-                </span>
-              </button>
-              <span className={styles.plaque}>{binder.name}</span>
-            </li>
-          );
-        })}
+        {binders.map((binder) => (
+          <BinderVolume key={binder.id} binder={binder} onOpenBinder={onOpenBinder} />
+        ))}
         <li className={styles.slot}>
           {isNaming ? (
             <form
@@ -113,5 +79,69 @@ export function BinderShelf({ binders, onOpenBinder, onCreateBinder }: BinderShe
         </li>
       </ul>
     </section>
+  );
+}
+
+interface BinderVolumeProps {
+  binder: Binder;
+  onOpenBinder: (id: string) => void;
+}
+
+// One volume on the shelf. Split out from BinderShelf so useBinderTilt --
+// which tracks its own hover/rect state -- gets one hook instance per
+// binder rather than being called from inside a .map(), which would break
+// the rules of hooks as the binder list grows and shrinks.
+function BinderVolume({ binder, onOpenBinder }: BinderVolumeProps) {
+  const color = binder.cover?.color ?? DEFAULT_COVER_COLOR;
+  const coverImageUri = binder.cover?.coverImageUri;
+  const tilt = useBinderTilt();
+
+  return (
+    <li className={styles.slot}>
+      {/* The stationary hit target the tilt math measures against (see
+          useBinderTilt) -- it never itself transforms, so the pointer can't
+          slide the tracked rect out from under itself mid-hover. The
+          .volume child below is what actually leans with the cursor. */}
+      <button
+        type="button"
+        className={styles.book}
+        aria-label={`Open ${binder.name}`}
+        onClick={() => onOpenBinder(binder.id)}
+        onMouseMove={tilt.onMouseMove}
+        onMouseLeave={tilt.onMouseLeave}
+        ref={tilt.ref}
+      >
+        <span
+          className={tilt.isActive ? `${styles.volume} ${styles.volumeTilting}` : styles.volume}
+          style={tilt.style}
+        >
+          <span className={styles.pagesEdge} aria-hidden="true" />
+          <span className={styles.cover} style={{ backgroundColor: color }} aria-hidden="true">
+            {coverImageUri ? (
+              <>
+                <img className={styles.coverPlate} src={coverImageUri} alt="" />
+                {/* Scrim so the title stays legible over a bright or busy
+                    picture; the empty-state emblem needs no such thing. */}
+                <span className={styles.coverScrim} aria-hidden="true" />
+              </>
+            ) : (
+              <span className={styles.coverEmblem} />
+            )}
+            <span className={styles.coverStitch} />
+            <span
+              className={
+                coverImageUri ? `${styles.coverTitle} ${styles.coverTitleOnImage}` : styles.coverTitle
+              }
+            >
+              {binder.name}
+            </span>
+          </span>
+          <span className={styles.spineStrip} style={{ backgroundColor: color }} aria-hidden="true">
+            <span className={styles.spineText}>{binder.cover?.spineText || binder.name}</span>
+          </span>
+        </span>
+      </button>
+      <span className={styles.plaque}>{binder.name}</span>
+    </li>
   );
 }
