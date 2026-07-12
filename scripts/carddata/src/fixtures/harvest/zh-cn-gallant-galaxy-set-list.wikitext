@@ -1,0 +1,6 @@
+{{Setlist/header|title=Gallant Galaxy|tablecol=329dc9|bordercol=fee659|cellcol=d35588|rarity=yes|symbol=yes|image=SetSymbolCS5a.png}}
+{{Setlist/entry|001/127|F|{{TCG ID|Gallant Galaxy Charm|Charmander|1}}|Fire||C}}
+{{Setlist/entry|025/127|F|{{TCG ID|Gallant Galaxy Charm|Magikarp|25}}|Water||C}}
+{{Setlist/entry|095/127|F|[[Miraidon ex (Gallant Galaxy Charm 95)|Miraidon]]{{ex}}|Lightning||RR}}
+{{Setlist/entry|127/127|F|{{TCG ID|Gallant Galaxy Charm|Fire Energy|127}}|Energy|Fire|C}}
+{{Setlist/footer|cellcol=d35588}}

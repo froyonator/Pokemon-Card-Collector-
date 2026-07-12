@@ -1,0 +1,1 @@
+{{TCGPromoInfobox|setname=Scorching Skies<br>强化包 怒炎灼天|image=SetSymbolCS35.png|logo=CS35 logo.png|cards=90|date=January 5, 2024}}

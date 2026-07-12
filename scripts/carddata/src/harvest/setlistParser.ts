@@ -14,7 +14,7 @@ import type { ParsedSetPage, SetInfobox, SetlistRow, SetlistRowNameSource } from
 // any nested `{{ }}` or `[[ ]]` pair.
 
 /** Finds the balanced `{{...}}` template call starting at `startIndex` (which must point at its opening `{{`). Returns null if unbalanced. */
-function extractBalancedBraces(text: string, startIndex: number): { raw: string; endIndex: number } | null {
+export function extractBalancedBraces(text: string, startIndex: number): { raw: string; endIndex: number } | null {
   if (text.slice(startIndex, startIndex + 2) !== '{{') return null;
   let depth = 0;
   let i = startIndex;
@@ -58,7 +58,7 @@ function extractBalancedBrackets(text: string, startIndex: number): { raw: strin
 }
 
 /** Splits `inner` on `|` characters that are not nested inside a `{{...}}` or `[[...]]` pair. */
-function splitTopLevelPipes(inner: string): string[] {
+export function splitTopLevelPipes(inner: string): string[] {
   const parts: string[] = [];
   let braceDepth = 0;
   let bracketDepth = 0;
@@ -163,6 +163,41 @@ function resolveNameCell(nameCell: string): ResolvedName {
   return { displayName: trimmed, cardArticleTitle: trimmed, nameSource: 'literal' };
 }
 
+// --- Number-cell cleaning (reprint origin-set symbol) ------------------------
+
+/**
+ * A promo-style set's number cell can carry a leading `[[Image:...]]` (or
+ * `[[File:...]]`) wikilink -- the origin set's symbol icon -- before the
+ * actual printed number, marking the row as a reprint that visually
+ * belongs to that origin set rather than to the product it's listed in
+ * (confirmed live: a Trick or Trade 2022 row prints
+ * `[[Image:SetSymbolBattle Styles.png|18px|link=Battle Styles (TCG)]] 069/163`
+ * for a card that's really a Battle Styles reprint). Strips that wikilink
+ * off so `cardNumber`/`localId` come out clean, and -- when the link's
+ * `link=` param names a set article -- surfaces the origin set's plain
+ * name for the image-filename strategy that needs it.
+ */
+function stripOriginSetSymbol(cardNumberCell: string): { number: string; originSetName: string | null } {
+  const trimmed = cardNumberCell.trim();
+  if (!trimmed.startsWith('[[')) return { number: trimmed, originSetName: null };
+
+  const link = extractBalancedBrackets(trimmed, 0);
+  if (!link) return { number: trimmed, originSetName: null };
+
+  const linkParts = splitTopLevelPipes(link.raw.slice(2, -2));
+  const target = linkParts[0]?.trim() ?? '';
+  if (!/^(?:Image|File):/i.test(target)) return { number: trimmed, originSetName: null };
+
+  const number = trimmed.slice(link.endIndex).trim();
+  const linkParam = linkParts.find((p) => /^link\s*=/i.test(p.trim()));
+  let originSetName: string | null = null;
+  if (linkParam) {
+    const linkTarget = linkParam.slice(linkParam.indexOf('=') + 1).trim();
+    if (/\(A?TCG\)$/.test(linkTarget)) originSetName = deriveSetNameFromArticleTitle(linkTarget);
+  }
+  return { number, originSetName };
+}
+
 // --- Setlist row extraction -------------------------------------------------
 
 function nullIfEmpty(value: string | undefined): string | null {
@@ -178,11 +213,12 @@ function nullIfEmpty(value: string | undefined): string | null {
 // position 6 as the promo note. Re-verify against a real fetched example
 // before trusting promoNote on nmentry rows.
 function buildRow(params: string[], hasRarity: boolean): SetlistRow {
-  const [cardNumber, regulationMark, nameCell, primaryType, secondaryField, rarityOrPromo, trailingPromo] =
+  const [cardNumberCell, regulationMark, nameCell, primaryType, secondaryField, rarityOrPromo, trailingPromo] =
     params;
   const resolved = resolveNameCell(nameCell ?? '');
+  const { number: cardNumber, originSetName } = stripOriginSetSymbol(cardNumberCell ?? '');
   return {
-    cardNumber: (cardNumber ?? '').trim(),
+    cardNumber,
     regulationMark: nullIfEmpty(regulationMark),
     displayName: resolved.displayName,
     cardArticleTitle: resolved.cardArticleTitle,
@@ -191,6 +227,7 @@ function buildRow(params: string[], hasRarity: boolean): SetlistRow {
     rarity: hasRarity ? nullIfEmpty(rarityOrPromo) : null,
     promoNote: hasRarity ? nullIfEmpty(trailingPromo) : nullIfEmpty(rarityOrPromo),
     nameSource: resolved.nameSource,
+    originSetName,
   };
 }
 
@@ -228,16 +265,31 @@ function firstDefined(...values: Array<string | undefined>): string | null {
   return null;
 }
 
-/** Parses the `{{TCGExpansionInfobox|...}}` key=value block into structured fields, keeping every raw field for anything this type doesn't model yet. */
+// Most set articles use {{TCGExpansionInfobox}}; small in-between
+// enhancement packs (the zh-cn "CS-series" pattern documented in the
+// harvester's zh-cn recon notes) use {{TCGPromoInfobox}} instead, with a
+// slightly different field set (e.g. "date" rather than "release"). Both
+// share the same key=value-per-parameter shape, so one extraction routine
+// covers both -- whichever marker actually appears in the wikitext wins.
+const INFOBOX_MARKERS = ['{{TCGExpansionInfobox', '{{TCGPromoInfobox'] as const;
+
+/** Parses a set article's infobox (`{{TCGExpansionInfobox|...}}` or `{{TCGPromoInfobox|...}}`) key=value block into structured fields, keeping every raw field for anything this type doesn't model yet. */
 function parseSetInfobox(wikitext: string): SetInfobox {
-  const marker = '{{TCGExpansionInfobox';
-  const start = wikitext.indexOf(marker);
   const raw: Record<string, string> = {};
-  if (start !== -1) {
+  let marker: string | null = null;
+  let start = -1;
+  for (const candidate of INFOBOX_MARKERS) {
+    const idx = wikitext.indexOf(candidate);
+    if (idx !== -1 && (start === -1 || idx < start)) {
+      start = idx;
+      marker = candidate;
+    }
+  }
+  if (start !== -1 && marker) {
     const template = extractBalancedBraces(wikitext, start);
     if (template) {
       const inner = template.raw.slice(2, -2);
-      const afterName = inner.slice(marker.length - 2); // strip "TCGExpansionInfobox"
+      const afterName = inner.slice(marker.length - 2); // strip the infobox template name
       const fieldStart = afterName.startsWith('|') ? afterName.slice(1) : afterName;
       for (const part of splitTopLevelPipes(fieldStart)) {
         const eqIndex = part.indexOf('=');
@@ -254,13 +306,34 @@ function parseSetInfobox(wikitext: string): SetInfobox {
     raw,
     cardCount: cardCountRaw && /^\d+$/.test(cardCountRaw) ? Number(cardCountRaw) : null,
     setNumber: firstDefined(raw.ensetnum, raw.setnum),
-    releaseDate: firstDefined(raw.enrelease, raw.release),
+    releaseDate: firstDefined(raw.enrelease, raw.release, raw.date),
     japaneseName: firstDefined(raw.jasetname),
     japaneseSetNumber: firstDefined(raw.jasetnum),
     japaneseReleaseDate: firstDefined(raw.jarelease),
     previousSet: firstDefined(raw.prevset),
     nextSet: firstDefined(raw.nextset),
   };
+}
+
+// A zh-cn "CS-series" set code (e.g. "CS35", "CS5a"), as embedded verbatim
+// in an infobox's own image/logo filename field (see the harvester's zh-cn
+// recon notes) -- case-sensitive so it only matches the wiki's own code
+// styling, not incidental lowercase "cs" substrings elsewhere.
+const CS_CODE_PATTERN = /CS\d+[a-zA-Z]?/;
+
+/**
+ * Extracts a zh-cn CS-series set code from an infobox's raw field values,
+ * when one is present. This is the live, authoritative signal for a
+ * CS-series set's real code -- callers harvesting the zh-cn namespace
+ * should prefer it over any hand-curated mapping guess when the two
+ * disagree.
+ */
+export function extractCsCode(setInfo: Pick<SetInfobox, 'raw'>): string | null {
+  for (const value of Object.values(setInfo.raw)) {
+    const match = value.match(CS_CODE_PATTERN);
+    if (match) return match[0];
+  }
+  return null;
 }
 
 // --- Public API --------------------------------------------------------------

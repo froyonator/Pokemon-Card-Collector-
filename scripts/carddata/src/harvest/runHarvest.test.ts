@@ -3,13 +3,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { CardRecord } from '../augmentFromSupplemental';
-import { parseSetPageWikitext } from './setlistParser';
-import type { WikiImageInfo } from './types';
+import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } from './setlistParser';
+import type { SetlistRow, WikiImageInfo, WikiPageWikitext } from './types';
 import {
   buildCardIdIndex,
+  buildRowImageCandidates,
   computeEnrichmentFills,
+  computeEnrichmentMatchRate,
   deriveImageGuessCardName,
   emptyProgress,
+  ENRICHMENT_MATCH_THRESHOLD,
   extractNumerator,
   filterGen1Rows,
   isEnrichDone,
@@ -18,6 +21,7 @@ import {
   normalizeNumerator,
   parseArgs,
   resolveHarvestedCardImages,
+  resolveZhCnSetId,
   selectPendingJobs,
   type ProgressFile,
 } from './runHarvest';
@@ -74,6 +78,59 @@ describe('deriveImageGuessCardName', () => {
 
   it('passes through a title with no parenthetical', () => {
     expect(deriveImageGuessCardName('Pikachu')).toBe('Pikachu');
+  });
+});
+
+function makeRow(overrides: Partial<SetlistRow>): SetlistRow {
+  return {
+    cardNumber: '001/100',
+    regulationMark: null,
+    displayName: 'Test',
+    cardArticleTitle: 'Test (Test Set 1)',
+    primaryType: null,
+    secondaryField: null,
+    rarity: null,
+    promoNote: null,
+    nameSource: 'literal',
+    originSetName: null,
+    ...overrides,
+  };
+}
+
+describe('buildRowImageCandidates', () => {
+  it('strategy (a): derives the filename from the cardArticleTitle disambiguator, ignoring the promo set name entirely', () => {
+    // Real evidence: this row lives in the "Trick or Trade 2022" promo set
+    // list, but its scan really files under Battle Styles.
+    const row = makeRow({
+      cardNumber: '069/163',
+      cardArticleTitle: 'Cubone (Battle Styles 69)',
+      originSetName: 'Battle Styles',
+    });
+    expect(buildRowImageCandidates('Trick or Trade 2022', row)).toEqual([
+      'CuboneBattleStyles69.jpg',
+      'CuboneBattleStyles69.png',
+    ]);
+  });
+
+  it('strategy (b): falls back to the promo set name, plus originSetName, when the title has no disambiguator', () => {
+    const row = makeRow({
+      cardNumber: '069/163',
+      displayName: 'Cubone',
+      cardArticleTitle: 'Cubone',
+      originSetName: 'Battle Styles',
+      nameSource: 'literal',
+    });
+    expect(buildRowImageCandidates('Trick or Trade 2022', row)).toEqual([
+      'CuboneTrickorTrade202269.jpg',
+      'CuboneTrickorTrade202269.png',
+      'CuboneBattleStyles69.jpg',
+      'CuboneBattleStyles69.png',
+    ]);
+  });
+
+  it('strategy (b) without an originSetName only tries the promo set name', () => {
+    const row = makeRow({ cardNumber: '5/30', cardArticleTitle: 'Bare Name' });
+    expect(buildRowImageCandidates('Some Promo', row)).toEqual(['BareNameSomePromo5.jpg', 'BareNameSomePromo5.png']);
   });
 });
 
@@ -141,6 +198,107 @@ describe('resolveHarvestedCardImages', () => {
     const result = await resolveHarvestedCardImages({ queryImageInfo }, 'Surging Sparks', []);
     expect(result).toEqual([]);
   });
+
+  it('resolves a reprint row against its origin set via the cardArticleTitle disambiguator, not the promo set it was listed under', async () => {
+    const { cardListRows } = parseSetPageWikitext(fixture('trick-or-trade-2022-card-list.wikitext'));
+    const gen1Rows = filterGen1Rows(cardListRows).filter((r) => r.dex.name === 'Cubone');
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) {
+        const isRealFile = title === 'File:CuboneBattleStyles69.jpg';
+        map.set(title, { fileTitle: title, url: isRealFile ? `https://example.invalid/${title}` : null, missing: !isRealFile });
+      }
+      return map;
+    };
+
+    const [card] = await resolveHarvestedCardImages({ queryImageInfo }, 'Trick or Trade 2022', gen1Rows);
+
+    expect(card.localId).toBe('069');
+    expect(card.imageMissing).toBe(false);
+    expect(card.imageUrl).toBe('https://example.invalid/File:CuboneBattleStyles69.jpg');
+  });
+
+  it('falls back to the card article infobox (strategy c) when the filename guesses all miss, and skips it when parsePageWikitext is not provided', async () => {
+    const row = makeRow({
+      cardNumber: '5/30',
+      displayName: 'Bulbasaur',
+      cardArticleTitle: 'Bulbasaur',
+      originSetName: 'Origin Set',
+    });
+    const gen1Rows = filterGen1Rows([row]);
+    const missAll = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+
+    const withoutInfobox = await resolveHarvestedCardImages({ queryImageInfo: missAll }, 'Promo Set', gen1Rows);
+    expect(withoutInfobox[0].imageMissing).toBe(true);
+
+    const parsePageWikitext = async (title: string): Promise<WikiPageWikitext> => {
+      expect(title).toBe('Bulbasaur');
+      return {
+        title,
+        pageId: 1,
+        wikitext: '{{PokémoncardInfobox|cardname=Bulbasaur|image=BulbasaurOriginSet5.jpg}}',
+      };
+    };
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) {
+        const isRealFile = title === 'File:BulbasaurOriginSet5.jpg';
+        map.set(title, { fileTitle: title, url: isRealFile ? `https://example.invalid/${title}` : null, missing: !isRealFile });
+      }
+      return map;
+    };
+
+    const [card] = await resolveHarvestedCardImages({ queryImageInfo, parsePageWikitext }, 'Promo Set', gen1Rows);
+    expect(card.imageMissing).toBe(false);
+    expect(card.imageUrl).toBe('https://example.invalid/File:BulbasaurOriginSet5.jpg');
+  });
+
+  it('strategy (c) targets the cardArticleTitle disambiguator set name, not just originSetName/promoSetName, against a shared multi-printing infobox', async () => {
+    // Real evidence: "Pikachu (Paldean Fates 18)" resolves (via a wiki
+    // redirect) to Pikachu's shared article, whose bare `image=` belongs to
+    // a DIFFERENT (Paldea Evolved) printing -- only the disambiguator's own
+    // "Paldean Fates" set name, matched against the `reprintN`/`recaptionN`
+    // fields, finds the right one.
+    const row = makeRow({
+      cardNumber: '018/091',
+      displayName: 'Pikachu',
+      cardArticleTitle: 'Pikachu (Paldean Fates 18)',
+    });
+    const gen1Rows = filterGen1Rows([row]);
+    const parsePageWikitext = async (title: string): Promise<WikiPageWikitext> => {
+      expect(title).toBe('Pikachu (Paldean Fates 18)');
+      return {
+        title: 'Pikachu (Paldea Evolved 62)', // the article redirects to the shared/primary printing
+        pageId: 1,
+        wikitext:
+          '{{PokémoncardInfobox|cardname=Pikachu' +
+          '|image=PikachuPaldeaEvolved62.jpg|caption={{TCG|Paldea Evolved}} print' +
+          '|reprint1=PikachuPaldeanFates131.jpg|recaption1={{TCG|Paldean Fates}} print}}',
+      };
+    };
+    // Every filename-guess candidate misses; only the infobox-derived one
+    // ("PikachuPaldeanFates131.jpg", found via strategy c) is real.
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) {
+        const isRealFile = title === 'File:PikachuPaldeanFates131.jpg';
+        map.set(title, { fileTitle: title, url: isRealFile ? `https://example.invalid/${title}` : null, missing: !isRealFile });
+      }
+      return map;
+    };
+
+    const [resolved] = await resolveHarvestedCardImages(
+      { queryImageInfo, parsePageWikitext },
+      'Trick or Trade 2024',
+      gen1Rows
+    );
+    expect(resolved.imageMissing).toBe(false);
+    expect(resolved.imageUrl).toBe('https://example.invalid/File:PikachuPaldeanFates131.jpg');
+  });
 });
 
 describe('computeEnrichmentFills', () => {
@@ -189,6 +347,43 @@ describe('computeEnrichmentFills', () => {
       'Surging Sparks'
     );
     expect(fills).toEqual([]);
+  });
+});
+
+describe('computeEnrichmentMatchRate', () => {
+  const rows = parseSetPageWikitext(fixture('surging-sparks-card-list.wikitext')).cardListRows;
+
+  it('returns 1 when every held card matches a parsed row by (zero-stripped) localId', () => {
+    const idIndex = new Map<string, Pick<CardRecord, 'localId'>>([
+      ['held-exeggcute', { localId: '001' }],
+      ['held-pikachu-57', { localId: '57' }],
+    ]);
+    expect(computeEnrichmentMatchRate(['held-exeggcute', 'held-pikachu-57'], rows, idIndex)).toBe(1);
+  });
+
+  it('returns a fraction when only some held cards match', () => {
+    const idIndex = new Map<string, Pick<CardRecord, 'localId'>>([
+      ['held-exeggcute', { localId: '001' }],
+      ['held-nomatch', { localId: '999' }],
+    ]);
+    expect(computeEnrichmentMatchRate(['held-exeggcute', 'held-nomatch'], rows, idIndex)).toBe(0.5);
+  });
+
+  it('returns 0 when no held card id resolves in the index at all', () => {
+    const idIndex = new Map<string, Pick<CardRecord, 'localId'>>();
+    expect(computeEnrichmentMatchRate(['not-held'], rows, idIndex)).toBe(0);
+  });
+
+  it('the below-threshold case that the enrichment guard is meant to catch', () => {
+    // A wrong-article resolution: none of our held cards' localIds show up
+    // in the (unrelated) parsed set list.
+    const idIndex = new Map<string, Pick<CardRecord, 'localId'>>([
+      ['held-a', { localId: '5' }],
+      ['held-b', { localId: '6' }],
+      ['held-c', { localId: '7' }],
+    ]);
+    const rate = computeEnrichmentMatchRate(['held-a', 'held-b', 'held-c'], rows, idIndex);
+    expect(rate).toBeLessThan(ENRICHMENT_MATCH_THRESHOLD);
   });
 });
 
@@ -277,5 +472,39 @@ describe('parseArgs', () => {
 
   it('throws on an unknown flag', () => {
     expect(() => parseArgs(['--lang', 'en', '--job', 'enrich', '--bogus'])).toThrow(/Unknown option/);
+  });
+});
+
+describe('resolveZhCnSetId', () => {
+  it('keeps the mapping proposal when the infobox carries no CS code', () => {
+    expect(resolveZhCnSetId('ardentobsidian', null)).toEqual({ setId: 'ardentobsidian', mismatched: false });
+  });
+
+  it('keeps the mapping proposal when the infobox CS code agrees (case/format-insensitively)', () => {
+    expect(resolveZhCnSetId('cs35', 'CS35')).toEqual({ setId: 'cs35', mismatched: false });
+  });
+
+  it('prefers the infobox CS code and flags a mismatch when the mapping guessed wrong', () => {
+    expect(resolveZhCnSetId('scorchingskies', 'CS35')).toEqual({ setId: 'cs35', mismatched: true });
+  });
+});
+
+describe('end-to-end: zh-cn (ATCG) fixture', () => {
+  it('parses the infobox and set list, Gen1-filters the rows, and resolves the CS code -- all from static fixtures, no network', () => {
+    const infoboxWikitext = fixture('zh-cn-gallant-galaxy-infobox.wikitext');
+    const setListWikitext = fixture('zh-cn-gallant-galaxy-set-list.wikitext');
+
+    const { setInfo } = parseSetPageWikitext(infoboxWikitext);
+    const { cardListRows } = parseSetPageWikitext(setListWikitext);
+
+    expect(deriveSetNameFromArticleTitle('Gallant Galaxy (ATCG)')).toBe('Gallant Galaxy');
+    expect(extractCsCode(setInfo)).toBe('CS5a');
+
+    const gen1Rows = filterGen1Rows(cardListRows);
+    expect(gen1Rows.map((m) => m.dex.name)).toEqual(['Charmander', 'Magikarp']);
+    expect(gen1Rows.every((m) => m.row.cardArticleTitle.includes('Miraidon'))).toBe(false);
+
+    const resolution = resolveZhCnSetId('gallantgalaxy', extractCsCode(setInfo));
+    expect(resolution).toEqual({ setId: 'cs5a', mismatched: true });
   });
 });

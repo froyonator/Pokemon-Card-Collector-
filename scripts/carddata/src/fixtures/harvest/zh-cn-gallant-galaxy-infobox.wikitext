@@ -1,0 +1,8 @@
+{{TCGExpansionInfobox
+|setname=Gallant Galaxy<br>勇魅群星
+|image=SetSymbolCS5a.png
+|logo=CS5a logo.png
+|cards=354
+|setnum=7
+|release=June 18, 2024
+}}

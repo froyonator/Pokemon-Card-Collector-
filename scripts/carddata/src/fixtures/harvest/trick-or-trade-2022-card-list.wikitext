@@ -1,0 +1,5 @@
+{{Setlist/header|title=Trick or Trade 2022|tablecol=F8E22E|bordercol=7B0800|cellcol=0FBDED|rarity=yes|symbol=yes}}
+{{Setlist/entry|[[Image:SetSymbolBattle Styles.png|18px|link=Battle Styles (TCG)]] 069/163|E|[[Cubone (Battle Styles 69)|Cubone]]|Fighting||Common}}
+{{Setlist/entry|[[File:SetSymbolChilling Reign.png|18px|link=Chilling Reign (TCG)]] 055/198|E|[[Gastly (Chilling Reign 55)|Gastly]]|Psychic||Common}}
+{{Setlist/entry|012/030|E|{{TCG ID|Trick or Trade 2022|Some Trainer|12}}|Item||Uncommon}}
+{{Setlist/footer|cellcol=0FBDED}}

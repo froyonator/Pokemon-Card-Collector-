@@ -2,9 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMissingSetJobs,
+  buildZhCnJobs,
   deriveProposedSetId,
   deriveWikiArticleTitle,
+  deriveZhCnSetId,
   type GapManifest,
+  type ZhCnArticleMappingFile,
 } from './harvestJobs';
 
 describe('deriveWikiArticleTitle', () => {
@@ -97,5 +100,95 @@ describe('buildMissingSetJobs', () => {
     const jobs = buildMissingSetJobs(manifest);
     expect(jobs.some((job) => job.language === 'fr')).toBe(false);
     expect(jobs.some((job) => job.language === 'en')).toBe(true);
+  });
+});
+
+describe('deriveZhCnSetId', () => {
+  it('lowercases and strips punctuation from a single csCode', () => {
+    expect(deriveZhCnSetId({ csCode: 'CS35', key: 'scorching-skies', articleTitle: 'Scorching Skies (ATCG)' })).toBe(
+      'cs35'
+    );
+  });
+
+  it('takes only the first sub-code of a split csCode', () => {
+    expect(
+      deriveZhCnSetId({ csCode: 'CS5a / CS5b', key: 'gallant-galaxy', articleTitle: 'Gallant Galaxy (ATCG)' })
+    ).toBe('cs5a');
+  });
+
+  it('falls back to a compact slug of the article title when csCode is null', () => {
+    expect(
+      deriveZhCnSetId({ csCode: null, key: 'collection-151', articleTitle: 'Collection 151 (ATCG)' })
+    ).toBe('collection151');
+  });
+
+  it('falls back to a compact slug of the mapping key when there is no article title either', () => {
+    expect(deriveZhCnSetId({ csCode: null, key: 'sv-era-promo-packs', articleTitle: null })).toBe('sverapromopacks');
+  });
+});
+
+describe('buildZhCnJobs', () => {
+  const mapping: ZhCnArticleMappingFile = {
+    sets: [
+      {
+        key: 'scorching-skies',
+        articleTitle: 'Scorching Skies (ATCG)',
+        csCode: 'CS35',
+        notes: 'sample-parsed',
+        cardCount: 90,
+      },
+      {
+        key: 'gallant-galaxy',
+        articleTitle: 'Gallant Galaxy (ATCG)',
+        csCode: 'CS5a / CS5b',
+        notes: 'sample-parsed, two subsets',
+      },
+      {
+        key: 'ardent-obsidian',
+        articleTitle: 'Ardent Obsidian (ATCG)',
+        csCode: null,
+        notes: 'in the 29-article search, code unconfirmed',
+      },
+      {
+        key: 'sv-era-promo-packs',
+        articleTitle: null,
+        csCode: null,
+        notes: 'no known article found in this recon pass',
+      },
+    ],
+  };
+
+  it('builds a job per entry with a known article title, using it verbatim as setName', () => {
+    const { jobs } = buildZhCnJobs(mapping);
+    expect(jobs).toHaveLength(3);
+    expect(jobs.every((job) => job.language === 'zh-cn')).toBe(true);
+    expect(jobs.map((job) => job.setName)).toEqual([
+      'Scorching Skies (ATCG)',
+      'Gallant Galaxy (ATCG)',
+      'Ardent Obsidian (ATCG)',
+    ]);
+  });
+
+  it('derives proposedSetId per entry (code-derived, sub-code, and name-slug fallback)', () => {
+    const { jobs } = buildZhCnJobs(mapping);
+    expect(jobs.map((job) => job.proposedSetId)).toEqual(['cs35', 'cs5a', 'ardentobsidian']);
+  });
+
+  it('carries cardCount through when the mapping recorded one, else null', () => {
+    const { jobs } = buildZhCnJobs(mapping);
+    expect(jobs[0].cardCount).toBe(90);
+    expect(jobs[1].cardCount).toBeNull();
+  });
+
+  it('routes null-article entries to unresolved instead of producing a job', () => {
+    const { jobs, unresolved } = buildZhCnJobs(mapping);
+    expect(jobs.some((job) => job.setName === null)).toBe(false);
+    expect(unresolved).toEqual([
+      { key: 'sv-era-promo-packs', notes: 'no known article found in this recon pass' },
+    ]);
+  });
+
+  it('returns empty jobs/unresolved for an empty mapping', () => {
+    expect(buildZhCnJobs({ sets: [] })).toEqual({ jobs: [], unresolved: [] });
   });
 });

@@ -21,7 +21,15 @@ export interface WikiImageInfo {
   height?: number;
   mime?: string;
   sha1?: string;
-  /** True when the wiki has no File: page under this title at all. */
+  /**
+   * True when the query returned no `imageinfo` for this title at all --
+   * i.e. no resolvable file, on the local wiki OR its shared media
+   * repository. NOT the same as the response's own `missing` flag: a file
+   * that lives only on the shared repository (true of every real card
+   * scan) reports `missing: true` on its local wiki page while still
+   * carrying a fully populated `imageinfo`, so that flag alone isn't a
+   * reliable "does this file exist" signal.
+   */
   missing: boolean;
 }
 
@@ -59,6 +67,15 @@ export interface SetlistRow {
   /** Promo/note text, only populated on "Additional Cards" rows. */
   promoNote: string | null;
   nameSource: SetlistRowNameSource;
+  /**
+   * A promo-style set's number cell can carry a leading set-symbol wikilink
+   * (`[[Image:...|link=Origin Set (TCG)]]`) marking the row as a reprint
+   * that visually belongs to that origin set rather than to the set it's
+   * listed in. This is that origin set's plain name (its `(TCG)`/`(ATCG)`
+   * suffix stripped), when the cell carried one and its `link=` target
+   * named a set article; null on an ordinary row.
+   */
+  originSetName: string | null;
 }
 
 /** Structured fields lifted from a set article's `{{TCGExpansionInfobox}}` call. */

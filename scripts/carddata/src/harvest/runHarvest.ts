@@ -23,10 +23,22 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CardRecord } from '../augmentFromSupplemental';
 import { GEN1_DEX, type DexEntry } from '../../../../src/data/gen1Dex';
-import { guessCardImageFilename, resolveCardImages, toFileTitle } from './cardImageResolver';
+import {
+  guessCardImageFilename,
+  parseCardArticleDisambiguator,
+  parseCardInfoboxImageFilename,
+  resolveCardImages,
+  toFileTitle,
+} from './cardImageResolver';
 import { buildEnrichmentJobs, type EnrichmentJob, type LocalIncompleteManifest } from './enrichmentJobs';
-import { buildMissingSetJobs, type GapManifest, type HarvestJob } from './harvestJobs';
-import { deriveSetNameFromArticleTitle, parseSetPageWikitext } from './setlistParser';
+import {
+  buildMissingSetJobs,
+  buildZhCnJobs,
+  type GapManifest,
+  type HarvestJob,
+  type ZhCnArticleMappingFile,
+} from './harvestJobs';
+import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } from './setlistParser';
 import type { SetlistRow, WikiImageInfo } from './types';
 import { createWikiApiClient, type WikiApiClient } from './wikiApiClient';
 
@@ -116,69 +128,157 @@ export interface SetHarvestResult {
   cards: HarvestedCard[];
 }
 
-interface RowImageGuess {
+interface RowImageState {
   row: SetlistRow;
   dex: DexEntry;
-  jpgFilename: string;
-  pngFilename: string;
-}
-
-export function buildImageGuesses(setName: string, gen1Rows: Gen1MatchedRow[]): RowImageGuess[] {
-  return gen1Rows.map(({ row, dex }) => {
-    const cardName = deriveImageGuessCardName(row.cardArticleTitle);
-    return {
-      row,
-      dex,
-      jpgFilename: guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'jpg' }),
-      pngFilename: guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'png' }),
-    };
-  });
+  candidates: string[];
+  resolved: WikiImageInfo | null;
 }
 
 /**
- * Resolves images for Gen1-filtered rows via a best-effort filename guess
- * (see cardImageResolver.ts's own caveat: the literal infobox filename is
- * the authoritative source, but fetching every card's own article page is
- * out of scope here -- this guesses .jpg first, then .png for whatever
- * didn't resolve, confirming each guess against real imageinfo rather than
- * trusting it blind).
+ * Builds one row's ordered image-filename candidates (jpg then png at each
+ * step).
+ *
+ * (a) When the card article title carries the "Name (SetName Number)"
+ *     disambiguator -- true of every macro- or wikilink-derived title,
+ *     reprint rows included, where SetName is the origin set the scan
+ *     actually files under -- derive the filename straight from it
+ *     (confirmed live: a Trick or Trade 2022 row, cardArticleTitle
+ *     "Cubone (Battle Styles 69)", resolves to the real
+ *     "CuboneBattleStyles69.jpg" this way even though the row itself lives
+ *     in a Trick or Trade promo set list).
+ * (b) Only when (a) doesn't apply (a bare `literal` name with no
+ *     parenthetical): the promo set's own name, plus the row's
+ *     originSetName when the number cell carried a reprint's origin-set
+ *     symbol.
+ */
+export function buildRowImageCandidates(promoSetName: string, row: SetlistRow): string[] {
+  const disambiguator = parseCardArticleDisambiguator(row.cardArticleTitle);
+  if (disambiguator) {
+    return [
+      guessCardImageFilename({
+        cardName: disambiguator.cardName,
+        setName: disambiguator.setName,
+        cardNumber: disambiguator.number,
+        extension: 'jpg',
+      }),
+      guessCardImageFilename({
+        cardName: disambiguator.cardName,
+        setName: disambiguator.setName,
+        cardNumber: disambiguator.number,
+        extension: 'png',
+      }),
+    ];
+  }
+
+  const cardName = deriveImageGuessCardName(row.cardArticleTitle);
+  const setNames = row.originSetName ? [promoSetName, row.originSetName] : [promoSetName];
+  const candidates: string[] = [];
+  for (const setName of setNames) {
+    candidates.push(
+      guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'jpg' }),
+      guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'png' })
+    );
+  }
+  return candidates;
+}
+
+/**
+ * (c) fallback: fetches a still-unresolved row's own card article wikitext
+ * and reads its infobox `image=` field -- the authoritative source, used
+ * only once the filename-guess strategies (a)/(b) have both come up empty
+ * (fetching every card's own article page for every row would defeat the
+ * whole point of the batched imageinfo guess above). The fetched article
+ * can turn out to be a shared multi-printing one (confirmed live: several
+ * printings of the same card sharing one article via `reprintN` fields,
+ * with the bare `image=` belonging to whichever printing is listed
+ * first -- not necessarily this row's), so the disambiguator's own setName
+ * (what strategy (a) would have targeted) is included among the set names
+ * `parseCardInfoboxImageFilename` matches a numbered field against,
+ * alongside the row's originSetName and the promo set it was harvested
+ * from.
+ */
+async function resolveViaCardArticleInfobox(
+  parsePageWikitext: WikiApiClient['parsePageWikitext'],
+  row: SetlistRow,
+  promoSetName: string
+): Promise<string | null> {
+  try {
+    const page = await parsePageWikitext(row.cardArticleTitle);
+    const disambiguatorSetName = parseCardArticleDisambiguator(row.cardArticleTitle)?.setName ?? null;
+    const targetSetNames = [disambiguatorSetName, row.originSetName, promoSetName].filter(
+      (s): s is string => Boolean(s)
+    );
+    return parseCardInfoboxImageFilename(page.wikitext, targetSetNames);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves images for Gen1-filtered rows: batched filename-guess strategies
+ * (a)/(b) first (each round queries every still-unresolved row's next
+ * candidate in one batched imageinfo request, so the number of requests is
+ * bounded by the longest candidate list, not by row count), then -- for
+ * whatever's still unresolved -- strategy (c), the card article's own
+ * infobox (see cardImageResolver.ts's own caveat: that literal filename is
+ * the authoritative source; the guesses are what make bulk resolution
+ * affordable in the first place). `parsePageWikitext` is optional on the
+ * client type so callers that only need (a)/(b) (e.g. this module's own
+ * tests) don't have to stub it.
  */
 export async function resolveHarvestedCardImages(
-  client: Pick<WikiApiClient, 'queryImageInfo'>,
+  client: Pick<WikiApiClient, 'queryImageInfo'> & { parsePageWikitext?: WikiApiClient['parsePageWikitext'] },
   setName: string,
   gen1Rows: Gen1MatchedRow[]
 ): Promise<HarvestedCard[]> {
   if (gen1Rows.length === 0) return [];
-  const guesses = buildImageGuesses(setName, gen1Rows);
 
-  const jpgInfo = await resolveCardImages(client, guesses.map((g) => g.jpgFilename));
-  const needsPng = guesses.filter((g) => {
-    const info = jpgInfo.get(toFileTitle(g.jpgFilename));
-    return !info || info.missing;
-  });
-  const pngInfo =
-    needsPng.length > 0
-      ? await resolveCardImages(client, needsPng.map((g) => g.pngFilename))
-      : new Map<string, WikiImageInfo>();
+  const states: RowImageState[] = gen1Rows.map(({ row, dex }) => ({
+    row,
+    dex,
+    candidates: buildRowImageCandidates(setName, row),
+    resolved: null,
+  }));
 
-  return guesses.map((guess) => {
-    const jpgResult = jpgInfo.get(toFileTitle(guess.jpgFilename));
-    const pngResult = pngInfo.get(toFileTitle(guess.pngFilename));
-    const resolved =
-      jpgResult && !jpgResult.missing ? jpgResult : pngResult && !pngResult.missing ? pngResult : null;
-    return {
-      dexNumber: guess.dex.number,
-      name: guess.row.displayName,
-      cardArticleTitle: guess.row.cardArticleTitle,
-      cardNumber: guess.row.cardNumber,
-      localId: extractNumerator(guess.row.cardNumber),
-      rarity: guess.row.rarity,
-      regulationMark: guess.row.regulationMark,
-      imageFileTitle: resolved ? resolved.fileTitle : null,
-      imageUrl: resolved ? resolved.url : null,
-      imageMissing: !resolved,
-    };
-  });
+  const maxCandidates = states.reduce((max, s) => Math.max(max, s.candidates.length), 0);
+  for (let round = 0; round < maxCandidates; round++) {
+    const pending = states.filter((s) => !s.resolved && round < s.candidates.length);
+    if (pending.length === 0) continue;
+    const info = await resolveCardImages(
+      client,
+      pending.map((s) => s.candidates[round])
+    );
+    for (const state of pending) {
+      const result = info.get(toFileTitle(state.candidates[round]));
+      if (result && !result.missing) state.resolved = result;
+    }
+  }
+
+  const parsePageWikitext = client.parsePageWikitext;
+  if (parsePageWikitext) {
+    for (const state of states) {
+      if (state.resolved) continue;
+      const filename = await resolveViaCardArticleInfobox(parsePageWikitext, state.row, setName);
+      if (!filename) continue;
+      const info = await resolveCardImages(client, [filename]);
+      const result = info.get(toFileTitle(filename));
+      if (result && !result.missing) state.resolved = result;
+    }
+  }
+
+  return states.map((state) => ({
+    dexNumber: state.dex.number,
+    name: state.row.displayName,
+    cardArticleTitle: state.row.cardArticleTitle,
+    cardNumber: state.row.cardNumber,
+    localId: extractNumerator(state.row.cardNumber),
+    rarity: state.row.rarity,
+    regulationMark: state.row.regulationMark,
+    imageFileTitle: state.resolved ? state.resolved.fileTitle : null,
+    imageUrl: state.resolved ? state.resolved.url : null,
+    imageMissing: !state.resolved,
+  }));
 }
 
 // --- Enrichment -------------------------------------------------------------
@@ -234,6 +334,36 @@ export function computeEnrichmentFills(
   return fills;
 }
 
+/** Below this fraction of held cards matching a parsed row by localId, the resolved article is treated as the wrong one and the whole set is skipped -- see computeEnrichmentMatchRate. */
+export const ENRICHMENT_MATCH_THRESHOLD = 0.3;
+
+/**
+ * Safety guard for enrichment: the wiki article for a held set is found via
+ * a search heuristic (resolveEnrichmentArticleTitle) that can match the
+ * wrong article entirely (a same-named set from a different product line,
+ * a disambiguation page, ...). Before applying any fills from a resolved
+ * article, checks what fraction of the job's held cards actually match one
+ * of its parsed rows by localId, using the same leading-zero-stripped
+ * normalization mergeHarvest's own dedup key uses -- a low match rate means
+ * the article is almost certainly the wrong one, not that our data is just
+ * incomplete.
+ */
+export function computeEnrichmentMatchRate(
+  cardIds: string[],
+  rows: SetlistRow[],
+  idIndex: Map<string, Pick<CardRecord, 'localId'>>
+): number {
+  const heldNumerators = cardIds
+    .map((id) => idIndex.get(id)?.localId)
+    .filter((localId): localId is string => Boolean(localId))
+    .map(normalizeNumerator);
+  if (heldNumerators.length === 0) return 0;
+
+  const parsedNumerators = new Set(rows.map((row) => normalizeNumerator(row.cardNumber)));
+  const matched = heldNumerators.filter((numerator) => parsedNumerators.has(numerator)).length;
+  return matched / heldNumerators.length;
+}
+
 export function buildCardIdIndex(cardsByDex: Record<string, CardRecord[]>): Map<string, CardRecord> {
   const index = new Map<string, CardRecord>();
   for (const bucket of Object.values(cardsByDex)) {
@@ -249,6 +379,30 @@ async function resolveEnrichmentArticleTitle(
   const results = await client.searchPageTitles(setId, { limit: 5 });
   const match = results.find((r) => /\(A?TCG\)$/.test(r.title));
   return match ? match.title : null;
+}
+
+// --- zh-cn setId resolution ---------------------------------------------------
+
+export interface ZhCnSetIdResolution {
+  setId: string;
+  /** True when the fetched article's own infobox carried a CS code that disagreed with the mapping's proposed setId -- the caller should log a warning. */
+  mismatched: boolean;
+}
+
+/**
+ * Resolves a zh-cn missing-set job's final setId: prefers a CS-series code
+ * found in the fetched article's own infobox over the curated mapping's
+ * proposed setId when the two disagree (the live infobox is the
+ * authoritative source; the mapping is a hand-curated guess, sometimes with
+ * no code recorded at all -- see data/harvest/zh-cn-articles.json). Pure
+ * and side-effect-free -- the caller is responsible for logging the actual
+ * warning when `mismatched` is true.
+ */
+export function resolveZhCnSetId(proposedSetId: string, infoboxCsCode: string | null): ZhCnSetIdResolution {
+  if (!infoboxCsCode) return { setId: proposedSetId, mismatched: false };
+  const infoboxSetId = infoboxCsCode.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  if (!infoboxSetId || infoboxSetId === proposedSetId) return { setId: proposedSetId, mismatched: false };
+  return { setId: infoboxSetId, mismatched: true };
 }
 
 // --- Checkpoint/resume -------------------------------------------------------
@@ -331,6 +485,7 @@ export function parseArgs(argv: string[]): CliArgs {
 const DATA_DIR = 'data';
 const GAP_MANIFEST_PATH = path.join(DATA_DIR, 'gap-audit', 'GAP-MANIFEST.json');
 const LOCAL_INCOMPLETE_PATH = path.join(DATA_DIR, 'gap-audit', 'local-incomplete.json');
+const ZH_CN_ARTICLES_PATH = path.join(DATA_DIR, 'harvest', 'zh-cn-articles.json');
 const PROGRESS_PATH = path.join(DATA_DIR, 'harvest', 'progress.json');
 const APP_CARDS_DIR = path.resolve('..', '..', 'public', 'data', 'cards');
 
@@ -351,9 +506,27 @@ async function saveProgress(progress: ProgressFile): Promise<void> {
   await writeFile(PROGRESS_PATH, JSON.stringify(progress, null, 2), 'utf8');
 }
 
+/**
+ * zh-cn has no per-set data in the gap manifest (just one aggregated
+ * "CS-series sets" row), so its jobs come from the curated article mapping
+ * instead -- see buildZhCnJobs's own doc comment. Unresolved mapping
+ * entries (no known article yet) are reported here rather than attempted.
+ */
+async function loadZhCnJobs(): Promise<HarvestJob[]> {
+  const mapping = JSON.parse(await readFile(ZH_CN_ARTICLES_PATH, 'utf8')) as ZhCnArticleMappingFile;
+  const { jobs, unresolved } = buildZhCnJobs(mapping);
+  if (unresolved.length > 0) {
+    console.log(`${unresolved.length} zh-cn mapping entr(y/ies) have no known article yet -- unresolved:`);
+    for (const entry of unresolved) console.log(`  [unresolved] ${entry.key}: ${entry.notes}`);
+  }
+  return jobs;
+}
+
 async function runMissingSets(cli: CliArgs): Promise<void> {
-  const manifest = JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest;
-  const allJobs: HarvestJob[] = buildMissingSetJobs(manifest, [cli.language]);
+  const allJobs: HarvestJob[] =
+    cli.language === 'zh-cn'
+      ? await loadZhCnJobs()
+      : buildMissingSetJobs(JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest, [cli.language]);
   const progress = await loadProgress();
   const pending = selectPendingJobs(
     allJobs,
@@ -388,11 +561,25 @@ async function runMissingSets(cli: CliArgs): Promise<void> {
       const gen1Rows = filterGen1Rows(allRows);
       const realSetName = deriveSetNameFromArticleTitle(page.title);
 
+      // zh-cn's mapping code is a hand-curated guess (often absent
+      // entirely); the live article's own infobox is authoritative when it
+      // carries a CS-series code, so it wins on disagreement.
+      let setId = job.proposedSetId;
+      if (cli.language === 'zh-cn') {
+        const resolution = resolveZhCnSetId(job.proposedSetId, extractCsCode(parsed.setInfo));
+        if (resolution.mismatched) {
+          console.warn(
+            `  setId mismatch for ${job.setName}: mapping proposed "${job.proposedSetId}", infobox carries "${resolution.setId}" -- using the infobox value.`
+          );
+        }
+        setId = resolution.setId;
+      }
+
       const cards = await resolveHarvestedCardImages(client, realSetName, gen1Rows);
 
       const result: SetHarvestResult = {
         language: cli.language,
-        setId: job.proposedSetId,
+        setId,
         setName: realSetName,
         sourceArticleTitle: page.title,
         harvestedAt: new Date().toISOString(),
@@ -402,7 +589,7 @@ async function runMissingSets(cli: CliArgs): Promise<void> {
         cards,
       };
 
-      await writeFile(path.join(outputDir, `${job.proposedSetId}.json`), JSON.stringify(result, null, 2), 'utf8');
+      await writeFile(path.join(outputDir, `${setId}.json`), JSON.stringify(result, null, 2), 'utf8');
 
       progress.missingSets[cli.language] ??= {};
       progress.missingSets[cli.language][job.proposedSetId] = {
@@ -465,6 +652,17 @@ async function runEnrich(cli: CliArgs): Promise<void> {
       const parsed = parseSetPageWikitext(page.wikitext);
       const rows = [...parsed.cardListRows, ...parsed.additionalCardRows];
       const realSetName = deriveSetNameFromArticleTitle(page.title);
+
+      // The search heuristic above can resolve to the wrong article
+      // entirely (a same-named set from a different product line, a
+      // disambiguation page, ...); require a credible fraction of our held
+      // cards to actually show up in it by localId before trusting any fill
+      // it would produce.
+      const matchRate = computeEnrichmentMatchRate(job.cardIds, rows, idIndex);
+      if (matchRate < ENRICHMENT_MATCH_THRESHOLD) {
+        console.error(`  SKIPPED ${job.setId}: resolved article did not match our held cards closely enough.`);
+        continue;
+      }
 
       const fills = computeEnrichmentFills(job, rows, idIndex, realSetName);
 

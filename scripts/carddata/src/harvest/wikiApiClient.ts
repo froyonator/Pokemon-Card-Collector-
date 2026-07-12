@@ -133,6 +133,12 @@ export function createWikiApiClient(options: WikiApiClientOptions = {}): WikiApi
   // The File: namespace is a shared repository backed by a separate media
   // host, but this same wiki's own api.php resolves it transparently --
   // imageinfo never needs a second endpoint, just this one with titles=.
+  // Confirmed live: a file that lives ONLY on the shared repository (true
+  // of every real card scan) comes back with `missing: true` on the page
+  // itself (there's no LOCAL File: page for it) while still carrying a
+  // fully populated `imageinfo` array with a real url -- `missing` on its
+  // own is not a reliable "does this file exist" signal here. Whether
+  // `imageinfo` was returned at all is.
   async function queryImageInfoBatch(
     fileTitles: string[],
     result: Map<string, WikiImageInfo>
@@ -150,6 +156,14 @@ export function createWikiApiClient(options: WikiApiClientOptions = {}): WikiApi
       });
       const data = await politeFetchJson<{
         query?: {
+          // MediaWiki normalizes requested titles (underscores -> spaces,
+          // first-letter case) before matching them to pages, and reports
+          // any change it made here rather than in `pages` itself --
+          // `pages[].title` comes back ALREADY NORMALIZED. Skipping this
+          // mapping means every title whose normalized form differs from
+          // what was requested reads back as a miss on lookup, even though
+          // the wiki found a real page for it.
+          normalized?: Array<{ from: string; to: string }>;
           pages?: Array<{
             title: string;
             missing?: boolean;
@@ -166,9 +180,15 @@ export function createWikiApiClient(options: WikiApiClientOptions = {}): WikiApi
         continue?: Record<string, string>;
       }>(url);
 
+      const normalizedToRequested = new Map<string, string>();
+      for (const entry of data.query?.normalized ?? []) {
+        normalizedToRequested.set(entry.to, entry.from);
+      }
+
       for (const page of data.query?.pages ?? []) {
         const info = page.imageinfo?.[0];
-        result.set(page.title, {
+        const requestedTitle = normalizedToRequested.get(page.title) ?? page.title;
+        result.set(requestedTitle, {
           fileTitle: page.title,
           url: info?.url ?? null,
           thumbUrl: info?.thumburl,
@@ -176,7 +196,7 @@ export function createWikiApiClient(options: WikiApiClientOptions = {}): WikiApi
           height: info?.height,
           mime: info?.mime,
           sha1: info?.sha1,
-          missing: Boolean(page.missing) || !info,
+          missing: !info,
         });
       }
 

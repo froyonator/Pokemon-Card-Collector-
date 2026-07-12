@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { deriveSetNameFromArticleTitle, parseSetPageWikitext } from './setlistParser';
+import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } from './setlistParser';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../fixtures/harvest/${name}`, import.meta.url)), 'utf-8');
@@ -13,6 +13,10 @@ const battlePartnersSetList = fixture('battle-partners-set-list.wikitext');
 const bondsOfDestinyCardList = fixture('bonds-of-destiny-card-list.wikitext');
 const surgingSparksInfobox = fixture('surging-sparks-infobox.wikitext');
 const battlePartnersInfobox = fixture('battle-partners-infobox.wikitext');
+const trickOrTrade2022CardList = fixture('trick-or-trade-2022-card-list.wikitext');
+const zhCnGallantGalaxyInfobox = fixture('zh-cn-gallant-galaxy-infobox.wikitext');
+const zhCnGallantGalaxySetList = fixture('zh-cn-gallant-galaxy-set-list.wikitext');
+const zhCnScorchingSkiesInfobox = fixture('zh-cn-scorching-skies-infobox.wikitext');
 
 describe('parseSetPageWikitext - card list rows', () => {
   it('parses a normal {{TCG ID}} macro row deterministically, without resolving any link', () => {
@@ -28,6 +32,7 @@ describe('parseSetPageWikitext - card list rows', () => {
       rarity: 'Common',
       promoNote: null,
       nameSource: 'tcgIdMacro',
+      originSetName: null,
     });
   });
 
@@ -132,6 +137,37 @@ describe('parseSetPageWikitext - card list rows', () => {
   });
 });
 
+describe('parseSetPageWikitext - reprint rows (origin-set symbol in the number cell)', () => {
+  it('strips a leading [[Image:...|link=...]] origin-set symbol from the number cell and records the origin set name', () => {
+    const { cardListRows } = parseSetPageWikitext(trickOrTrade2022CardList);
+    const cubone = cardListRows.find((row) => row.displayName === 'Cubone');
+    expect(cubone).toMatchObject({
+      cardNumber: '069/163',
+      cardArticleTitle: 'Cubone (Battle Styles 69)',
+      originSetName: 'Battle Styles',
+    });
+  });
+
+  it('handles the [[File:...]] variant of the origin-set symbol the same way', () => {
+    const { cardListRows } = parseSetPageWikitext(trickOrTrade2022CardList);
+    const gastly = cardListRows.find((row) => row.displayName === 'Gastly');
+    expect(gastly).toMatchObject({
+      cardNumber: '055/198',
+      cardArticleTitle: 'Gastly (Chilling Reign 55)',
+      originSetName: 'Chilling Reign',
+    });
+  });
+
+  it('leaves an ordinary row (no origin-set symbol) with a null originSetName and an unchanged number', () => {
+    const { cardListRows } = parseSetPageWikitext(trickOrTrade2022CardList);
+    const trainer = cardListRows.find((row) => row.cardNumber === '012/030');
+    expect(trainer).toMatchObject({
+      cardArticleTitle: 'Some Trainer (Trick or Trade 2022 12)',
+      originSetName: null,
+    });
+  });
+});
+
 describe('parseSetPageWikitext - set infobox', () => {
   it('maps English-article infobox fields', () => {
     const { setInfo } = parseSetPageWikitext(surgingSparksInfobox);
@@ -157,5 +193,66 @@ describe('deriveSetNameFromArticleTitle', () => {
   it('strips the (TCG) and (ATCG) disambiguation suffix', () => {
     expect(deriveSetNameFromArticleTitle('Surging Sparks (TCG)')).toBe('Surging Sparks');
     expect(deriveSetNameFromArticleTitle('Bonds of Destiny (ATCG)')).toBe('Bonds of Destiny');
+  });
+});
+
+describe('parseSetPageWikitext - zh-cn (ATCG) namespace', () => {
+  it('parses a {{TCGExpansionInfobox}} zh-cn article the same as any other region', () => {
+    const { setInfo } = parseSetPageWikitext(zhCnGallantGalaxyInfobox);
+    expect(setInfo.cardCount).toBe(354);
+    expect(setInfo.setNumber).toBe('7');
+    expect(setInfo.releaseDate).toBe('June 18, 2024');
+  });
+
+  it('parses a {{TCGPromoInfobox}} enhancement-pack article, falling back to "date" for releaseDate', () => {
+    const { setInfo } = parseSetPageWikitext(zhCnScorchingSkiesInfobox);
+    expect(setInfo.cardCount).toBe(90);
+    expect(setInfo.releaseDate).toBe('January 5, 2024');
+    expect(setInfo.setNumber).toBeNull();
+  });
+
+  it('extracts the Gen1 and non-Gen1 rows and the Energy row from a zh-cn set list, English names intact', () => {
+    const { cardListRows } = parseSetPageWikitext(zhCnGallantGalaxySetList);
+    expect(cardListRows).toHaveLength(4);
+
+    const charmander = cardListRows.find((row) => row.cardNumber === '001/127');
+    expect(charmander).toMatchObject({
+      regulationMark: 'F',
+      cardArticleTitle: 'Charmander (Gallant Galaxy Charm 1)',
+      rarity: 'C',
+      nameSource: 'tcgIdMacro',
+    });
+
+    const miraidon = cardListRows.find((row) => row.cardNumber === '095/127');
+    expect(miraidon).toMatchObject({
+      displayName: 'Miraidon',
+      cardArticleTitle: 'Miraidon ex (Gallant Galaxy Charm 95)',
+      rarity: 'RR',
+      nameSource: 'wikilink',
+    });
+
+    const energy = cardListRows.find((row) => row.cardNumber === '127/127');
+    expect(energy).toMatchObject({
+      cardArticleTitle: 'Fire Energy (Gallant Galaxy Charm 127)',
+      primaryType: 'Energy',
+      secondaryField: 'Fire',
+    });
+  });
+});
+
+describe('extractCsCode', () => {
+  it('extracts a CS-series code embedded in an infobox image/logo filename', () => {
+    const { setInfo } = parseSetPageWikitext(zhCnScorchingSkiesInfobox);
+    expect(extractCsCode(setInfo)).toBe('CS35');
+  });
+
+  it('extracts a lettered sub-code the same way', () => {
+    const { setInfo } = parseSetPageWikitext(zhCnGallantGalaxyInfobox);
+    expect(extractCsCode(setInfo)).toBe('CS5a');
+  });
+
+  it('returns null when the infobox carries no CS code', () => {
+    const { setInfo } = parseSetPageWikitext(surgingSparksInfobox);
+    expect(extractCsCode(setInfo)).toBeNull();
   });
 });

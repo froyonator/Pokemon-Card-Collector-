@@ -106,3 +106,93 @@ export function buildMissingSetJobs(
   }
   return jobs;
 }
+
+// --- zh-cn (curated article mapping) -----------------------------------------
+//
+// The gap manifest carries no per-set data for zh-cn -- languages.zh-cn
+// .missingSets has one aggregated "CS-series sets (49 sets...)" entry, not
+// 49 real ones -- so buildMissingSetJobs can't drive a zh-cn harvest the way
+// it does for en/ja/id/th. Instead, --lang zh-cn --job missing-sets is
+// driven by a hand-curated article mapping (data/harvest/zh-cn-articles.json,
+// gitignored) built from the zh-cn source-recon notes: one entry per
+// discoverable (ATCG)-namespace article, each with an optional CS-series
+// code lifted from that recon pass.
+
+/** One entry of the curated zh-cn article mapping file. */
+export interface ZhCnArticleMappingEntry {
+  /** Stable slug identifying this entry regardless of whether an article was found (used for unresolved reporting). */
+  key: string;
+  /** The wiki article title to fetch verbatim, already carrying its "(ATCG)" suffix, or null when no article is known yet. */
+  articleTitle: string | null;
+  /**
+   * A CS-series code recorded by the recon pass (e.g. "CS35"), or a
+   * split code for a multi-subset set (e.g. "CS5a / CS5b" -- only the
+   * first is used for id derivation, same convention as
+   * deriveProposedSetId). Null when no code is known yet -- the live
+   * infobox is the authoritative source for this at harvest time.
+   */
+  csCode: string | null;
+  /** Free-form provenance/context note; surfaced verbatim for unresolved entries so the runner can report them meaningfully. */
+  notes: string;
+  cardCount?: number | null;
+}
+
+export interface ZhCnArticleMappingFile {
+  sets: ZhCnArticleMappingEntry[];
+}
+
+export interface ZhCnUnresolvedEntry {
+  key: string;
+  notes: string;
+}
+
+export interface ZhCnJobBuildResult {
+  jobs: HarvestJob[];
+  unresolved: ZhCnUnresolvedEntry[];
+}
+
+/**
+ * Best-effort setId for a zh-cn mapping entry: prefers the mapping's own
+ * CS-series code (lowercased, punctuation stripped, first sub-code only --
+ * same convention as deriveProposedSetId), falling back to a compact slug
+ * of the article title (or the mapping key, when even the article title is
+ * unknown) when no code was recorded.
+ */
+export function deriveZhCnSetId(
+  entry: Pick<ZhCnArticleMappingEntry, 'csCode' | 'key' | 'articleTitle'>
+): string {
+  if (entry.csCode) {
+    const first = entry.csCode.split('/')[0]?.trim() ?? '';
+    const cleaned = first.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+    if (cleaned) return cleaned;
+  }
+  return slugifySetName(entry.articleTitle ?? entry.key);
+}
+
+/**
+ * Builds zh-cn missing-set jobs from the curated article mapping. Entries
+ * with no known `articleTitle` are NOT turned into jobs -- there is nothing
+ * to fetch -- they are returned separately as `unresolved` so the CLI can
+ * report them instead of silently dropping them or failing the whole run.
+ * The `articleTitle` is used verbatim as the job's setName: these titles
+ * already end in "(ATCG)" from the recon pass, so (unlike
+ * deriveWikiArticleTitle) no namespace suffix is appended here.
+ */
+export function buildZhCnJobs(mapping: ZhCnArticleMappingFile): ZhCnJobBuildResult {
+  const jobs: HarvestJob[] = [];
+  const unresolved: ZhCnUnresolvedEntry[] = [];
+  for (const entry of mapping.sets) {
+    if (!entry.articleTitle) {
+      unresolved.push({ key: entry.key, notes: entry.notes });
+      continue;
+    }
+    jobs.push({
+      language: 'zh-cn',
+      setName: entry.articleTitle,
+      proposedSetId: deriveZhCnSetId(entry),
+      cardCount: entry.cardCount ?? null,
+      releaseDate: null,
+    });
+  }
+  return { jobs, unresolved };
+}

@@ -124,6 +124,75 @@ describe('queryImageInfo', () => {
     });
   });
 
+  it('resolves a requested title back through query.normalized, so a normalized-case/underscore response still matches the original request', async () => {
+    // MediaWiki normalizes requested titles (underscores -> spaces,
+    // first-letter case) before matching them to pages, and reports the
+    // change via `query.normalized` rather than in `pages` itself --
+    // `pages[].title` comes back ALREADY NORMALIZED. A guessed filename
+    // with a lowercase first letter or an underscore is exactly the kind
+    // of request this happens for.
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        query: {
+          normalized: [{ from: 'File:cubonebattlestyles69.jpg', to: 'File:Cubonebattlestyles69.jpg' }],
+          pages: [
+            {
+              title: 'File:Cubonebattlestyles69.jpg',
+              imageinfo: [{ url: 'https://example.invalid/Cubonebattlestyles69.jpg' }],
+            },
+          ],
+        },
+      })
+    );
+    const client = createWikiApiClient({ fetchImpl: fetchMock, minRequestGapMs: 0 });
+
+    const result = await client.queryImageInfo(['File:cubonebattlestyles69.jpg']);
+
+    const info = result.get('File:cubonebattlestyles69.jpg');
+    expect(info).toBeDefined();
+    expect(info?.missing).toBe(false);
+    expect(info?.url).toBe('https://example.invalid/Cubonebattlestyles69.jpg');
+    expect(info?.fileTitle).toBe('File:Cubonebattlestyles69.jpg');
+  });
+
+  it('resolves a shared-media-repository file even though the response marks it "missing" (confirmed live: every real card scan does this)', async () => {
+    // The File: namespace is a shared repository backed by a separate
+    // media host: a file that lives ONLY there (not on the local wiki's
+    // own File: namespace) comes back with `missing: true` on the page
+    // itself, but a fully populated `imageinfo` array with a real url.
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        query: {
+          pages: [
+            {
+              title: 'File:CuboneBattleStyles69.jpg',
+              missing: true,
+              known: true,
+              imagerepository: 'shared',
+              imageinfo: [
+                {
+                  url: 'https://archives.bulbagarden.net/media/upload/8/85/CuboneBattleStyles69.jpg',
+                  width: 868,
+                  height: 1212,
+                  mime: 'image/jpeg',
+                  sha1: '5025a6b5824b9229c91dc55b0505d98e34f2efb7',
+                },
+              ],
+            },
+          ],
+        },
+      })
+    );
+    const client = createWikiApiClient({ fetchImpl: fetchMock, minRequestGapMs: 0 });
+
+    const result = await client.queryImageInfo(['File:CuboneBattleStyles69.jpg']);
+
+    expect(result.get('File:CuboneBattleStyles69.jpg')).toMatchObject({
+      missing: false,
+      url: 'https://archives.bulbagarden.net/media/upload/8/85/CuboneBattleStyles69.jpg',
+    });
+  });
+
   it('marks a title with no File: page as missing rather than dropping it', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       Response.json({ query: { pages: [{ title: 'File:DoesNotExist.jpg', missing: true }] } })
