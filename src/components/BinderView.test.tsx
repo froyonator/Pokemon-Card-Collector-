@@ -76,12 +76,59 @@ describe('BinderView', () => {
     expect(screen.getByRole('button', { name: /previous page/i })).toBeDisabled();
   });
 
-  describe('page-turn animation direction', () => {
-    // Real 5-page binder (spreads: [0], [1,2], [3,4]) so both a forward and a
-    // backward move land on a genuine two-page spread -- a real physical
-    // binder page only turns on the side you're actually flipping, not both
-    // pages at once, and the "reveal" side depends on which direction you're
-    // going.
+  describe('the shelf', () => {
+    it('startOnShelf lands on the shelf; opening a binder shows its pages; "All binders" returns to the shelf', async () => {
+      render(
+        <BinderView
+          dexEntries={dexEntries}
+          owned={{}}
+          dataVersion={0}
+          onSlotClick={() => {}}
+          startOnShelf
+        />
+      );
+      expect(screen.getByRole('heading', { name: /your binders/i })).toBeInTheDocument();
+      expect(screen.queryByLabelText(/page 1/i)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Open My Binder' }));
+      expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /all binders/i }));
+      expect(screen.getByRole('heading', { name: /your binders/i })).toBeInTheDocument();
+    });
+
+    it('creating a binder from the shelf makes it the active binder and opens it', async () => {
+      render(
+        <BinderView
+          dexEntries={dexEntries}
+          owned={{}}
+          dataVersion={0}
+          onSlotClick={() => {}}
+          startOnShelf
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /new binder/i }));
+      await userEvent.type(screen.getByLabelText(/binder name/i), 'Trades');
+      await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+      // Landed inside the freshly-created binder...
+      expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
+      // ...which is now the store's active binder.
+      const { binders, activeBinderId } = useAppStore.getState();
+      const created = binders.find((b) => b.name === 'Trades');
+      expect(created).toBeDefined();
+      expect(activeBinderId).toBe(created!.id);
+    });
+  });
+
+  describe('page turning', () => {
+    // Real 5-page binder (spreads: [0], [1,2], [3,4]) so both a forward and
+    // a backward move land on a genuine two-page spread. The turn is a
+    // two-faced leaf hinged at the rings: the settled halves under it are
+    // the DESTINATION spread from the first frame (the leaf's back face
+    // lands on identical content), so app state never waits on animation --
+    // these tests pin that, plus the leaf being purely decorative
+    // (aria-hidden, no duplicate accessible page names mid-flip).
     beforeEach(() => {
       useAppStore.setState({
         binders: [
@@ -98,24 +145,87 @@ describe('BinderView', () => {
       });
     });
 
-    it('moving forward turns only the incoming right page, not the left one', async () => {
-      render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    it('moving forward settles the destination spread immediately and flies a decorative leaf', async () => {
+      const { container } = render(
+        <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+      );
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
-      // Spread [3,4] -> pageIndex 3 ("Page 4") is the left page, pageIndex 4
-      // ("Page 5") is the right page -- see BinderView.tsx's own side
-      // computation (i === 0 && length === 2 ? 'left' : 'right').
-      expect(screen.getByLabelText(/page 5/i)).toHaveAttribute('data-turning', 'true'); // right
-      expect(screen.getByLabelText(/page 4/i)).toHaveAttribute('data-turning', 'false'); // left
+
+      // The settled halves are already the destination pages...
+      expect(screen.getByLabelText(/page 4/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/page 5/i)).toBeInTheDocument();
+      // ...and each accessible page name exists exactly once, even though a
+      // leaf carrying decorative page copies is (or was just) in flight.
+      expect(screen.getAllByLabelText(/page 4/i)).toHaveLength(1);
+      const leaf = container.querySelector('[class*="leafForward"]');
+      if (leaf) {
+        expect(leaf).toHaveAttribute('aria-hidden', 'true');
+      }
     });
 
-    it('moving backward turns only the incoming left page, not the right one', async () => {
-      render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />);
+    it('moving backward settles the destination spread immediately, with a backward-hinged leaf', async () => {
+      const { container } = render(
+        <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+      );
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1,2]
       await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [3,4]
       await userEvent.click(screen.getByRole('button', { name: /previous page/i })); // -> spread [1,2]
-      expect(screen.getByLabelText(/page 2/i)).toHaveAttribute('data-turning', 'true'); // left
-      expect(screen.getByLabelText(/page 3/i)).toHaveAttribute('data-turning', 'false'); // right
+
+      expect(screen.getByLabelText(/page 2/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/page 3/i)).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/page 2/i)).toHaveLength(1);
+      const leaf = container.querySelector('[class*="leafBackward"]');
+      if (leaf) {
+        expect(leaf).toHaveAttribute('aria-hidden', 'true');
+      }
+    });
+
+    it('a lone first page hangs on the right of the rings; a lone final page hangs on the left', async () => {
+      // pageCount 4 -> spreads [0], [1,2], [3]: both lone-page cases exist.
+      useAppStore.setState({
+        binders: [
+          {
+            id: 'a',
+            name: 'My Binder',
+            language: 'en',
+            config: { rows: 2, columns: 2, pageCount: 4, fillDirection: 'horizontal' },
+            customOrder: null,
+          },
+        ],
+        activeBinderId: 'a',
+        hasUnsavedChanges: false,
+      });
+      const { container } = render(
+        <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+      );
+      const halvesOf = () =>
+        Array.from(container.querySelectorAll('[class*="half"]')) as HTMLElement[];
+
+      // Spread [0]: empty left half (inside of the front cover), page 1 right.
+      let halves = halvesOf();
+      expect(halves[0].querySelector('[class*="coverInside"]')).not.toBeNull();
+      expect(halves[1].contains(screen.getByLabelText(/page 1/i))).toBe(true);
+
+      // Jump to the final lone page: page 4 left, empty right half (only the
+      // inside of the back cover remains) -- like a real fully-flipped binder.
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /jump to page/i }), '2');
+      halves = halvesOf();
+      expect(halves[0].contains(screen.getByLabelText(/page 4/i))).toBe(true);
+      expect(halves[1].querySelector('[class*="coverInside"]')).not.toBeNull();
+    });
+
+    it('the scrubber jumps straight to a spread without animating a leaf', async () => {
+      const { container } = render(
+        <BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} />
+      );
+      const scrubber = screen.getByRole('slider', { name: /go to spread/i });
+      fireEvent.change(scrubber, { target: { value: '3' } }); // -> spread [3,4]
+
+      expect(screen.getByLabelText(/page 4/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/page 5/i)).toBeInTheDocument();
+      // A multi-spread hop is instant -- no leaf.
+      expect(container.querySelector('[class*="leaf"]')).toBeNull();
     });
   });
 
@@ -652,7 +762,11 @@ describe('BinderView manual arrange', () => {
     });
     render(<BinderView dexEntries={dexEntries} owned={{}} dataVersion={0} onSlotClick={() => {}} isManualArrangeActive />);
     await userEvent.click(screen.getByRole('button', { name: /next page/i })); // -> spread [1, 2]
-    await userEvent.click(screen.getByRole('button', { name: /select charmander/i }));
+    // Select a slot that actually lives on the now-visible spread. (The old
+    // page-turn model kept the previous page mounted mid-exit-animation, so
+    // this test used to reach back and click a slot on page 1 -- pages now
+    // swap instantly, so only current-spread slots exist.)
+    await userEvent.click(screen.getAllByRole('button', { name: /select this empty slot/i })[0]);
     expect(screen.getByRole('button', { name: /keep empty/i })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /previous page/i }));

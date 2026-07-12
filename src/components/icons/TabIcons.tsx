@@ -68,6 +68,28 @@ export function BinderIcon() {
   );
 }
 
+// Down-into-tray arrow for "Export my collection" -- drawn to match the
+// stroke weight/size conventions of the other icons in this file, so the
+// corner dock's buttons read as one family.
+export function ExportIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+      <path d="M10 3v9M6.5 8.5L10 12l3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 13.5v2A1.5 1.5 0 005 17h10a1.5 1.5 0 001.5-1.5v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Up-out-of-tray arrow for "Import a backup" -- the mirror of ExportIcon.
+export function ImportIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+      <path d="M10 12V3M6.5 6.5L10 3l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 13.5v2A1.5 1.5 0 005 17h10a1.5 1.5 0 001.5-1.5v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // Hand-drawn magnifying-glass icon shared by every "Enlarge" control that
 // opens CardZoomOverlay for a closer look at a card -- Picker's per-card
 // button and Card-view Tile's owned-card button both reuse this exact

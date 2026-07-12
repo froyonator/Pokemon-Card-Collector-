@@ -7,6 +7,7 @@ import {
 } from '../state/exportImport';
 import { useAppStore } from '../state/store';
 import { ImportConfirmDialog } from './ImportConfirmDialog';
+import { ExportIcon, ImportIcon } from './icons/TabIcons';
 import styles from './ExportImportControls.module.css';
 
 export function ExportImportControls() {
@@ -79,15 +80,23 @@ export function ExportImportControls() {
 
   return (
     <div className={styles.controls}>
-      <button type="button" onClick={handleExport} aria-label="Export my collection">
-        Export
+      <button
+        type="button"
+        className={styles.dockButton}
+        onClick={handleExport}
+        aria-label="Export my collection"
+        title="Export my collection"
+      >
+        <ExportIcon />
       </button>
       <button
         type="button"
+        className={styles.dockButton}
         onClick={() => fileInputRef.current?.click()}
         aria-label="Import a backup"
+        title="Import a backup"
       >
-        Import
+        <ImportIcon />
       </button>
       <input
         ref={fileInputRef}
@@ -96,7 +105,11 @@ export function ExportImportControls() {
         className={styles.hiddenInput}
         onChange={handleFileSelected}
       />
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className={styles.error}>
+          {error}
+        </p>
+      )}
       {pendingImport && (
         <ImportConfirmDialog onConfirm={confirmImport} onCancel={() => setPendingImport(null)} />
       )}

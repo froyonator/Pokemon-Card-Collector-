@@ -745,13 +745,23 @@ describe('Binder view', () => {
     });
   });
 
-  it('selecting Binder view renders the binder layout instead of the sprite/card grid', () => {
+  // DexGrid mounts BinderView with startOnShelf, so entering the binder tab
+  // lands on the shelf of all binders first -- opening the (single) test
+  // binder from there is part of the real flow these tests now exercise.
+  async function openBinderFromShelf(name: RegExp) {
+    await userEvent.click(screen.getByRole('button', { name }));
+  }
+
+  it('selecting Binder view lands on the binder shelf, and opening a binder shows its pages', async () => {
     render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    expect(screen.getByRole('heading', { name: /your binders/i })).toBeInTheDocument();
+    await openBinderFromShelf(/open my binder/i);
     expect(screen.getByLabelText(/page 1/i)).toBeInTheDocument();
   });
 
   it('clicking a binder slot opens the Picker for that Pokemon', async () => {
     render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await openBinderFromShelf(/open my binder/i);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     expect(
       await screen.findByRole('dialog', { name: /card options for bulbasaur/i })
@@ -773,6 +783,7 @@ describe('Binder view', () => {
       activeBinderId: 'a',
     });
     render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await openBinderFromShelf(/open japanese binder/i);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     // The Picker itself doesn't render the language anywhere visibly, so
     // the languageOverride plumbing itself is already unit-tested at the
@@ -825,6 +836,7 @@ describe('Binder view', () => {
       activeBinderId: 'a',
     });
     render(<DexGrid view="binder" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await openBinderFromShelf(/open japanese binder/i);
     await userEvent.click(screen.getByRole('button', { name: /bulbasaur/i }));
     await screen.findByRole('dialog', { name: /card options for bulbasaur/i });
 

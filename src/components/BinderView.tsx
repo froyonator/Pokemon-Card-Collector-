@@ -1,5 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { spriteUrl } from '../api/pokeapi';
 import {
@@ -27,6 +27,7 @@ import type {
   CustomSlotImage,
   OwnedRecord,
 } from '../types';
+import { BinderShelf } from './BinderShelf';
 import { BinderSlot } from './BinderSlot';
 import { BinderZoomControl, MAX_ZOOM, MIN_ZOOM } from './BinderZoomControl';
 import { CardZoomOverlay } from './CardZoomOverlay';
@@ -37,39 +38,38 @@ import styles from './BinderView.module.css';
 // transform-origin in BinderView.module.css) rather than rotating around its
 // own center -- matches how a real binder page turns on its rings, not a
 // book-corner curl (a paper effect that doesn't fit a rigid binder page,
-// evaluated and rejected in favor of this spine-hinge approach). The left
-// page in a spread hinges on its right edge; the right page (or a lone first
-// page, which has no left-hand partner to hinge against) hinges on its left
-// edge. `awayRotation`'s sign is chosen so a page swings AWAY from the
-// viewer on exit/entry, as if genuinely rotating back on its hinge, rather
-// than rotating through the viewer's side of the page.
-// Only the page actually being "turned" gets the dramatic 3D flip -- a real
-// binder page turn only ever moves ONE page at a time (the one you're
-// grabbing), not both pages of a spread simultaneously. `isTurning` is false
-// for the other page in the spread (and for reduced-motion), which instead
-// gets a plain fade so its new content still visibly changes without a
-// competing, direction-less flip fighting the one that's actually turning.
-function getPageMotion(side: 'left' | 'right', isTurning: boolean, shouldReduceMotion: boolean | null) {
-  if (shouldReduceMotion || !isTurning) {
-    return { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } };
-  }
-  const awayRotation = side === 'left' ? 130 : -130;
-  return {
-    initial: { opacity: 0, rotateY: awayRotation },
-    animate: { opacity: 1, rotateY: 0, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
-    exit: { opacity: 0, rotateY: awayRotation, transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as const } },
-  };
-}
+// How long the turning leaf takes to swing over its spine hinge. The
+// physical model (see the flip state + leaf JSX in BinderView below): a
+// binder sheet has the outgoing page printed on one face and the incoming
+// page on the other, so turning it shows the OLD page lifting away while
+// the NEW page's content rides into view on its back -- exactly like
+// flipping a real magazine page, and unlike the previous
+// one-page-rotates-and-fades approach, which read as a page folding onto
+// its neighbor.
+const FLIP_MS = 850;
+const FLIP_EASE = [0.45, 0.05, 0.2, 1] as const;
 
-// Which side is "turning" for a given navigation direction: moving forward
-// turns the right page (as if flipping it over to reveal the next spread);
-// moving backward turns the left page. Before any navigation has happened
-// (direction is null, e.g. the very first mount), both pages play their
-// full entrance animation exactly as before -- this only kicks in once the
-// user has actually clicked Previous/Next.
-function isTurningPage(side: 'left' | 'right', direction: 'forward' | 'backward' | null): boolean {
-  if (direction === null) return true;
-  return direction === 'forward' ? side === 'right' : side === 'left';
+// Which page sits in which half of the open binder for a given spread.
+// Both halves are always rendered (a missing page shows the inside of the
+// binder cover instead): the very first page hangs alone on the RIGHT of
+// the rings (everything else is still flipped over to the right, like a
+// fresh binder), while a lone FINAL page hangs on the LEFT (every sheet has
+// been flipped; only the back cover remains on the right). The previous
+// lone-page handling parked every lone page on the right -- physically
+// wrong for the final page, and its :only-child CSS positioning silently
+// broke (leaving the lone first page floating mid-spread) the moment the
+// decorative spine became a sibling of the pages.
+function spreadHalves(
+  spread: number[],
+  spreadIndex: number
+): { left: number | undefined; right: number | undefined } {
+  if (spread.length === 2) return { left: spread[0], right: spread[1] };
+  if (spread.length === 1) {
+    return spreadIndex === 0
+      ? { left: undefined, right: spread[0] }
+      : { left: spread[0], right: undefined };
+  }
+  return { left: undefined, right: undefined };
 }
 
 export interface BinderViewProps {
@@ -88,6 +88,12 @@ export interface BinderViewProps {
   // exiting it from in here needs an explicit callback rather than local
   // state. Optional since not every caller wires manual arrange up at all.
   onExitManualArrange?: () => void;
+  // When true, entering the binder view lands on the shelf of ALL binders
+  // (each drawn as a leather volume; see BinderShelf) instead of directly
+  // inside the active binder -- the "home" the user pictures for their
+  // collection of binders. Defaults to false so existing tests/callers of a
+  // bare BinderView keep their direct-to-binder behavior.
+  startOnShelf?: boolean;
 }
 
 // Must match .page's own `gap` in BinderView.module.css (currently
@@ -155,22 +161,22 @@ interface BinderPageProps {
   // Only relevant for an OWNED pokemon entry -- see BinderSlot's own
   // onEnlarge prop for the full rationale.
   onEnlargeSlot: (card: CardRecord) => void;
-  // Which edge this page hinges on -- see getPageMotion above, which
-  // BinderPage calls directly since the motion also needs to pair with the
-  // matching .pageLeft/.pageRight CSS class for its transform-origin.
+  // Which half of the open binder this page sits in -- drives the
+  // spine-side styling (punched holes, gutter shading, asymmetric padding;
+  // see .pageLeft/.pageRight in BinderView.module.css).
   side: 'left' | 'right';
-  // Which navigation direction is currently in flight -- see isTurningPage
-  // above, which BinderPage calls directly (alongside side) to decide
-  // whether THIS page gets the dramatic flip or a plain fade.
-  direction: 'forward' | 'backward' | null;
+  // True for the copies rendered on the turning leaf's two faces: purely
+  // visual duplicates of real pages, so they carry no accessible name (the
+  // real page under/after the leaf owns "Page N") and no pointer events
+  // (see .leaf in BinderView.module.css). Without this, mid-flip the same
+  // page would exist twice for assistive tech and test queries alike.
+  decorative?: boolean;
 }
 
-// Sets `node` on every ref in `refs`, function or object alike -- needed
-// because BinderPage's root DOM node has two independent consumers: its own
-// usePageSize() measurement ref, AND (see the forwardRef wrapper below) a
-// ref that AnimatePresence's popLayout mode attaches from OUTSIDE the
-// component to freeze the exiting page's size/position. Neither can be
-// dropped in favor of the other.
+// Sets `node` on every ref in `refs`, function or object alike. BinderPage's
+// root node currently only has its own usePageSize() measurement ref, but
+// the component stays a forwardRef (below) so an outside caller CAN attach
+// one -- this helper is what lets both coexist whenever that happens.
 function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
   return (node: T | null) => {
     for (const ref of refs) {
@@ -180,16 +186,7 @@ function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
   };
 }
 
-// A plain function component here would break AnimatePresence's
-// mode="popLayout": PopChild clones its immediate child and attaches its own
-// ref to it (to measure and freeze the exiting page's size before taking it
-// out of flow -- see BinderView.tsx's use of AnimatePresence below), and a
-// ref can only attach to a DOM node or a forwardRef component, not a plain
-// function component. Without this, popLayout's exit measurement silently
-// no-ops and the original "both pages slide right" bug (see the
-// AnimatePresence comment below) comes back.
-//
-// Also wrapped in React.memo (memo can wrap a forwardRef result) for the
+// Wrapped in React.memo (memo can wrap a forwardRef result) for the
 // same reason as Tile.tsx/BinderSlot.tsx's own memo wrappers -- a page full
 // of BinderSlots shouldn't re-render just because some BinderView state
 // unrelated to this page's own content changed (e.g. the zoom slider, or a
@@ -217,13 +214,11 @@ const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function Bin
     onEditSlot,
     onEnlargeSlot,
     side,
-    direction,
+    decorative = false,
   },
   forwardedRef
 ) {
   const [measureRef, size] = usePageSize();
-  const shouldReduceMotion = useReducedMotion();
-  const isTurning = isTurningPage(side, direction);
   const slotSize = computeSlotSize({
     containerWidth: size.width - PAGE_PADDING_PX,
     containerHeight: size.height - PAGE_PADDING_PX,
@@ -233,20 +228,15 @@ const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function Bin
   });
 
   return (
-    <motion.div
+    <div
       ref={mergeRefs(measureRef, forwardedRef)}
       className={[styles.page, side === 'left' ? styles.pageLeft : styles.pageRight].join(' ')}
-      aria-label={`Page ${pageIndex + 1}`}
-      // Not used for any styling -- purely a test hook, since Framer
-      // Motion's initial/animate/exit props aren't otherwise observable
-      // from outside the component; the actual visual result is verified
-      // live in a browser instead.
-      data-turning={isTurning}
+      aria-label={decorative ? undefined : `Page ${pageIndex + 1}`}
+      aria-hidden={decorative || undefined}
       style={{
         gridTemplateColumns: `repeat(${columns}, ${slotSize.width}px)`,
         gridTemplateRows: `repeat(${rows}, ${slotSize.height}px)`,
       }}
-      {...getPageMotion(side, isTurning, shouldReduceMotion)}
     >
       {entries.flatMap((row, r) =>
         row.map((entry, c) => {
@@ -283,9 +273,19 @@ const BinderPage = memo(forwardRef<HTMLDivElement, BinderPageProps>(function Bin
           );
         })
       )}
-    </motion.div>
+    </div>
   );
 }));
+
+// The state a turning leaf needs: which way it swings and which page is
+// printed on each of its two faces. Faces are always real pages -- the
+// flipped sheet always carries the outgoing page on its front and the
+// incoming page on its back, whichever direction it turns.
+interface FlipState {
+  direction: 'forward' | 'backward';
+  frontPage: number;
+  backPage: number;
+}
 
 export function BinderView({
   dexEntries,
@@ -294,19 +294,28 @@ export function BinderView({
   onSlotClick,
   isManualArrangeActive = false,
   onExitManualArrange,
+  startOnShelf = false,
 }: BinderViewProps) {
   const binders = useAppStore((s) => s.binders);
   const activeBinderId = useAppStore((s) => s.activeBinderId);
+  const setActiveBinder = useAppStore((s) => s.setActiveBinder);
+  const createBinder = useAppStore((s) => s.createBinder);
   const setBinderCustomOrder = useAppStore((s) => s.setBinderCustomOrder);
   const setBinderSlotCustomImage = useAppStore((s) => s.setBinderSlotCustomImage);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
+  // Whether the shelf (the library of every binder) is what's on screen,
+  // rather than the one open binder. Local state, not persisted: "which
+  // room am I standing in" is session ephemera, not collection data.
+  const [isShelfOpen, setIsShelfOpen] = useState(startOnShelf);
   const [spreadIndex, setSpreadIndex] = useState(0);
-  // Which navigation direction is currently in flight -- see isTurningPage
-  // above, which decides which side of the spread gets the dramatic flip vs
-  // a plain fade. null until the user has actually clicked Previous/Next
-  // once (see isTurningPage's own null-direction case).
-  const [direction, setDirection] = useState<'forward' | 'backward' | null>(null);
+  // The turning leaf currently in flight, or null when the binder is at
+  // rest. spreadIndex itself always advances IMMEDIATELY on navigation --
+  // the settled halves under the leaf are the destination spread from the
+  // first frame (matching how magazine-flip effects work: the leaf's back
+  // face lands exactly on top of identical, already-rendered content), so
+  // nothing about the app's real state ever waits on an animation.
+  const [flip, setFlip] = useState<FlipState | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   // The most recently plainly-clicked slot -- a fresh anchor for a possible
@@ -437,7 +446,7 @@ export function BinderView({
 
   useEffect(() => {
     setSpreadIndex(0);
-    setDirection(null);
+    setFlip(null);
     // A selection, in-progress drag, or open custom-image editor is a
     // position WITHIN this specific binder's current layout. Switching to a
     // different binder, or changing this binder's own
@@ -515,6 +524,59 @@ export function BinderView({
     [activeBinder.config.pageCount]
   );
   const currentSpread = spreads[spreadIndex] ?? [];
+  const currentHalves = spreadHalves(currentSpread, spreadIndex);
+  const shouldReduceMotion = useReducedMotion();
+
+  // Single entry point for every way of moving between spreads. Adjacent
+  // moves from the arrow buttons animate a leaf turn; the scrubber and the
+  // quick-jump selector (and any multi-spread hop) land instantly -- a real
+  // binder flip only ever turns one sheet, and animating a 7-spread jump
+  // sheet-by-sheet would just be latency.
+  function navigateToSpread(to: number, animate: boolean) {
+    if (to < 0 || to >= spreads.length || to === spreadIndex) return;
+    // A selection (or pending range) is a position on the page(s) just left
+    // behind -- without this, the nav bar's "Keep empty"/etc. buttons kept
+    // referencing the OLD page's selectedIndex after the new page was
+    // already on screen, silently acting on the wrong slot if clicked.
+    setSelectedIndex(null);
+    setRangeAnchorIndex(null);
+    setSplitRange(null);
+    setRangeRejectionMessage(null);
+    setDragFromIndex(null);
+
+    const from = spreadIndex;
+    setSpreadIndex(to);
+
+    const isAdjacent = Math.abs(to - from) === 1;
+    if (!animate || !isAdjacent || shouldReduceMotion) {
+      setFlip(null);
+      return;
+    }
+    const fromHalves = spreadHalves(spreads[from] ?? [], from);
+    const toHalves = spreadHalves(spreads[to] ?? [], to);
+    if (to > from) {
+      // Forward: the sheet on the right lifts and swings left over the
+      // rings. Its front face carries the outgoing right page; its back
+      // face carries the incoming left page, landing exactly on top of the
+      // identical settled content already rendered beneath it.
+      if (fromHalves.right === undefined || toHalves.left === undefined) return;
+      setFlip({ direction: 'forward', frontPage: fromHalves.right, backPage: toHalves.left });
+    } else {
+      // Backward: the mirror image -- the left sheet swings right.
+      if (fromHalves.left === undefined || toHalves.right === undefined) return;
+      setFlip({ direction: 'backward', frontPage: fromHalves.left, backPage: toHalves.right });
+    }
+  }
+
+  // Deterministic cleanup for the leaf even if Framer Motion's
+  // onAnimationComplete never fires (e.g. a throttled background tab, or a
+  // test environment with no real animation frames) -- finalizing twice is
+  // a harmless no-op either way.
+  useEffect(() => {
+    if (!flip) return;
+    const timer = window.setTimeout(() => setFlip(null), FLIP_MS + 200);
+    return () => window.clearTimeout(timer);
+  }, [flip]);
 
   // Resolves a given pageIndex's OWN side/pairing info within the CURRENTLY
   // displayed spread -- exactly mirroring the `side` computation the JSX
@@ -532,11 +594,11 @@ export function BinderView({
   } {
     const i = currentSpread.indexOf(pageIndex);
     if (i === -1) return { side: null, hasLeftNeighbor: false, hasRightNeighbor: false };
-    const side: 'left' | 'right' = i === 0 && currentSpread.length === 2 ? 'left' : 'right';
+    const side: 'left' | 'right' = currentHalves.left === pageIndex ? 'left' : 'right';
     return {
       side,
       hasLeftNeighbor: side === 'right' && currentSpread.length === 2,
-      hasRightNeighbor: side === 'left',
+      hasRightNeighbor: side === 'left' && currentSpread.length === 2,
     };
   }
 
@@ -734,51 +796,186 @@ export function BinderView({
     [onSlotClick, activeBinder.language]
   );
 
+  // Everything a BinderPage needs except its own identity -- shared by the
+  // two settled halves and the turning leaf's two decorative faces, so the
+  // four usages below can't drift apart.
+  const sharedPageProps = {
+    rows: activeBinder.config.rows,
+    columns: activeBinder.config.columns,
+    fillDirection: activeBinder.config.fillDirection,
+    nameByDexNumber,
+    ownedCardByDexNumber,
+    uploadedImageUriByDexNumber,
+    onSlotClick: handleBinderPageSlotClick,
+    isManualArrangeActive,
+    selectedIndex,
+    onSelectSlot: handleSelectSlot,
+    onDragStartSlot: setDragFromIndex,
+    onDropSlot: handleDrop,
+    onEditSlot: setEditingSlotIndex,
+    onEnlargeSlot: setZoomedCard,
+  };
+
+  if (isShelfOpen) {
+    return (
+      <BinderShelf
+        binders={binders}
+        onOpenBinder={(id) => {
+          setActiveBinder(id);
+          setIsShelfOpen(false);
+        }}
+        onCreateBinder={(name) => {
+          // createBinder also makes the new binder active (see store.ts),
+          // so closing the shelf lands straight inside it.
+          createBinder(name, activeBinder.language);
+          setIsShelfOpen(false);
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <div className={styles.binder}>
+        <div
+          ref={spreadRef}
+          className={styles.spread}
+          onWheel={handleWheel}
+          style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
+        >
+          {/* The binder's ring spine: decorative hardware in the center
+              channel. Rendered before the halves so it never unmounts
+              during a page turn. */}
+          <div className={styles.spine} aria-hidden="true">
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+          </div>
+          {/* Both halves always exist; a half with no page shows the inside
+              of the binder cover (spread 1's empty left, or the empty right
+              after flipping past a lone final page) -- see spreadHalves. */}
+          <div className={styles.half}>
+            {currentHalves.left !== undefined ? (
+              <BinderPage
+                key={currentHalves.left}
+                pageIndex={currentHalves.left}
+                entries={pages[currentHalves.left] ?? []}
+                side="left"
+                {...sharedPageProps}
+              />
+            ) : (
+              <div className={styles.coverInside} aria-hidden="true" />
+            )}
+          </div>
+          <div className={styles.half}>
+            {currentHalves.right !== undefined ? (
+              <BinderPage
+                key={currentHalves.right}
+                pageIndex={currentHalves.right}
+                entries={pages[currentHalves.right] ?? []}
+                side="right"
+                {...sharedPageProps}
+              />
+            ) : (
+              <div className={styles.coverInside} aria-hidden="true" />
+            )}
+          </div>
+          {/* The turning leaf: a two-faced sheet hinged at the rings. Front
+              face = the page being turned away; back face = the incoming
+              page, pre-flipped so it reads correctly as the leaf lands on
+              the settled, identical content already beneath it. Purely
+              decorative (the real pages above own all interaction and
+              accessible names). */}
+          {flip && (
+            <motion.div
+              key={`${flip.frontPage}-${flip.backPage}`}
+              className={[
+                styles.leaf,
+                flip.direction === 'forward' ? styles.leafForward : styles.leafBackward,
+              ].join(' ')}
+              aria-hidden="true"
+              initial={{ rotateY: 0 }}
+              animate={{ rotateY: flip.direction === 'forward' ? -180 : 180 }}
+              transition={{ duration: FLIP_MS / 1000, ease: FLIP_EASE }}
+              onAnimationComplete={() => setFlip(null)}
+            >
+              <div className={styles.leafFace}>
+                <BinderPage
+                  pageIndex={flip.frontPage}
+                  entries={pages[flip.frontPage] ?? []}
+                  side={flip.direction === 'forward' ? 'right' : 'left'}
+                  decorative
+                  {...sharedPageProps}
+                />
+              </div>
+              <div className={styles.leafFaceBack}>
+                <BinderPage
+                  pageIndex={flip.backPage}
+                  entries={pages[flip.backPage] ?? []}
+                  side={flip.direction === 'forward' ? 'left' : 'right'}
+                  decorative
+                  {...sharedPageProps}
+                />
+              </div>
+            </motion.div>
+          )}
+        </div>
         <div className={styles.nav}>
+          <button
+            type="button"
+            className={styles.shelfReturn}
+            aria-label="All binders"
+            onClick={() => setIsShelfOpen(true)}
+          >
+            ‹ All binders
+          </button>
           <button
             type="button"
             aria-label="Previous page"
             disabled={spreadIndex === 0}
-            onClick={() => {
-              setDirection('backward');
-              setSpreadIndex((i) => Math.max(0, i - 1));
-              // A selection (or pending range) is a position on the page(s)
-              // just left behind -- without this, the nav bar's "Keep
-              // empty"/etc. buttons kept referencing the OLD page's
-              // selectedIndex after the new page was already on screen,
-              // silently acting on the wrong slot if clicked.
-              setSelectedIndex(null);
-              setRangeAnchorIndex(null);
-              setSplitRange(null);
-              setRangeRejectionMessage(null);
-              setDragFromIndex(null);
-            }}
+            onClick={() => navigateToSpread(spreadIndex - 1, true)}
           >
             &larr;
           </button>
-          <span className={styles.pageIndicator} aria-label={`Spread ${spreadIndex + 1} of ${spreads.length}`}>
+          <input
+            type="range"
+            className={styles.pageScrubber}
+            aria-label="Go to spread"
+            min={1}
+            max={spreads.length}
+            step={1}
+            value={spreadIndex + 1}
+            onChange={(event) => navigateToSpread(Number(event.target.value) - 1, false)}
+          />
+          <span
+            className={styles.pageIndicator}
+            aria-label={`Spread ${spreadIndex + 1} of ${spreads.length}`}
+          >
             {spreadIndex + 1} / {spreads.length}
           </span>
           <button
             type="button"
             aria-label="Next page"
             disabled={spreadIndex >= spreads.length - 1}
-            onClick={() => {
-              setDirection('forward');
-              setSpreadIndex((i) => Math.min(spreads.length - 1, i + 1));
-              // See the Previous button's own comment just above.
-              setSelectedIndex(null);
-              setRangeAnchorIndex(null);
-              setSplitRange(null);
-              setRangeRejectionMessage(null);
-              setDragFromIndex(null);
-            }}
+            onClick={() => navigateToSpread(spreadIndex + 1, true)}
           >
             &rarr;
           </button>
+          <select
+            className={styles.pageJump}
+            aria-label="Jump to page"
+            value={spreadIndex}
+            onChange={(event) => navigateToSpread(Number(event.target.value), false)}
+          >
+            {spreads.map((spread, i) => (
+              <option key={i} value={i}>
+                {spread.length === 2
+                  ? `Pages ${spread[0] + 1}–${spread[1] + 1}`
+                  : `Page ${spread[0] + 1}`}
+              </option>
+            ))}
+          </select>
           {/* A valid shift-click range takes over the nav bar entirely --
               offering the split action INSTEAD OF (not alongside) the
               single-slot Keep empty/Edit image/Remove empty slot buttons
@@ -811,65 +1008,6 @@ export function BinderView({
             )}
           {isManualArrangeActive && rangeRejectionMessage && <p role="alert">{rangeRejectionMessage}</p>}
           <BinderZoomControl zoom={zoom} onZoomChange={setZoom} isZoomModeActive={isZoomModeActive} />
-        </div>
-        <div
-          ref={spreadRef}
-          className={styles.spread}
-          onWheel={handleWheel}
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
-        >
-          {/* The binder's ring spine: purely decorative hardware, absolutely
-              positioned in the center channel between the two pages of a
-              spread (and along a lone page's hinged edge, which sits at the
-              same centerline -- see .pageRight:only-child). Rendered outside
-              AnimatePresence so page turns never unmount the rings. */}
-          <div className={styles.spine} aria-hidden="true">
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-            <span className={styles.ring} />
-          </div>
-          {/* mode="popLayout": .spread is a plain flex row, so without this an
-              exiting page (kept mounted by AnimatePresence during its exit
-              animation) stays a normal flex sibling of the newly-entering
-              pages, shoving them sideways instead of both animating in place
-              over the same screen position -- exactly the "both pages slide
-              right" bug this fixes. popLayout takes an exiting element out of
-              flow (position: absolute) the moment it starts exiting, so it can
-              no longer affect its siblings' layout. */}
-          <AnimatePresence mode="popLayout">
-            {currentSpread.map((pageIndex, i) => {
-              // Only a genuine two-page spread has a "left" page to hinge
-              // differently from a "right" page -- a lone first page
-              // (currentSpread.length === 1) has no left-hand partner, so it's
-              // treated as the right/only page.
-              const side: 'left' | 'right' =
-                i === 0 && currentSpread.length === 2 ? 'left' : 'right';
-              return (
-                <BinderPage
-                  key={pageIndex}
-                  pageIndex={pageIndex}
-                  rows={activeBinder.config.rows}
-                  columns={activeBinder.config.columns}
-                  entries={pages[pageIndex] ?? []}
-                  fillDirection={activeBinder.config.fillDirection}
-                  nameByDexNumber={nameByDexNumber}
-                  ownedCardByDexNumber={ownedCardByDexNumber}
-                  uploadedImageUriByDexNumber={uploadedImageUriByDexNumber}
-                  onSlotClick={handleBinderPageSlotClick}
-                  isManualArrangeActive={isManualArrangeActive}
-                  selectedIndex={selectedIndex}
-                  onSelectSlot={handleSelectSlot}
-                  onDragStartSlot={setDragFromIndex}
-                  onDropSlot={handleDrop}
-                  onEditSlot={setEditingSlotIndex}
-                  onEnlargeSlot={setZoomedCard}
-                  side={side}
-                  direction={direction}
-                />
-              );
-            })}
-          </AnimatePresence>
         </div>
       </div>
       {/* Portaled straight to document.body (both the editor overlay and

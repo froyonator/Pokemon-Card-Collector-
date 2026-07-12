@@ -164,17 +164,85 @@
   border-radius: 3px 0 0 3px;
 }
 
-/* A lone first page (no left-hand partner) still gets .pageRight (see
-   BinderView.tsx's own side computation), but as .page's only child in
-   .spread it would otherwise stretch via flex: 1 to fill the ENTIRE row --
-   centered across where a two-page spread's combined width would be,
-   instead of sitting in the same place the right page of a real spread
-   occupies. flex-grow: 0 with this same half-width basis stops it from
-   stretching past a real right page's own width; margin-left: auto pushes
-   it to the row's right edge instead of leaving it flush left. */
-.pageRight:only-child {
-  flex: 0 1 calc(50% - var(--space-6) / 2);
-  margin-left: auto;
+/* One half of the open binder. Both halves always render (see
+   BinderView.tsx's spreadHalves): each takes exactly half the spread minus
+   its share of the center gap, so a lone page sits precisely where its
+   spread partner would -- the previous :only-child positioning hack broke
+   silently (lone page floating mid-spread) the moment the spine ornament
+   became a sibling of the pages. */
+.half {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.half > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A half with no page in it: the inside of the binder cover — bare leather,
+   visibly darker and emptier than any page, so "there's nothing on this
+   side yet/anymore" reads at a glance. */
+.coverInside {
+  border-radius: 10px;
+  background:
+    var(--grain),
+    linear-gradient(160deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.5));
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+  opacity: 0.65;
+}
+
+/* The turning leaf: an absolutely-positioned two-faced sheet occupying
+   exactly one half's box, hinged at the spine edge. Framer Motion drives
+   its rotateY; the transform-origin here decides which edge is the hinge.
+   pointer-events: none throughout -- it's a purely visual duplicate of
+   pages that already exist beneath it. */
+.leaf {
+  position: absolute;
+  top: var(--space-5);
+  bottom: var(--space-5);
+  transform-style: preserve-3d;
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.55));
+}
+
+.leafForward {
+  left: calc(50% + var(--space-6) / 2);
+  right: var(--space-5);
+  transform-origin: left center;
+}
+
+.leafBackward {
+  left: var(--space-5);
+  right: calc(50% + var(--space-6) / 2);
+  transform-origin: right center;
+}
+
+/* The two printed faces. Both fill the leaf's box; the back face is
+   pre-rotated 180° so its content reads correctly once the leaf has
+   swung over. backface-visibility keeps each face invisible while it
+   faces away from the viewer. */
+.leafFace,
+.leafFaceBack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  backface-visibility: hidden;
+}
+
+.leafFaceBack {
+  transform: rotateY(180deg);
+}
+
+.leafFace > *,
+.leafFaceBack > * {
+  flex: 1;
+  min-width: 0;
 }
 
 /* The ring spine: a shadowed channel down the centerline with four metal
@@ -230,30 +298,11 @@
   filter: blur(1.5px);
 }
 
-/* Page-turn shading: while a page plays its 0.8s hinge flip (data-turning,
-   set by BinderView.tsx), a shadow sweeps off it -- paper catching the room
-   light as it settles. Runs once on mount (entering pages), matching the
-   flip duration; purely decorative. */
-.page[data-turning='true'] {
-  animation: page-settle-shade 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes page-settle-shade {
-  0% {
-    filter: brightness(0.55);
-  }
-  60% {
-    filter: brightness(0.85);
-  }
-  100% {
-    filter: brightness(1);
-  }
-}
-
 .nav {
   display: flex;
   gap: var(--space-3);
   align-items: center;
+  flex-wrap: wrap;
 }
 
 /* Prev/next as round hardware buttons. */
@@ -276,6 +325,71 @@
   letter-spacing: 0.06em;
   min-width: 52px;
   text-align: center;
+}
+
+/* The scrubber: drag to riffle through the whole binder. Styled as a brass
+   slider on a leather channel. */
+.pageScrubber {
+  flex: 1;
+  min-width: 120px;
+  max-width: 340px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.pageScrubber::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.pageScrubber::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--color-gold-strong), var(--color-gold));
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.pageScrubber::-moz-range-track {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.pageScrubber::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--color-gold-strong), var(--color-gold));
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.pageJump {
+  max-width: 150px;
+}
+
+.shelfReturn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.shelfReturn:hover {
+  color: var(--color-gold-strong);
+  border-color: var(--color-border);
 }
 
 .editorOverlay {

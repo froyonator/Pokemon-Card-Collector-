@@ -1,4 +1,6 @@
+import { COVER_COLORS, DEFAULT_COVER_COLOR } from '../data/binderCovers';
 import { GridSizePicker } from './GridSizePicker';
+import { resizeImageForUpload } from '../state/imageResize';
 import { useAppStore } from '../state/store';
 import { SUPPORTED_LANGUAGES } from '../types';
 import styles from './BinderSettings.module.css';
@@ -20,6 +22,7 @@ export function BinderSettings({
   const setBinderLanguage = useAppStore((s) => s.setBinderLanguage);
   const setBinderConfig = useAppStore((s) => s.setBinderConfig);
   const setBinderCustomOrder = useAppStore((s) => s.setBinderCustomOrder);
+  const setBinderCover = useAppStore((s) => s.setBinderCover);
 
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
 
@@ -113,6 +116,62 @@ export function BinderSettings({
           Vertical
         </button>
       </div>
+
+      {/* How this binder's closed cover looks on the shelf (BinderShelf):
+          leather color, spine lettering, and an optional picture mounted on
+          the front. All cosmetic, all persisted with the binder itself. */}
+      <h4 className={styles.subheading}>Cover</h4>
+      <div className={styles.swatches} role="radiogroup" aria-label="Cover color">
+        {COVER_COLORS.map((swatch) => (
+          <button
+            key={swatch.value}
+            type="button"
+            className={styles.swatch}
+            style={{ backgroundColor: swatch.value }}
+            aria-label={`${swatch.name} cover`}
+            aria-pressed={(activeBinder.cover?.color ?? DEFAULT_COVER_COLOR) === swatch.value}
+            onClick={() => setBinderCover(activeBinder.id, { color: swatch.value })}
+          />
+        ))}
+      </div>
+      <label className={styles.row}>
+        Spine label
+        <input
+          type="text"
+          maxLength={40}
+          placeholder={activeBinder.name}
+          value={activeBinder.cover?.spineText ?? ''}
+          onChange={(event) => setBinderCover(activeBinder.id, { spineText: event.target.value })}
+        />
+      </label>
+      <label className={styles.row}>
+        Cover picture
+        <input
+          type="file"
+          accept="image/*"
+          aria-label="Upload cover picture"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Allow re-picking the same file later (change events only fire
+            // when the value differs).
+            event.target.value = '';
+            if (!file) return;
+            resizeImageForUpload(file)
+              .then((dataUri) => setBinderCover(activeBinder.id, { coverImageUri: dataUri }))
+              .catch(() => {
+                /* an unreadable image file simply leaves the cover as-is */
+              });
+          }}
+        />
+      </label>
+      {activeBinder.cover?.coverImageUri && (
+        <button
+          type="button"
+          onClick={() => setBinderCover(activeBinder.id, { coverImageUri: undefined })}
+        >
+          Remove cover picture
+        </button>
+      )}
     </div>
   );
 }

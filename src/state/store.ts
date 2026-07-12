@@ -5,6 +5,7 @@ import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 import type {
   Binder,
   BinderConfig,
+  BinderCover,
   BinderSlotEntry,
   Condition,
   CustomSlotImage,
@@ -109,6 +110,10 @@ export interface AppState {
   setBinderLanguage: (id: string, language: string) => void;
   setBinderConfig: (id: string, config: Partial<BinderConfig>) => void;
   setBinderCustomOrder: (id: string, order: BinderSlotEntry[] | null) => void;
+  // Patch-merges onto the binder's existing cover, so setting the spine
+  // text doesn't wipe an already-chosen color and vice versa. Pass an
+  // explicit undefined field value to clear just that field.
+  setBinderCover: (id: string, cover: Partial<BinderCover>) => void;
   setBinderSlotCustomImage: (
     binderId: string,
     slotIndex: number,
@@ -238,6 +243,13 @@ export const useAppStore = create<AppState>()(
         setBinderCustomOrder: (id, order) =>
           set((state) => ({
             binders: state.binders.map((b) => (b.id === id ? { ...b, customOrder: order } : b)),
+            hasUnsavedChanges: true,
+          })),
+        setBinderCover: (id, cover) =>
+          set((state) => ({
+            binders: state.binders.map((b) =>
+              b.id === id ? { ...b, cover: { ...b.cover, ...cover } } : b
+            ),
             hasUnsavedChanges: true,
           })),
         setBinderSlotCustomImage: (binderId, slotIndex, customImage) =>

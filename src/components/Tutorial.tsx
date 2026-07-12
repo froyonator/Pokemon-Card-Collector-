@@ -67,8 +67,10 @@ export function Tutorial({ onStart }: TutorialProps) {
         className={styles.tutorialButton}
         onClick={handleStartClick}
         data-tutorial="tutorial-button"
+        aria-label="Tutorial"
+        title="Tutorial"
       >
-        Tutorial
+        ?
       </button>
       <Joyride
         steps={STEPS}

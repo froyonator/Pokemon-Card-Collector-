@@ -49,14 +49,33 @@
   height: 100%;
 }
 
-.floatingControls {
+/* One vertical utility rail pinned to the bottom-right corner: export,
+   import, the repo link, and the tutorial, as matching circular buttons on
+   a shared glass sliver. Replaces four independently fixed-positioned
+   elements that each hardcoded pixel offsets to dodge the others. */
+.dock {
   position: fixed;
   right: var(--space-5);
-  /* Stacked directly above the Tutorial button, which floats at the
-     bottom-right corner of the viewport (see Tutorial.module.css) -- this
-     value needs to clear that button's own height plus a gap. Measured live:
-     the Tutorial button renders at ~45px tall with a 20px (--space-5) bottom
-     offset, so 56px here leaves an ~11px gap above it with no overlap. */
-  bottom: calc(var(--space-5) + 56px);
-  z-index: 50;
+  bottom: var(--space-5);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-full);
+  background: rgba(29, 24, 17, 0.72);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+/* A real box (not display: contents) because it's also the tutorial's
+   "export-import" spotlight anchor -- react-joyride needs a measurable
+   element to highlight. */
+.dockGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
 }

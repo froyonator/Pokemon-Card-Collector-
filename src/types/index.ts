@@ -79,12 +79,29 @@ export interface BinderConfig {
   fillDirection: BinderFillDirection;
 }
 
+// How a binder's physical cover looks on the shelf (and anywhere else the
+// closed binder is drawn). Every field is cosmetic and optional-with-
+// defaults, so binders saved before this existed (or imported from older
+// backups) render fine with no migration: a missing cover just means the
+// default leather.
+export interface BinderCover {
+  // The leather color, one of the preset swatches in BinderSettings (any
+  // CSS color string is accepted for forward compatibility).
+  color?: string;
+  // Short label lettered down the spine, like a real labeled binder.
+  spineText?: string;
+  // A picture mounted on the front cover (data URI, same storage approach
+  // as uploadedImages).
+  coverImageUri?: string;
+}
+
 export interface Binder {
   id: string;
   name: string;
   language: string;
   config: BinderConfig;
   customOrder: BinderSlotEntry[] | null;
+  cover?: BinderCover;
 }
 
 export interface Language {

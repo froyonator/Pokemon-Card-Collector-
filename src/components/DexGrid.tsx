@@ -439,6 +439,7 @@ export function DexGrid({
           }}
           isManualArrangeActive={isManualArrangeActive}
           onExitManualArrange={onExitManualArrange}
+          startOnShelf
         />
       ) : (
         <div className={styles.grid} data-version={dataVersion}>

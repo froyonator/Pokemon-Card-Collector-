@@ -152,14 +152,17 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <div className={styles.floatingControls}>
-        <div data-tutorial="export-import">
+      {/* The corner dock: every floating utility (backup export/import, the
+          repo link, the tutorial) lives in ONE tidy vertical rail instead of
+          each independently fixed-positioned element eyeballing pixel
+          offsets to avoid the others. */}
+      <div className={styles.dock}>
+        <div data-tutorial="export-import" className={styles.dockGroup}>
           <ExportImportControls />
         </div>
+        <GitHubLink />
+        <Tutorial onStart={() => setActiveTab('grid')} />
       </div>
-
-      <GitHubLink />
-      <Tutorial onStart={() => setActiveTab('grid')} />
     </div>
   );
 }

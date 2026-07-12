@@ -1,17 +1,22 @@
+/* The tutorial trigger: the one accent-colored circle in the corner dock
+   (App.module.css's .dock owns positioning). The "?" glyph is the button's
+   entire visible content; its accessible name comes from aria-label. */
 .tutorialButton {
-  position: fixed;
-  bottom: var(--space-5);
-  right: var(--space-5);
-  padding: 0.7rem 1.3rem;
-  border-radius: var(--radius-full);
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   border: none;
   background: var(--color-accent);
   color: var(--color-accent-contrast);
   cursor: pointer;
-  font: inherit;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
   font-weight: 700;
-  z-index: 300;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .tutorialButton:hover {

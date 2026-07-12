@@ -1,3 +1,8 @@
+/* Sidebar filter sections. The raw native checkboxes read like a 2005 form,
+   so each generation/rarity-group option is drawn as a toggle CHIP: the
+   real checkbox stays in the DOM (visually hidden) for accessibility and
+   tests; the label pill around it is what the eye sees. */
+
 .filtersSection {
   border: none;
 }
@@ -5,23 +10,18 @@
 .filtersSection > summary {
   cursor: pointer;
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  letter-spacing: 0.14em;
+  color: var(--color-text-faint);
 }
 
 .bar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-6);
+  gap: var(--space-5);
   align-items: flex-start;
   margin-top: var(--space-2);
-  margin-bottom: var(--space-6);
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
 }
 
 .groupFilters,
@@ -33,14 +33,47 @@
 .generationFilters summary {
   cursor: pointer;
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  letter-spacing: 0.14em;
+  color: var(--color-text-faint);
   /* Collapsed by default (no `open` attribute) so these two sections -- the
      tallest ones in the sidebar once every generation/group is listed --
      don't force the sidebar to scroll. */
   margin-bottom: var(--space-2);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: color var(--transition-fast);
+}
+
+.groupFilters summary::-webkit-details-marker,
+.generationFilters summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Custom disclosure chevron in place of the native triangle marker. */
+.groupFilters summary::before,
+.generationFilters summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.groupFilters[open] summary::before,
+.generationFilters[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.groupFilters summary:hover,
+.generationFilters summary:hover {
+  color: var(--color-text-muted);
 }
 
 .groupFilters[open] summary,
@@ -52,18 +85,61 @@
 .generationFilters > div {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
 }
 
+/* The chip: pill-shaped label wrapping its (hidden) checkbox. Checked chips
+   fill warm gold; unchecked ones sit as quiet outlines. */
 .groupFilters label,
 .generationFilters label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.groupFilters label:hover,
+.generationFilters label:hover {
+  border-color: var(--color-border-strong);
   color: var(--color-text);
-  font-size: var(--text-sm);
-  font-weight: 500;
+}
+
+.groupFilters label:has(input:checked),
+.generationFilters label:has(input:checked) {
+  background: var(--color-gold-soft);
+  border-color: rgba(217, 164, 65, 0.45);
+  color: var(--color-gold-strong);
+}
+
+.groupFilters label:has(input:focus-visible),
+.generationFilters label:has(input:focus-visible) {
+  box-shadow: var(--shadow-focus);
+}
+
+/* The checkbox itself: kept in the DOM (real input, real click target for
+   tests and assistive tech) but visually collapsed -- the pill is the UI.
+   Deliberately NOT pointer-events: none: it must stay directly clickable
+   (labels forward clicks to it, and test tooling refuses to click an
+   element that has pointer-events disabled). */
+.groupFilters label input[type='checkbox'],
+.generationFilters label input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
 }
 
 .groupFilters button {
@@ -76,10 +152,10 @@
   flex-direction: column;
   gap: var(--space-1);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  letter-spacing: 0.14em;
+  color: var(--color-text-faint);
 }
 
 .bar > label select {

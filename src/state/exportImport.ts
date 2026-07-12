@@ -112,6 +112,17 @@ function isValidBinderSlotEntry(value: unknown): value is BinderSlotEntry {
   return value.type === 'pokemon' && typeof value.dexNumber === 'number';
 }
 
+// Cover fields are purely cosmetic strings; each is only required to be a
+// string IF present, so backups from before covers existed (no cover at
+// all) and hand-trimmed covers (a color but no image) both import cleanly.
+function isValidBinderCover(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isPlainObject(value)) return false;
+  return (['color', 'spineText', 'coverImageUri'] as const).every(
+    (field) => value[field] === undefined || typeof value[field] === 'string'
+  );
+}
+
 function isValidBinder(value: unknown): value is Binder {
   return (
     isPlainObject(value) &&
@@ -119,6 +130,7 @@ function isValidBinder(value: unknown): value is Binder {
     typeof value.name === 'string' &&
     typeof value.language === 'string' &&
     isValidBinderConfig(value.config) &&
+    isValidBinderCover(value.cover) &&
     (value.customOrder === null ||
       (Array.isArray(value.customOrder) && value.customOrder.every(isValidBinderSlotEntry)))
   );
