@@ -36,8 +36,8 @@ const JAPANESE_FALLBACK_HOSTED_BASE = 'https://raw.githubusercontent.com/froyona
 // The primary source's own per-card snapshot always saves its downloaded
 // image as `image.webp` regardless of the real upstream content-type, so its
 // hosted "original" is always a .webp file.
-const PRIMARY_ORIGINAL_FILENAME = 'original.webp';
-const THUMB_FILENAME = 'thumb.webp';
+export const PRIMARY_ORIGINAL_FILENAME = 'original.webp';
+export const THUMB_FILENAME = 'thumb.webp';
 
 export interface ResolvedAssets {
   /** Set when a better hosted thumbnail than the caller's own default is available. Undefined = "no override". */
@@ -89,7 +89,14 @@ function isUsableMatch<T>(match: {
   return (match.kind === 'primary' || match.kind === 'fallback-dexnumber') && match.record !== null;
 }
 
-function primaryHostedUrl(card: CardRecord, filename: string): string {
+/**
+ * Constructs a `pcc-assets-a` hosted URL for a card's own mirrored image,
+ * from its own language/setId/id -- exported so other pipeline scripts
+ * (e.g. the local, network-free image-fill pass) can reuse this exact
+ * construction rather than re-deriving it, since it must stay byte-for-byte
+ * in sync with how buildImageRepos.ts actually lays out each repo.
+ */
+export function primaryHostedUrl(card: Pick<CardRecord, 'language' | 'setId' | 'id'>, filename: string): string {
   return `${PRIMARY_HOSTED_BASE}/${card.language}/${card.setId}/${card.id}/${filename}`;
 }
 

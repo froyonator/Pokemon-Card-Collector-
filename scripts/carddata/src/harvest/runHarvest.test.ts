@@ -7,7 +7,9 @@ import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } fr
 import type { SetlistRow, WikiImageInfo, WikiPageWikitext } from './types';
 import {
   buildCardIdIndex,
+  buildImageJobs,
   buildRowImageCandidates,
+  clearMissingSetFailure,
   computeEnrichmentFills,
   computeEnrichmentMatchRate,
   deriveImageGuessCardName,
@@ -15,16 +17,25 @@ import {
   ENRICHMENT_MATCH_THRESHOLD,
   extractNumerator,
   filterGen1Rows,
+  harvestFromResolvedArticles,
+  imageJobCardToGen1Row,
   isEnrichDone,
+  isImagesDone,
   isMissingSetDone,
+  isMissingSetFailed,
+  isMissingSetZeroRow,
   matchGen1DexEntry,
   normalizeNumerator,
   parseArgs,
+  recordMissingSetFailure,
   resolveHarvestedCardImages,
+  resolveImageJobCards,
   resolveZhCnSetId,
   selectPendingJobs,
+  selectRetryTargets,
   type ProgressFile,
 } from './runHarvest';
+import type { ResolvedArticle } from './retryResolution';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../fixtures/harvest/${name}`, import.meta.url)), 'utf-8');
@@ -301,6 +312,225 @@ describe('resolveHarvestedCardImages', () => {
   });
 });
 
+describe('harvestFromResolvedArticles (multi-article concatenation)', () => {
+  function resolvedArticle(title: string, wikitext: string): ResolvedArticle {
+    return { title, fetchedTitle: title, wikitext, page: parseSetPageWikitext(wikitext) };
+  }
+
+  it('concatenates rows/cards from multiple articles, each resolving images against its own real set name', async () => {
+    const blackCollection = resolvedArticle(
+      'Black Collection (TCG)',
+      '{{Setlist/entry|001/53|H|{{TCG ID|Black Collection|Bulbasaur|1}}|Grass||Common}}'
+    );
+    const whiteCollection = resolvedArticle(
+      'White Collection (TCG)',
+      '{{Setlist/entry|001/53|H|{{TCG ID|White Collection|Charmander|1}}|Fire||Common}}'
+    );
+
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: `https://example.invalid/${title}`, missing: false });
+      return map;
+    };
+
+    const result = await harvestFromResolvedArticles({ queryImageInfo }, [blackCollection, whiteCollection]);
+
+    expect(result.totalRows).toBe(2);
+    expect(result.gen1Count).toBe(2);
+    expect(result.cards.map((c) => c.name).sort()).toEqual(['Bulbasaur', 'Charmander']);
+    expect(result.sourceArticleTitles).toEqual(['Black Collection (TCG)', 'White Collection (TCG)']);
+    expect(result.realSetName).toBe('Black Collection / White Collection');
+    // Each card's image guess used its OWN article's set name, not the other one's.
+    expect(result.cards.find((c) => c.name === 'Bulbasaur')?.imageUrl).toContain('BlackCollection');
+    expect(result.cards.find((c) => c.name === 'Charmander')?.imageUrl).toContain('WhiteCollection');
+  });
+
+  it('collapses to a single real set name (no " / ") for a single-article resolution', async () => {
+    const article = resolvedArticle(
+      'Fusion Arts (TCG)',
+      '{{Setlist/entry|001/100|H|{{TCG ID|Fusion Arts|Squirtle|1}}|Water||Common}}'
+    );
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+    const result = await harvestFromResolvedArticles({ queryImageInfo }, [article]);
+    expect(result.realSetName).toBe('Fusion Arts');
+    expect(result.sourceArticleTitles).toEqual(['Fusion Arts (TCG)']);
+  });
+
+  it('returns zero totals for an empty article list without any network call', async () => {
+    const queryImageInfo = async () => {
+      throw new Error('should not be called');
+    };
+    const result = await harvestFromResolvedArticles({ queryImageInfo }, []);
+    expect(result).toEqual({ totalRows: 0, gen1Count: 0, cards: [], realSetName: '', sourceArticleTitles: [] });
+  });
+
+  it('a section-targeted article contributes only its own section rows to the total', async () => {
+    const shared = [
+      '==Card list==',
+      '{{Setlist/entry|001/10|H|{{TCG ID|Shared|EnglishCard|1}}|Grass||Common}}',
+      '==Set list==',
+      '{{Setlist/entry|001/10|I|{{TCG ID|Shared|JapaneseCard|1}}|Grass||C}}',
+    ].join('\n');
+    const article: ResolvedArticle = {
+      title: 'Sword & Shield (TCG)',
+      sectionTitle: 'Set list',
+      fetchedTitle: 'Sword & Shield (TCG)',
+      wikitext: shared,
+      page: parseSetPageWikitext(shared, { sectionTitle: 'Set list' }),
+    };
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+    const result = await harvestFromResolvedArticles({ queryImageInfo }, [article]);
+    expect(result.totalRows).toBe(1);
+  });
+});
+
+describe('buildImageJobs', () => {
+  function heldCard(overrides: Partial<CardRecord> = {}): CardRecord {
+    return {
+      id: 'base1-44',
+      name: 'Bisasam',
+      dexNumber: 1,
+      setId: 'base1',
+      setName: 'Grundset',
+      localId: '44',
+      rarity: 'Häufig',
+      imageBase: '',
+      language: 'de',
+      ...overrides,
+    };
+  }
+
+  it('selects only cards with no image at all, grouped by setId', () => {
+    const db: Record<string, CardRecord[]> = {
+      '1': [
+        heldCard({ id: 'base1-44' }),
+        heldCard({ id: 'base1-2', localId: '2', imageBase: 'https://example.invalid/2' }),
+        heldCard({ id: 'base1-9', localId: '9', hostedThumbUrl: 'https://example.invalid/thumb.webp' }),
+      ],
+      '25': [heldCard({ id: 'dp3-77', setId: 'dp3', setName: 'DP3', localId: '77', dexNumber: 25, name: 'Pikachu' })],
+    };
+
+    const jobs = buildImageJobs(db, 'de');
+
+    expect(jobs).toHaveLength(2);
+    const base1Job = jobs.find((j) => j.setId === 'base1')!;
+    expect(base1Job.language).toBe('de');
+    expect(base1Job.setName).toBe('Grundset');
+    expect(base1Job.cards).toEqual([{ cardId: 'base1-44', dexNumber: 1, name: 'Bisasam', localId: '44', rarity: 'Häufig' }]);
+  });
+
+  it('returns an empty array when nothing is missing an image', () => {
+    const db: Record<string, CardRecord[]> = {
+      '1': [heldCard({ imageBase: 'https://example.invalid/1' })],
+    };
+    expect(buildImageJobs(db, 'de')).toEqual([]);
+  });
+
+  it('sorts jobs by setId and cards within a job by numeric localId', () => {
+    const db: Record<string, CardRecord[]> = {
+      '1': [
+        heldCard({ id: 'zzz-10', setId: 'zzz', localId: '10' }),
+        heldCard({ id: 'zzz-2', setId: 'zzz', localId: '2' }),
+        heldCard({ id: 'aaa-1', setId: 'aaa', localId: '1' }),
+      ],
+    };
+    const jobs = buildImageJobs(db, 'de');
+    expect(jobs.map((j) => j.setId)).toEqual(['aaa', 'zzz']);
+    expect(jobs.find((j) => j.setId === 'zzz')!.cards.map((c) => c.localId)).toEqual(['2', '10']);
+  });
+});
+
+describe('imageJobCardToGen1Row', () => {
+  it('adapts a held card into a bare-name Gen1MatchedRow with no disambiguator', () => {
+    const result = imageJobCardToGen1Row({ cardId: 'base1-44', dexNumber: 1, name: 'Bisasam', localId: '44', rarity: 'Häufig' });
+    expect(result.dex).toEqual({ number: 1, name: 'Bisasam' });
+    expect(result.row).toMatchObject({
+      cardNumber: '44',
+      displayName: 'Bisasam',
+      cardArticleTitle: 'Bisasam',
+      rarity: 'Häufig',
+      originSetName: null,
+    });
+  });
+});
+
+describe('resolveImageJobCards', () => {
+  it('resolves each held card in the job via the same candidate-guess strategy as a fresh harvest', async () => {
+    const job = {
+      language: 'de',
+      setId: 'base1',
+      setName: 'Grundset',
+      cards: [{ cardId: 'base1-44', dexNumber: 1, name: 'Bisasam', localId: '44', rarity: 'Häufig' }],
+    };
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) {
+        const isRealFile = title === 'File:BisasamGrundset44.jpg';
+        map.set(title, { fileTitle: title, url: isRealFile ? `https://example.invalid/${title}` : null, missing: !isRealFile });
+      }
+      return map;
+    };
+
+    const [resolved] = await resolveImageJobCards({ queryImageInfo }, job);
+
+    expect(resolved).toEqual({
+      cardId: 'base1-44',
+      dexNumber: 1,
+      localId: '44',
+      imageFileTitle: 'File:BisasamGrundset44.jpg',
+      imageUrl: 'https://example.invalid/File:BisasamGrundset44.jpg',
+      imageMissing: false,
+    });
+  });
+
+  it('marks a card imageMissing when no candidate resolves and no infobox client is given', async () => {
+    const job = {
+      language: 'de',
+      setId: 'base1',
+      setName: 'Grundset',
+      cards: [{ cardId: 'base1-44', dexNumber: 1, name: 'Bisasam', localId: '44', rarity: null }],
+    };
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+
+    const [resolved] = await resolveImageJobCards({ queryImageInfo }, job);
+    expect(resolved.imageMissing).toBe(true);
+    expect(resolved.imageUrl).toBeNull();
+  });
+
+  it('preserves cardId/order alignment across multiple cards in one job', async () => {
+    const job = {
+      language: 'de',
+      setId: 'base1',
+      setName: 'Grundset',
+      cards: [
+        { cardId: 'base1-1', dexNumber: 1, name: 'Bisasam', localId: '1', rarity: null },
+        { cardId: 'base1-2', dexNumber: 2, name: 'Bisaknosp', localId: '2', rarity: null },
+      ],
+    };
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+
+    const resolved = await resolveImageJobCards({ queryImageInfo }, job);
+    expect(resolved.map((c) => c.cardId)).toEqual(['base1-1', 'base1-2']);
+    expect(resolved.map((c) => c.localId)).toEqual(['1', '2']);
+  });
+});
+
 describe('computeEnrichmentFills', () => {
   const rows = parseSetPageWikitext(fixture('surging-sparks-card-list.wikitext')).cardListRows;
   const idIndex = new Map<string, Pick<CardRecord, 'localId'>>([
@@ -417,15 +647,88 @@ describe('checkpoint/resume', () => {
     expect(isEnrichDone(progress, 'ja', 'SV2a')).toBe(false);
   });
 
-  it('isMissingSetDone/isEnrichDone reflect recorded completions', () => {
+  it('isMissingSetDone/isEnrichDone/isImagesDone reflect recorded completions', () => {
     const progress: ProgressFile = {
       missingSets: { en: { m11: { setName: 'X', gen1Count: 1, totalRows: 1, completedAt: 'now' } } },
       enrich: { ja: { SV2a: { needsRarity: true, needsSetName: false, appliedCount: 1, completedAt: 'now' } } },
+      images: { de: { base1: { cardCount: 1, imagesResolved: 1, completedAt: 'now' } } },
+      failed: {},
     };
     expect(isMissingSetDone(progress, 'en', 'm11')).toBe(true);
     expect(isMissingSetDone(progress, 'en', 'tt22')).toBe(false);
     expect(isEnrichDone(progress, 'ja', 'SV2a')).toBe(true);
     expect(isEnrichDone(progress, 'zh-tw', 'SV2a')).toBe(false);
+    expect(isImagesDone(progress, 'de', 'base1')).toBe(true);
+    expect(isImagesDone(progress, 'de', 'base2')).toBe(false);
+  });
+
+  it('recordMissingSetFailure/clearMissingSetFailure/isMissingSetFailed round-trip', () => {
+    const progress = emptyProgress();
+    expect(isMissingSetFailed(progress, 'en', 'pps1')).toBe(false);
+
+    recordMissingSetFailure(progress, 'en', 'pps1', {
+      setName: 'Play! Pokemon Prize Pack Series One (TCG)',
+      reason: 'page does not exist',
+      failedAt: 'now',
+    });
+    expect(isMissingSetFailed(progress, 'en', 'pps1')).toBe(true);
+    expect(isMissingSetFailed(progress, 'en', 'pps2')).toBe(false);
+
+    clearMissingSetFailure(progress, 'en', 'pps1');
+    expect(isMissingSetFailed(progress, 'en', 'pps1')).toBe(false);
+  });
+
+  it('clearMissingSetFailure on a language/setId with no recorded failure is a harmless no-op', () => {
+    const progress = emptyProgress();
+    expect(() => clearMissingSetFailure(progress, 'en', 'nothing-there')).not.toThrow();
+  });
+
+  it('isMissingSetZeroRow reflects a completed job that produced zero rows, distinct from a genuine failure', () => {
+    const progress: ProgressFile = {
+      missingSets: {
+        'zh-cn': {
+          ardentobsidian: { setName: 'Ardent Obsidian', gen1Count: 0, totalRows: 0, completedAt: 'now' },
+          gallantgalaxy: { setName: 'Gallant Galaxy', gen1Count: 48, totalRows: 354, completedAt: 'now' },
+        },
+      },
+      enrich: {},
+      images: {},
+      failed: {},
+    };
+    expect(isMissingSetZeroRow(progress, 'zh-cn', 'ardentobsidian')).toBe(true);
+    expect(isMissingSetZeroRow(progress, 'zh-cn', 'gallantgalaxy')).toBe(false);
+    expect(isMissingSetZeroRow(progress, 'zh-cn', 'never-attempted')).toBe(false);
+  });
+
+  it('selectRetryTargets returns the union of recorded failures and zero-row completions for one language, deduplicated', () => {
+    const progress: ProgressFile = {
+      missingSets: {
+        'zh-cn': {
+          ardentobsidian: { setName: 'Ardent Obsidian', gen1Count: 0, totalRows: 0, completedAt: 'now' },
+          gallantgalaxy: { setName: 'Gallant Galaxy', gen1Count: 48, totalRows: 354, completedAt: 'now' },
+        },
+        en: { m11: { setName: "McDonald's Collection", gen1Count: 0, totalRows: 21, completedAt: 'now' } },
+      },
+      enrich: {},
+      images: {},
+      failed: {
+        en: {
+          pps1: { setName: 'Play! Pokemon Prize Pack Series One (TCG)', reason: '404', failedAt: 'now' },
+        },
+      },
+    };
+    expect(selectRetryTargets(progress, 'zh-cn')).toEqual(['ardentobsidian']);
+    expect(selectRetryTargets(progress, 'en')).toEqual(['pps1']);
+    expect(selectRetryTargets(progress, 'th')).toEqual([]);
+  });
+
+  it('selectRetryTargets on a synthetic progress.json with no failed bucket at all (pre-migration shape) still works via zero-row records', () => {
+    const legacyProgress = {
+      missingSets: { en: { pop1: { setName: 'POP Series 1', gen1Count: 0, totalRows: 0, completedAt: 'now' } } },
+      enrich: {},
+      images: {},
+    } as unknown as ProgressFile;
+    expect(selectRetryTargets(legacyProgress, 'en')).toEqual(['pop1']);
   });
 
   it('selectPendingJobs drops done jobs and honors a limit', () => {
@@ -444,16 +747,33 @@ describe('parseArgs', () => {
       job: 'missing-sets',
       limit: 1,
       dryRun: true,
+      dumpWikitext: false,
     });
   });
 
-  it('defaults dryRun to false and limit to undefined', () => {
+  it('defaults dryRun/dumpWikitext to false and limit to undefined', () => {
     expect(parseArgs(['--lang', 'ja', '--job', 'enrich'])).toEqual({
       language: 'ja',
       job: 'enrich',
       limit: undefined,
       dryRun: false,
+      dumpWikitext: false,
     });
+  });
+
+  it('parses --dump-wikitext', () => {
+    expect(parseArgs(['--lang', 'en', '--job', 'retry-failed', '--dump-wikitext'])).toEqual({
+      language: 'en',
+      job: 'retry-failed',
+      limit: undefined,
+      dryRun: false,
+      dumpWikitext: true,
+    });
+  });
+
+  it('accepts the "retry-failed" and "discover-zh-cn" jobs', () => {
+    expect(parseArgs(['--lang', 'zh-cn', '--job', 'retry-failed']).job).toBe('retry-failed');
+    expect(parseArgs(['--lang', 'zh-cn', '--job', 'discover-zh-cn']).job).toBe('discover-zh-cn');
   });
 
   it('throws when --lang is missing', () => {
@@ -463,6 +783,16 @@ describe('parseArgs', () => {
   it('throws when --job is missing or invalid', () => {
     expect(() => parseArgs(['--lang', 'en'])).toThrow(/--job is required/);
     expect(() => parseArgs(['--lang', 'en', '--job', 'bogus'])).toThrow(/--job must be/);
+  });
+
+  it('accepts the "images" job', () => {
+    expect(parseArgs(['--lang', 'de', '--job', 'images'])).toEqual({
+      language: 'de',
+      job: 'images',
+      limit: undefined,
+      dryRun: false,
+      dumpWikitext: false,
+    });
   });
 
   it('throws on a negative or non-integer limit', () => {

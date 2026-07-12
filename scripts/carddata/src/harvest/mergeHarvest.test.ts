@@ -1,8 +1,8 @@
 // scripts/carddata/src/harvest/mergeHarvest.test.ts
 import { describe, expect, it } from 'vitest';
 import type { CardRecord } from '../augmentFromSupplemental';
-import { applyEnrichment, harvestedCardToRecord, mergeMissingSet } from './mergeHarvest';
-import type { EnrichmentResult, HarvestedCard, SetHarvestResult } from './runHarvest';
+import { applyEnrichment, harvestedCardToRecord, mergeImages, mergeMissingSet } from './mergeHarvest';
+import type { EnrichmentResult, HarvestedCard, ImageHarvestResult, SetHarvestResult } from './runHarvest';
 
 function card(overrides: Partial<HarvestedCard> = {}): HarvestedCard {
   return {
@@ -216,5 +216,85 @@ describe('applyEnrichment', () => {
     const before = existing['25'].length;
     applyEnrichment(existing, enrichment({ fills: [{ cardId: 'not-held', rarity: 'Common', setName: null }] }));
     expect(existing['25']).toHaveLength(before);
+  });
+});
+
+describe('mergeImages', () => {
+  function db(overrides: Partial<CardRecord> = {}): Record<string, CardRecord[]> {
+    return {
+      '1': [
+        {
+          id: 'base1-44',
+          name: 'Bisasam',
+          dexNumber: 1,
+          setId: 'base1',
+          setName: 'Grundset',
+          localId: '44',
+          rarity: 'Häufig',
+          imageBase: '',
+          language: 'de',
+          ...overrides,
+        },
+      ],
+    };
+  }
+
+  function imagesResult(overrides: Partial<ImageHarvestResult> = {}): ImageHarvestResult {
+    return {
+      language: 'de',
+      setId: 'base1',
+      setName: 'Grundset',
+      harvestedAt: '2026-07-13T00:00:00.000Z',
+      totalCards: 1,
+      imagesResolved: 1,
+      cards: [
+        {
+          cardId: 'base1-44',
+          dexNumber: 1,
+          localId: '44',
+          imageFileTitle: 'File:BisasamGrundset44.jpg',
+          imageUrl: 'https://example.invalid/File:BisasamGrundset44.jpg',
+          imageMissing: false,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('fills hostedThumbUrl/hostedFullUrl on a held record with no image yet', () => {
+    const existing = db();
+    const outcome = mergeImages(existing, imagesResult());
+    expect(outcome).toEqual({ setId: 'base1', requested: 1, filled: 1, alreadyHad: 0, notResolved: 0, notFound: 0 });
+    expect(existing['1'][0].hostedThumbUrl).toBe('https://example.invalid/File:BisasamGrundset44.jpg');
+    expect(existing['1'][0].hostedFullUrl).toBe('https://example.invalid/File:BisasamGrundset44.jpg');
+    // imageBase is never touched by an images merge.
+    expect(existing['1'][0].imageBase).toBe('');
+  });
+
+  it('never overwrites an existing hosted url', () => {
+    const existing = db({ hostedThumbUrl: 'https://example.invalid/existing-thumb.webp', hostedFullUrl: 'https://example.invalid/existing-original.webp' });
+    const outcome = mergeImages(existing, imagesResult());
+    expect(outcome.filled).toBe(0);
+    expect(outcome.alreadyHad).toBe(1);
+    expect(existing['1'][0].hostedThumbUrl).toBe('https://example.invalid/existing-thumb.webp');
+  });
+
+  it('counts a card that never resolved an image as notResolved, without touching the record', () => {
+    const existing = db();
+    const outcome = mergeImages(
+      existing,
+      imagesResult({ cards: [{ cardId: 'base1-44', dexNumber: 1, localId: '44', imageFileTitle: null, imageUrl: null, imageMissing: true }] })
+    );
+    expect(outcome.notResolved).toBe(1);
+    expect(outcome.filled).toBe(0);
+    expect(existing['1'][0].hostedThumbUrl).toBeUndefined();
+  });
+
+  it('counts a cardId that is not actually held as notFound and never creates a record', () => {
+    const existing: Record<string, CardRecord[]> = { '1': [] };
+    const outcome = mergeImages(existing, imagesResult());
+    expect(outcome.notFound).toBe(1);
+    expect(outcome.filled).toBe(0);
+    expect(existing['1']).toHaveLength(0);
   });
 });

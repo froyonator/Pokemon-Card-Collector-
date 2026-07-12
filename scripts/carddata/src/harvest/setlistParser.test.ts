@@ -2,7 +2,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } from './setlistParser';
+import {
+  deriveSetNameFromArticleTitle,
+  extractCsCode,
+  extractWikitextSection,
+  parseSetPageWikitext,
+} from './setlistParser';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../fixtures/harvest/${name}`, import.meta.url)), 'utf-8');
@@ -237,6 +242,85 @@ describe('parseSetPageWikitext - zh-cn (ATCG) namespace', () => {
       primaryType: 'Energy',
       secondaryField: 'Fire',
     });
+  });
+});
+
+describe('section targeting (a job requesting only one named list section)', () => {
+  const sharedArticle = [
+    '{{TCGExpansionInfobox|encards=1|ensetnum=1}}',
+    '==Card list==',
+    '{{Setlist/header|title=EN Half}}',
+    '{{Setlist/entry|001/100|H|{{TCG ID|EN Half|Bulbasaur|1}}|Grass||Common}}',
+    '{{Setlist/footer}}',
+    '==Set list==',
+    '{{Setlist/header|title=JP Half}}',
+    '{{Setlist/entry|001/100|I|{{TCG ID|JP Half|Charmander|1}}|Fire||C}}',
+    '{{Setlist/footer}}',
+    '==Gallery==',
+    'Some unrelated trailing prose.',
+  ].join('\n');
+
+  it('with no sectionTitle, parses every row on the page regardless of section', () => {
+    const { cardListRows } = parseSetPageWikitext(sharedArticle);
+    expect(cardListRows.map((r) => r.displayName).sort()).toEqual(['Bulbasaur', 'Charmander']);
+  });
+
+  it('with a sectionTitle, only returns rows from that named section', () => {
+    const { cardListRows } = parseSetPageWikitext(sharedArticle, { sectionTitle: 'Set list' });
+    expect(cardListRows).toHaveLength(1);
+    expect(cardListRows[0].displayName).toBe('Charmander');
+  });
+
+  it('section matching is case- and whitespace-insensitive', () => {
+    const { cardListRows } = parseSetPageWikitext(sharedArticle, { sectionTitle: '  SET LIST  ' });
+    expect(cardListRows[0].displayName).toBe('Charmander');
+  });
+
+  it('still reads the infobox from the full page even when a section is requested', () => {
+    const { setInfo } = parseSetPageWikitext(sharedArticle, { sectionTitle: 'Set list' });
+    expect(setInfo.cardCount).toBe(1);
+  });
+
+  it('falls back to the whole page when the requested section heading is not found', () => {
+    const { cardListRows } = parseSetPageWikitext(sharedArticle, { sectionTitle: 'Nonexistent Section' });
+    expect(cardListRows).toHaveLength(2);
+  });
+
+  it('extractWikitextSection stops a section at the next heading of the same or shallower level', () => {
+    const text = '==A==\nrow-a\n===A1===\nrow-a1\n==B==\nrow-b';
+    expect(extractWikitextSection(text, 'A').trim()).toBe('row-a\n===A1===\nrow-a1');
+    expect(extractWikitextSection(text, 'A1').trim()).toBe('row-a1');
+    expect(extractWikitextSection(text, 'B').trim()).toBe('row-b');
+  });
+});
+
+describe('extractSetlistRows is tolerant of a template-name capitalization variant', () => {
+  it('matches a lowercase {{setlist/entry}} marker the same as the canonical casing', () => {
+    const wikitext = '{{setlist/entry|001/10|H|{{TCG ID|Test Set|Lower Card|1}}|Grass||Common}}';
+    const { cardListRows } = parseSetPageWikitext(wikitext);
+    expect(cardListRows).toHaveLength(1);
+    expect(cardListRows[0].cardArticleTitle).toBe('Lower Card (Test Set 1)');
+  });
+});
+
+describe('extractSetlistRows covers a card list split across multiple subset sections on one page', () => {
+  it('collects rows from every {{Setlist/header}}...{{Setlist/footer}} block on the page, not just the first', () => {
+    // Mirrors the recon-confirmed Gallant Galaxy shape (two CS5a/CS5b
+    // subsets on one article) -- this is already handled by scanning the
+    // whole page for every entry marker rather than pairing with one
+    // specific header/footer, so this test documents/locks in that
+    // existing behavior rather than changing anything.
+    const wikitext = [
+      '{{Setlist/header|title=Charm}}',
+      '{{Setlist/entry|001/127|F|{{TCG ID|Charm|Charmander|1}}|Fire||C}}',
+      '{{Setlist/footer}}',
+      'some prose between subsets',
+      '{{Setlist/header|title=Brave}}',
+      '{{Setlist/entry|001/139|F|{{TCG ID|Brave|Squirtle|1}}|Water||C}}',
+      '{{Setlist/footer}}',
+    ].join('\n');
+    const { cardListRows } = parseSetPageWikitext(wikitext);
+    expect(cardListRows.map((r) => r.displayName).sort()).toEqual(['Charmander', 'Squirtle']);
   });
 });
 

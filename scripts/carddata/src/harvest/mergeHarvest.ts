@@ -2,7 +2,7 @@
 //
 // Merges data/harvest/<lang>/*.json (this harvester's own output, written
 // by runHarvest.ts) into public/data/cards/<lang>.json, the app's static
-// per-language database. Two file shapes, two merge paths:
+// per-language database. Three file shapes, three merge paths:
 //
 //   <setId>.json          A whole new set (SetHarvestResult) -> new
 //                          CardRecords, deduped against what we already
@@ -10,6 +10,10 @@
 //   enrich-<setId>.json   Fills for a set we already hold (EnrichmentResult)
 //                          -> in-place updates on existing records only,
 //                          never new records.
+//   images-<setId>.json   Images for already-held cards with no image at
+//                          all (ImageHarvestResult) -> in-place
+//                          hostedThumbUrl/hostedFullUrl fills only, only
+//                          where currently absent, never new records.
 //
 // Follows the established patterns in augmentFromSupplemental.ts (same
 // CardRecord shape, same normalized-setId + leading-zero-stripped-localId
@@ -17,7 +21,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { dedupKey, normalizeSetCode, type CardRecord } from '../augmentFromSupplemental';
-import type { EnrichmentResult, HarvestedCard, SetHarvestResult } from './runHarvest';
+import type { EnrichmentResult, HarvestedCard, ImageHarvestResult, SetHarvestResult } from './runHarvest';
 
 const DATA_DIR = 'data';
 const APP_CARDS_DIR = path.resolve('..', '..', 'public', 'data', 'cards');
@@ -175,23 +179,77 @@ export function applyEnrichment(
   return { setId: enrichment.setId, requested: enrichment.fills.length, rarityFilled, setNameFilled, notFound };
 }
 
+export interface ImagesMergeOutcome {
+  setId: string;
+  requested: number;
+  filled: number;
+  alreadyHad: number;
+  notResolved: number;
+  notFound: number;
+}
+
+/**
+ * Applies an image-only harvest result to existing records IN PLACE:
+ * hostedThumbUrl/hostedFullUrl are filled ONLY where BOTH are currently
+ * absent (never overwrites an existing hosted url, whatever its source),
+ * and only for a card that actually resolved to a url. Never creates a new
+ * record -- same contract as applyEnrichment.
+ */
+export function mergeImages(existing: Record<string, CardRecord[]>, harvested: ImageHarvestResult): ImagesMergeOutcome {
+  const byId = new Map<string, CardRecord>();
+  for (const bucket of Object.values(existing)) {
+    for (const record of bucket) byId.set(record.id, record);
+  }
+
+  let filled = 0;
+  let alreadyHad = 0;
+  let notResolved = 0;
+  let notFound = 0;
+
+  for (const card of harvested.cards) {
+    const record = byId.get(card.cardId);
+    if (!record) {
+      notFound++;
+      continue;
+    }
+    if (record.hostedThumbUrl || record.hostedFullUrl) {
+      alreadyHad++;
+      continue;
+    }
+    if (!card.imageUrl) {
+      notResolved++;
+      continue;
+    }
+    record.hostedThumbUrl = card.imageUrl;
+    record.hostedFullUrl = card.imageUrl;
+    filled++;
+  }
+
+  return { setId: harvested.setId, requested: harvested.cards.length, filled, alreadyHad, notResolved, notFound };
+}
+
 function isEnrichmentFile(filename: string): boolean {
   return filename.startsWith('enrich-');
 }
 
+function isImagesFile(filename: string): boolean {
+  return filename.startsWith('images-');
+}
+
 async function loadHarvestFiles(
   language: string
-): Promise<{ missingSetFiles: string[]; enrichmentFiles: string[] }> {
+): Promise<{ missingSetFiles: string[]; enrichmentFiles: string[]; imagesFiles: string[] }> {
   let filenames: string[];
   try {
     filenames = await readdir(harvestOutputDir(language));
   } catch {
-    return { missingSetFiles: [], enrichmentFiles: [] };
+    return { missingSetFiles: [], enrichmentFiles: [], imagesFiles: [] };
   }
   const jsonFiles = filenames.filter((f) => f.endsWith('.json') && f !== 'progress.json');
   return {
-    missingSetFiles: jsonFiles.filter((f) => !isEnrichmentFile(f)),
+    missingSetFiles: jsonFiles.filter((f) => !isEnrichmentFile(f) && !isImagesFile(f)),
     enrichmentFiles: jsonFiles.filter(isEnrichmentFile),
+    imagesFiles: jsonFiles.filter(isImagesFile),
   };
 }
 
@@ -222,9 +280,9 @@ function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const { language, dryRun } = parseArgs(process.argv.slice(2));
-  const { missingSetFiles, enrichmentFiles } = await loadHarvestFiles(language);
+  const { missingSetFiles, enrichmentFiles, imagesFiles } = await loadHarvestFiles(language);
 
-  if (missingSetFiles.length === 0 && enrichmentFiles.length === 0) {
+  if (missingSetFiles.length === 0 && enrichmentFiles.length === 0 && imagesFiles.length === 0) {
     console.log(`${language}: no harvest output found in ${harvestOutputDir(language)}; nothing to merge.`);
     return;
   }
@@ -258,6 +316,18 @@ async function main(): Promise<void> {
     console.log(
       `${language}/${outcome.setId} (enrich): requested=${outcome.requested} ` +
         `rarityFilled=${outcome.rarityFilled} setNameFilled=${outcome.setNameFilled} notFound=${outcome.notFound}` +
+        (dryRun ? ' [dry-run, not written]' : '')
+    );
+  }
+
+  for (const filename of imagesFiles) {
+    const harvested: ImageHarvestResult = JSON.parse(
+      await readFile(path.join(harvestOutputDir(language), filename), 'utf8')
+    );
+    const outcome = mergeImages(existing, harvested);
+    console.log(
+      `${language}/${outcome.setId} (images): requested=${outcome.requested} filled=${outcome.filled} ` +
+        `alreadyHad=${outcome.alreadyHad} notResolved=${outcome.notResolved} notFound=${outcome.notFound}` +
         (dryRun ? ' [dry-run, not written]' : '')
     );
   }

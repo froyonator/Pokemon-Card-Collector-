@@ -5,6 +5,7 @@
 // disk by the CLI (runHarvest.ts) and handed in here as plain data, so this
 // module has no filesystem or network dependency and is fully unit-testable
 // against small fixture manifests.
+import type { ArticleTarget } from './retryResolution';
 
 /** One entry of `languages.<lang>.missingSets` in the gap manifest. */
 export interface GapManifestSetEntry {
@@ -42,6 +43,16 @@ export interface HarvestJob {
   proposedSetId: string;
   cardCount: number | null;
   releaseDate: string | null;
+  /**
+   * Optional multi-article override: when a job's card list is really
+   * spread across more than one wiki article (a paired X/Y regional
+   * release, or a JP list living in its own section of a shared article --
+   * see retryResolution.ts and data/harvest/article-overrides.json), this
+   * carries the full set to fetch and concatenate instead of `setName`
+   * alone. Populated by the `--job retry-failed` path via the curated
+   * override mapping; ordinary missing-sets jobs leave it unset.
+   */
+  articles?: ArticleTarget[];
 }
 
 const DEFAULT_MISSING_SET_LANGUAGES = ['en', 'ja', 'id', 'th'] as const;

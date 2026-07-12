@@ -1,22 +1,45 @@
 // scripts/carddata/src/harvest/runHarvest.ts
 //
-// CLI entrypoint for the reference-wiki harvester. Two job types:
+// CLI entrypoint for the reference-wiki harvester. Five job types:
 //
-//   --job missing-sets  Fetches whole sets we don't hold at all yet (from
+//   --job missing-sets   Fetches whole sets we don't hold at all yet (from
 //                        the gap manifest's languages.<lang>.missingSets),
 //                        Gen1-filters their card list, resolves images, and
 //                        writes one output file per set.
 //
-//   --job enrich        For sets we ALREADY hold but with data holes
+//   --job enrich         For sets we ALREADY hold but with data holes
 //                        (missing rarity and/or a bare-code placeholder
 //                        setName), fetches that set's wiki set-list ONCE
 //                        and maps rows to our held cards by localId to
 //                        compute the fields that would be filled in.
 //
-// Both job types checkpoint into data/harvest/progress.json after EVERY
-// set, so a killed run resumes exactly where it left off (already-done
-// sets are skipped on the next invocation, not re-fetched). Console output
-// is deliberately generic -- no source names -- per this pipeline's
+//   --job images          For already-held cards with NO image at all (empty
+//                        imageBase and no hosted url either), derives
+//                        filename candidates from each card's own held data
+//                        and resolves them via the same batched-imageinfo +
+//                        per-article-infobox strategy as missing-sets, one
+//                        output file per affected set. Never fetches a
+//                        whole set list -- only individual card images.
+//
+//   --job retry-failed   Re-attempts exactly the missing-set jobs recorded
+//                        as FAILED or completed with zero rows in
+//                        progress.json, via a fallback chain (direct title
+//                        -> orthographic variants -> the curated override
+//                        mapping -> a scored title search) instead of the
+//                        single direct fetch missing-sets uses. See
+//                        retryResolution.ts. A set still yielding zero rows
+//                        after a successful fetch gets its wikitext dumped
+//                        to data/harvest/debug/ for diagnosis.
+//
+//   --job discover-zh-cn  Runs a broader (ATCG)-namespace title sweep and
+//                        merges newly found articles into
+//                        data/harvest/zh-cn-articles.json, without ever
+//                        overwriting a curated entry. See zhCnDiscovery.ts.
+//
+// All job types checkpoint into data/harvest/progress.json after EVERY set,
+// so a killed run resumes exactly where it left off (already-done sets are
+// skipped on the next invocation, not re-fetched). Console output is
+// deliberately generic -- no source names -- per this pipeline's
 // provenance-handling convention; see mergeHarvest.ts for turning this
 // output into public/data/cards/<lang>.json changes.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,9 +61,15 @@ import {
   type HarvestJob,
   type ZhCnArticleMappingFile,
 } from './harvestJobs';
+import {
+  resolveJobArticles,
+  type ArticleOverrideFile,
+  type ResolvedArticle,
+} from './retryResolution';
 import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } from './setlistParser';
 import type { SetlistRow, WikiImageInfo } from './types';
 import { createWikiApiClient, type WikiApiClient } from './wikiApiClient';
+import { mergeDiscoveredZhCnArticles } from './zhCnDiscovery';
 
 // --- Gen1 name matching -----------------------------------------------------
 
@@ -121,6 +150,16 @@ export interface SetHarvestResult {
   setId: string;
   setName: string;
   sourceArticleTitle: string;
+  /**
+   * Every article title actually fetched for this set, in order -- length 1
+   * for an ordinary single-article job, more than 1 for a multi-article
+   * override (a paired X/Y regional release, or a shared-article JP
+   * section, see retryResolution.ts). `sourceArticleTitle` above is these
+   * joined with " + " for a quick human-readable summary; this is the
+   * structured form. Optional only for backward compatibility with
+   * already-written harvest output files that predate this field.
+   */
+  sourceArticleTitles?: string[];
   harvestedAt: string;
   totalRows: number;
   gen1Count: number;
@@ -281,6 +320,170 @@ export async function resolveHarvestedCardImages(
   }));
 }
 
+export interface MultiArticleHarvest {
+  totalRows: number;
+  gen1Count: number;
+  cards: HarvestedCard[];
+  /** Article set names joined with " / " when more than one (see SetHarvestResult.setName). */
+  realSetName: string;
+  sourceArticleTitles: string[];
+}
+
+/**
+ * Harvests Gen1 cards+images across one or more already-resolved articles
+ * (see retryResolution.ts's resolveJobArticles), concatenating rows/cards
+ * in article order. Each article's own real set name (not the overall
+ * job's proposed one) drives its own rows' image-filename guesses, exactly
+ * as a normal single-article harvest would for that article alone --
+ * "each row keeps its own origin article for image derivation" is achieved
+ * simply by resolving one article's rows at a time rather than threading an
+ * extra field through SetlistRow.
+ */
+export async function harvestFromResolvedArticles(
+  client: Pick<WikiApiClient, 'queryImageInfo'> & { parsePageWikitext?: WikiApiClient['parsePageWikitext'] },
+  articles: ResolvedArticle[]
+): Promise<MultiArticleHarvest> {
+  let totalRows = 0;
+  let cards: HarvestedCard[] = [];
+  const setNames: string[] = [];
+  const sourceArticleTitles: string[] = [];
+
+  for (const article of articles) {
+    const rows = [...article.page.cardListRows, ...article.page.additionalCardRows];
+    totalRows += rows.length;
+    const gen1Rows = filterGen1Rows(rows);
+    const articleSetName = deriveSetNameFromArticleTitle(article.fetchedTitle);
+    setNames.push(articleSetName);
+    sourceArticleTitles.push(article.fetchedTitle);
+    const articleCards = await resolveHarvestedCardImages(client, articleSetName, gen1Rows);
+    cards = cards.concat(articleCards);
+  }
+
+  return { totalRows, gen1Count: cards.length, cards, realSetName: setNames.join(' / '), sourceArticleTitles };
+}
+
+// --- Image-only harvest for already-held cards -------------------------------
+//
+// Unlike missing-sets (a whole set we don't hold at all) or enrich (fields
+// on cards we hold), this job type targets individual already-held cards
+// that have no image at all (empty imageBase AND no hosted url either) --
+// see local-incomplete.json's issues.noImageAtAll for the audit this is
+// closing. Deliberately reuses resolveHarvestedCardImages verbatim (same
+// candidate-guess rounds, same batched imageinfo calls, same per-article
+// infobox fallback) by adapting a held card into the same {row, dex} shape
+// a fresh set harvest works with, rather than a parallel implementation.
+
+export interface ImageJobCard {
+  cardId: string;
+  dexNumber: number;
+  name: string;
+  localId: string;
+  rarity: string | null;
+}
+
+export interface ImageHarvestJob {
+  language: string;
+  setId: string;
+  setName: string;
+  cards: ImageJobCard[];
+}
+
+/**
+ * Selects already-held cards with no image at all straight from the live
+ * static database (not from local-incomplete.json's own bySet lists, which
+ * can drift stale between audit runs), grouped by setId. Pure and
+ * network-free -- the CLI reads public/data/cards/<lang>.json and hands the
+ * parsed object in here.
+ */
+export function buildImageJobs(cardsByDex: Record<string, CardRecord[]>, language: string): ImageHarvestJob[] {
+  const bySet = new Map<string, ImageHarvestJob>();
+  for (const bucket of Object.values(cardsByDex)) {
+    for (const card of bucket) {
+      if (card.imageBase || card.hostedThumbUrl || card.hostedFullUrl) continue;
+      let job = bySet.get(card.setId);
+      if (!job) {
+        job = { language, setId: card.setId, setName: card.setName, cards: [] };
+        bySet.set(card.setId, job);
+      }
+      job.cards.push({ cardId: card.id, dexNumber: card.dexNumber, name: card.name, localId: card.localId, rarity: card.rarity });
+    }
+  }
+  return [...bySet.values()]
+    .sort((a, b) => a.setId.localeCompare(b.setId))
+    .map((job) => ({
+      ...job,
+      cards: [...job.cards].sort((a, b) => a.localId.localeCompare(b.localId, undefined, { numeric: true })),
+    }));
+}
+
+/**
+ * Adapts a held no-image card into the same {row, dex} shape
+ * resolveHarvestedCardImages expects. No cardArticleTitle disambiguator is
+ * available for an already-held card (we've never fetched its wiki article),
+ * so this always takes buildRowImageCandidates' strategy (b): guesses built
+ * from the card's own name + the job's setName + localId.
+ */
+export function imageJobCardToGen1Row(card: ImageJobCard): Gen1MatchedRow {
+  return {
+    row: {
+      cardNumber: card.localId,
+      regulationMark: null,
+      displayName: card.name,
+      cardArticleTitle: card.name,
+      primaryType: null,
+      secondaryField: null,
+      rarity: card.rarity,
+      promoNote: null,
+      nameSource: 'literal',
+      originSetName: null,
+    },
+    dex: { number: card.dexNumber, name: card.name },
+  };
+}
+
+export interface ImageResolvedCard {
+  cardId: string;
+  dexNumber: number;
+  localId: string;
+  imageFileTitle: string | null;
+  imageUrl: string | null;
+  imageMissing: boolean;
+}
+
+export interface ImageHarvestResult {
+  language: string;
+  setId: string;
+  setName: string;
+  harvestedAt: string;
+  totalCards: number;
+  imagesResolved: number;
+  cards: ImageResolvedCard[];
+}
+
+/**
+ * Resolves images for one image-only job. Every held card here is already
+ * Gen1-scoped (this app's static database holds nothing else today, per the
+ * project's current dex 1-151 scope), so the per-article infobox fallback
+ * (strategy c, gated behind `parsePageWikitext` being provided) applies to
+ * every still-unresolved card in the job -- no further row filtering is
+ * needed before it runs.
+ */
+export async function resolveImageJobCards(
+  client: Pick<WikiApiClient, 'queryImageInfo'> & { parsePageWikitext?: WikiApiClient['parsePageWikitext'] },
+  job: ImageHarvestJob
+): Promise<ImageResolvedCard[]> {
+  const gen1Rows = job.cards.map(imageJobCardToGen1Row);
+  const harvested = await resolveHarvestedCardImages(client, job.setName, gen1Rows);
+  return harvested.map((card, i) => ({
+    cardId: job.cards[i].cardId,
+    dexNumber: card.dexNumber,
+    localId: card.localId,
+    imageFileTitle: card.imageFileTitle,
+    imageUrl: card.imageUrl,
+    imageMissing: card.imageMissing,
+  }));
+}
+
 // --- Enrichment -------------------------------------------------------------
 
 export interface EnrichmentFill {
@@ -407,13 +610,26 @@ export function resolveZhCnSetId(proposedSetId: string, infoboxCsCode: string | 
 
 // --- Checkpoint/resume -------------------------------------------------------
 
+/** One recorded missing-set failure -- see recordMissingSetFailure/selectRetryTargets. */
+export interface MissingSetFailureEntry {
+  /** The article title (or job.setName) last attempted before failing. */
+  setName: string;
+  reason: string;
+  /** Every title actually attempted, when the failure came from the retry-failed resolution chain. */
+  attempts?: string[];
+  failedAt: string;
+}
+
 export interface ProgressFile {
   missingSets: Record<string, Record<string, { setName: string; gen1Count: number; totalRows: number; completedAt: string }>>;
   enrich: Record<string, Record<string, { needsRarity: boolean; needsSetName: boolean; appliedCount: number; completedAt: string }>>;
+  images: Record<string, Record<string, { cardCount: number; imagesResolved: number; completedAt: string }>>;
+  /** Missing-set jobs that failed outright (never produced an output file) -- see runMissingSets' catch block and --job retry-failed. */
+  failed: Record<string, Record<string, MissingSetFailureEntry>>;
 }
 
 export function emptyProgress(): ProgressFile {
-  return { missingSets: {}, enrich: {} };
+  return { missingSets: {}, enrich: {}, images: {}, failed: {} };
 }
 
 export function isMissingSetDone(progress: ProgressFile, language: string, proposedSetId: string): boolean {
@@ -422,6 +638,50 @@ export function isMissingSetDone(progress: ProgressFile, language: string, propo
 
 export function isEnrichDone(progress: ProgressFile, language: string, setId: string): boolean {
   return Boolean(progress.enrich[language]?.[setId]);
+}
+
+export function isImagesDone(progress: ProgressFile, language: string, setId: string): boolean {
+  return Boolean(progress.images?.[language]?.[setId]);
+}
+
+export function isMissingSetFailed(progress: ProgressFile, language: string, setId: string): boolean {
+  return Boolean(progress.failed?.[language]?.[setId]);
+}
+
+/** True for a job that completed but produced zero rows -- the other retry-failed target, alongside outright failures. */
+export function isMissingSetZeroRow(progress: ProgressFile, language: string, setId: string): boolean {
+  return progress.missingSets[language]?.[setId]?.totalRows === 0;
+}
+
+export function recordMissingSetFailure(
+  progress: ProgressFile,
+  language: string,
+  setId: string,
+  entry: MissingSetFailureEntry
+): void {
+  progress.failed ??= {};
+  progress.failed[language] ??= {};
+  progress.failed[language][setId] = entry;
+}
+
+export function clearMissingSetFailure(progress: ProgressFile, language: string, setId: string): void {
+  if (progress.failed?.[language]) delete progress.failed[language][setId];
+}
+
+/**
+ * The setIds `--job retry-failed` should attempt for one language: every
+ * outright-recorded failure, plus every missing-set job that completed but
+ * yielded zero rows (still needs a diagnosable dump, and may resolve for
+ * real once the resolution chain's variant/override/search stages run).
+ * Pure selection over one language's progress records, no I/O.
+ */
+export function selectRetryTargets(progress: ProgressFile, language: string): string[] {
+  const targets = new Set<string>();
+  for (const setId of Object.keys(progress.failed?.[language] ?? {})) targets.add(setId);
+  for (const [setId, entry] of Object.entries(progress.missingSets[language] ?? {})) {
+    if (entry.totalRows === 0) targets.add(setId);
+  }
+  return [...targets];
 }
 
 /** Pure job-selection: drops already-done jobs, then applies an optional cap (for smoke tests). */
@@ -434,21 +694,30 @@ export function selectPendingJobs<T>(jobs: T[], isDone: (job: T) => boolean, lim
 
 interface CliArgs {
   language: string;
-  job: 'missing-sets' | 'enrich';
+  job: 'missing-sets' | 'enrich' | 'images' | 'retry-failed' | 'discover-zh-cn';
   limit?: number;
   dryRun: boolean;
+  /** Dumps every fetched article's wikitext to data/harvest/debug/, not just zero-row ones (which always dump regardless of this flag). */
+  dumpWikitext: boolean;
 }
+
+const JOB_VALUES = ['missing-sets', 'enrich', 'images', 'retry-failed', 'discover-zh-cn'] as const;
 
 export function parseArgs(argv: string[]): CliArgs {
   let language: string | undefined;
   let job: CliArgs['job'] | undefined;
   let limit: number | undefined;
   let dryRun = false;
+  let dumpWikitext = false;
   const args = [...argv];
   while (args.length > 0) {
     const flag = args.shift();
     if (flag === '--dry-run') {
       dryRun = true;
+      continue;
+    }
+    if (flag === '--dump-wikitext') {
+      dumpWikitext = true;
       continue;
     }
     if (flag === '--lang') {
@@ -457,10 +726,10 @@ export function parseArgs(argv: string[]): CliArgs {
     }
     if (flag === '--job') {
       const value = args.shift();
-      if (value !== 'missing-sets' && value !== 'enrich') {
-        throw new Error('--job must be "missing-sets" or "enrich".');
+      if (!JOB_VALUES.includes(value as (typeof JOB_VALUES)[number])) {
+        throw new Error(`--job must be one of: ${JOB_VALUES.join(', ')}.`);
       }
-      job = value;
+      job = value as CliArgs['job'];
       continue;
     }
     if (flag === '--limit') {
@@ -471,22 +740,22 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(`Unknown option: ${flag}`);
   }
   if (!language) {
-    throw new Error(
-      'Usage: npm run harvest -- --lang <code> --job <missing-sets|enrich> [--limit <n>] [--dry-run]'
-    );
+    throw new Error(`Usage: npm run harvest -- --lang <code> --job <${JOB_VALUES.join('|')}> [--limit <n>] [--dry-run] [--dump-wikitext]`);
   }
-  if (!job) throw new Error('--job is required: "missing-sets" or "enrich".');
+  if (!job) throw new Error(`--job is required: one of ${JOB_VALUES.join(', ')}.`);
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
     throw new Error('--limit must be a non-negative integer.');
   }
-  return { language, job, limit, dryRun };
+  return { language, job, limit, dryRun, dumpWikitext };
 }
 
 const DATA_DIR = 'data';
 const GAP_MANIFEST_PATH = path.join(DATA_DIR, 'gap-audit', 'GAP-MANIFEST.json');
 const LOCAL_INCOMPLETE_PATH = path.join(DATA_DIR, 'gap-audit', 'local-incomplete.json');
 const ZH_CN_ARTICLES_PATH = path.join(DATA_DIR, 'harvest', 'zh-cn-articles.json');
+const ARTICLE_OVERRIDES_PATH = path.join(DATA_DIR, 'harvest', 'article-overrides.json');
 const PROGRESS_PATH = path.join(DATA_DIR, 'harvest', 'progress.json');
+const DEBUG_DIR = path.join(DATA_DIR, 'harvest', 'debug');
 const APP_CARDS_DIR = path.resolve('..', '..', 'public', 'data', 'cards');
 
 function harvestOutputDir(language: string): string {
@@ -495,9 +764,55 @@ function harvestOutputDir(language: string): string {
 
 async function loadProgress(): Promise<ProgressFile> {
   try {
-    return JSON.parse(await readFile(PROGRESS_PATH, 'utf8')) as ProgressFile;
+    const parsed = JSON.parse(await readFile(PROGRESS_PATH, 'utf8')) as Partial<ProgressFile>;
+    return {
+      missingSets: parsed.missingSets ?? {},
+      enrich: parsed.enrich ?? {},
+      images: parsed.images ?? {},
+      failed: parsed.failed ?? {},
+    };
   } catch {
     return emptyProgress();
+  }
+}
+
+/**
+ * Best-effort load of the curated article-overrides mapping (gitignored,
+ * data/harvest/article-overrides.json) -- missing/unparseable is treated as
+ * "no overrides", never fatal. The on-disk file wraps the actual
+ * `${language}:${setId}` map in a metadata envelope (generatedFrom/notes/...),
+ * matching this pipeline's existing zh-cn-articles.json convention, so only
+ * its `overrides` field is the ArticleOverrideFile resolveJobArticles wants.
+ */
+async function loadArticleOverrides(): Promise<ArticleOverrideFile> {
+  try {
+    const parsed = JSON.parse(await readFile(ARTICLE_OVERRIDES_PATH, 'utf8')) as { overrides?: ArticleOverrideFile };
+    return parsed.overrides ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Writes every fetched article's raw wikitext to data/harvest/debug/ for
+ * manual diagnosis -- always when the harvest produced zero rows (the fix
+ * for the zh-cn zero-row sets: we don't have their wikitext saved from the
+ * overnight run, so the NEXT run leaves diagnosable evidence), or for any
+ * set when `force` (the --dump-wikitext flag) is set.
+ */
+async function dumpWikitextIfNeeded(
+  language: string,
+  setId: string,
+  articles: Array<{ title: string; wikitext: string }>,
+  totalRows: number,
+  force: boolean
+): Promise<void> {
+  if (totalRows > 0 && !force) return;
+  await mkdir(DEBUG_DIR, { recursive: true });
+  for (let i = 0; i < articles.length; i++) {
+    const suffix = articles.length > 1 ? `.${i + 1}` : '';
+    const file = path.join(DEBUG_DIR, `${language}-${setId}${suffix}.wikitext`);
+    await writeFile(file, articles[i].wikitext, 'utf8');
   }
 }
 
@@ -582,6 +897,7 @@ async function runMissingSets(cli: CliArgs): Promise<void> {
         setId,
         setName: realSetName,
         sourceArticleTitle: page.title,
+        sourceArticleTitles: [page.title],
         harvestedAt: new Date().toISOString(),
         totalRows: allRows.length,
         gen1Count: gen1Rows.length,
@@ -590,6 +906,7 @@ async function runMissingSets(cli: CliArgs): Promise<void> {
       };
 
       await writeFile(path.join(outputDir, `${setId}.json`), JSON.stringify(result, null, 2), 'utf8');
+      await dumpWikitextIfNeeded(cli.language, setId, [{ title: page.title, wikitext: page.wikitext }], allRows.length, cli.dumpWikitext);
 
       progress.missingSets[cli.language] ??= {};
       progress.missingSets[cli.language][job.proposedSetId] = {
@@ -598,14 +915,22 @@ async function runMissingSets(cli: CliArgs): Promise<void> {
         totalRows: allRows.length,
         completedAt: result.harvestedAt,
       };
+      clearMissingSetFailure(progress, cli.language, job.proposedSetId);
       await saveProgress(progress);
 
       console.log(
-        `  done: ${allRows.length} row(s), ${gen1Rows.length} Gen1, ${result.imagesResolved} image(s) resolved.`
+        `  done: ${allRows.length} row(s), ${gen1Rows.length} Gen1, ${result.imagesResolved} image(s) resolved.` +
+          (allRows.length === 0 ? ' [0 rows -- wikitext dumped for diagnosis]' : '')
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`  FAILED ${job.proposedSetId}: ${message}`);
+      recordMissingSetFailure(progress, cli.language, job.proposedSetId, {
+        setName: job.setName,
+        reason: message,
+        failedAt: new Date().toISOString(),
+      });
+      await saveProgress(progress);
     }
   }
 }
@@ -700,10 +1025,234 @@ async function runEnrich(cli: CliArgs): Promise<void> {
   }
 }
 
+async function runImages(cli: CliArgs): Promise<void> {
+  const cardsPath = path.join(APP_CARDS_DIR, `${cli.language}.json`);
+  const cardsByDex = JSON.parse(await readFile(cardsPath, 'utf8')) as Record<string, CardRecord[]>;
+  const allJobs = buildImageJobs(cardsByDex, cli.language);
+  const progress = await loadProgress();
+  const pending = selectPendingJobs(allJobs, (job) => isImagesDone(progress, job.language, job.setId), cli.limit);
+
+  const totalCards = allJobs.reduce((n, job) => n + job.cards.length, 0);
+  console.log(
+    `Planned ${allJobs.length} image-only job(s) for ${cli.language} covering ${totalCards} card(s) with no image at all; ` +
+      `${pending.length} job(s) pending after resume filter` +
+      (typeof cli.limit === 'number' ? ` (limited to ${cli.limit})` : '') +
+      '.'
+  );
+  if (cli.dryRun) {
+    for (const job of pending) console.log(`  [dry-run] ${job.setId}: cards=${job.cards.length}`);
+    return;
+  }
+  if (pending.length === 0) return;
+
+  const client = createWikiApiClient();
+  const outputDir = harvestOutputDir(cli.language);
+  await mkdir(outputDir, { recursive: true });
+
+  for (let i = 0; i < pending.length; i++) {
+    const job = pending[i];
+    console.log(`resolving images for set ${i + 1}/${pending.length} (${job.setId}) in ${cli.language}`);
+    try {
+      const cards = await resolveImageJobCards(client, job);
+
+      const result: ImageHarvestResult = {
+        language: cli.language,
+        setId: job.setId,
+        setName: job.setName,
+        harvestedAt: new Date().toISOString(),
+        totalCards: job.cards.length,
+        imagesResolved: cards.filter((c) => c.imageUrl).length,
+        cards,
+      };
+
+      await writeFile(path.join(outputDir, `images-${job.setId}.json`), JSON.stringify(result, null, 2), 'utf8');
+
+      progress.images ??= {};
+      progress.images[cli.language] ??= {};
+      progress.images[cli.language][job.setId] = {
+        cardCount: job.cards.length,
+        imagesResolved: result.imagesResolved,
+        completedAt: result.harvestedAt,
+      };
+      await saveProgress(progress);
+
+      console.log(`  done: ${result.imagesResolved}/${job.cards.length} resolved.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  FAILED ${job.setId}: ${message}`);
+    }
+  }
+}
+
+// --- Retry-failed -------------------------------------------------------------
+
+function expectedSuffixFor(language: string): 'TCG' | 'ATCG' {
+  return language === 'id' || language === 'th' || language === 'zh-cn' ? 'ATCG' : 'TCG';
+}
+
+async function runRetryFailed(cli: CliArgs): Promise<void> {
+  const progress = await loadProgress();
+  const retryTargets = new Set(selectRetryTargets(progress, cli.language));
+  if (retryTargets.size === 0) {
+    console.log(`No failed or zero-row missing-set jobs recorded for ${cli.language}; nothing to retry.`);
+    return;
+  }
+
+  const allJobs: HarvestJob[] =
+    cli.language === 'zh-cn'
+      ? await loadZhCnJobs()
+      : buildMissingSetJobs(JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest, [cli.language]);
+  const pending = allJobs.filter((job) => retryTargets.has(job.proposedSetId));
+  const limited = typeof cli.limit === 'number' ? pending.slice(0, cli.limit) : pending;
+
+  console.log(
+    `Retrying ${retryTargets.size} failed/zero-row set(s) for ${cli.language}; ${limited.length} job(s) matched the current job list` +
+      (typeof cli.limit === 'number' ? ` (limited to ${cli.limit})` : '') +
+      '.'
+  );
+  for (const setId of retryTargets) {
+    if (!pending.some((job) => job.proposedSetId === setId)) {
+      console.log(`  [unresolved] ${setId}: recorded as needing retry but no longer present in the current job list.`);
+    }
+  }
+
+  if (cli.dryRun) {
+    for (const job of limited) {
+      console.log(`  [dry-run] ${job.proposedSetId}: direct -> variant -> override -> search.`);
+    }
+    return;
+  }
+  if (limited.length === 0) return;
+
+  const overrides = await loadArticleOverrides();
+  const client = createWikiApiClient();
+  const outputDir = harvestOutputDir(cli.language);
+  await mkdir(outputDir, { recursive: true });
+
+  for (let i = 0; i < limited.length; i++) {
+    const job = limited[i];
+    console.log(`retrying set ${i + 1}/${limited.length} for ${cli.language}: ${job.proposedSetId}`);
+    try {
+      const targetName = deriveSetNameFromArticleTitle(job.setName);
+      const { resolution, attempts, log } = await resolveJobArticles(client, {
+        language: cli.language,
+        setId: job.proposedSetId,
+        articleTitle: job.setName,
+        targetName,
+        expectedSuffix: expectedSuffixFor(cli.language),
+        overrides,
+      });
+
+      for (const line of log) console.log(`  ${line}`);
+
+      if (!resolution) {
+        console.error(`  UNRESOLVED ${job.proposedSetId}: tried ${attempts.join(', ')}.`);
+        recordMissingSetFailure(progress, cli.language, job.proposedSetId, {
+          setName: job.setName,
+          reason: `unresolved after the full retry resolution chain`,
+          attempts,
+          failedAt: new Date().toISOString(),
+        });
+        await saveProgress(progress);
+        continue;
+      }
+
+      const harvested = await harvestFromResolvedArticles(client, resolution.articles);
+
+      let setId = job.proposedSetId;
+      if (cli.language === 'zh-cn') {
+        const csCode = extractCsCode(resolution.articles[0].page.setInfo);
+        const zhResolution = resolveZhCnSetId(job.proposedSetId, csCode);
+        if (zhResolution.mismatched) {
+          console.warn(
+            `  setId mismatch for ${job.proposedSetId}: mapping proposed "${job.proposedSetId}", infobox carries "${zhResolution.setId}" -- using the infobox value.`
+          );
+        }
+        setId = zhResolution.setId;
+      }
+
+      const result: SetHarvestResult = {
+        language: cli.language,
+        setId,
+        setName: harvested.realSetName,
+        sourceArticleTitle: harvested.sourceArticleTitles.join(' + '),
+        sourceArticleTitles: harvested.sourceArticleTitles,
+        harvestedAt: new Date().toISOString(),
+        totalRows: harvested.totalRows,
+        gen1Count: harvested.gen1Count,
+        imagesResolved: harvested.cards.filter((c) => c.imageUrl).length,
+        cards: harvested.cards,
+      };
+
+      await writeFile(path.join(outputDir, `${setId}.json`), JSON.stringify(result, null, 2), 'utf8');
+      await dumpWikitextIfNeeded(
+        cli.language,
+        setId,
+        resolution.articles.map((a) => ({ title: a.fetchedTitle, wikitext: a.wikitext })),
+        harvested.totalRows,
+        cli.dumpWikitext
+      );
+
+      progress.missingSets[cli.language] ??= {};
+      progress.missingSets[cli.language][job.proposedSetId] = {
+        setName: harvested.realSetName,
+        gen1Count: harvested.gen1Count,
+        totalRows: harvested.totalRows,
+        completedAt: result.harvestedAt,
+      };
+      clearMissingSetFailure(progress, cli.language, job.proposedSetId);
+      await saveProgress(progress);
+
+      console.log(
+        `  done via ${resolution.method}: ${harvested.totalRows} row(s), ${harvested.gen1Count} Gen1, ` +
+          `${result.imagesResolved} image(s) resolved.` +
+          (harvested.totalRows === 0 ? ' [0 rows -- wikitext dumped for diagnosis]' : '')
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  FAILED ${job.proposedSetId}: ${message}`);
+      recordMissingSetFailure(progress, cli.language, job.proposedSetId, {
+        setName: job.setName,
+        reason: message,
+        failedAt: new Date().toISOString(),
+      });
+      await saveProgress(progress);
+    }
+  }
+}
+
+// --- zh-cn article discovery (build, do not run automatically) --------------
+
+async function runDiscoverZhCn(cli: CliArgs): Promise<void> {
+  const mapping = JSON.parse(await readFile(ZH_CN_ARTICLES_PATH, 'utf8')) as ZhCnArticleMappingFile;
+  const client = createWikiApiClient();
+
+  // A broader sweep than the recon pass's original 29-article search --
+  // see GAP-MANIFEST.json's zh-cn unresolved-bucket notes and
+  // data/harvest/zh-cn-articles.json's own generatedFrom field.
+  const discovered = await client.searchPageTitles('intitle:"(ATCG)"', { limit: 200 });
+  const { mapping: merged, addedCount, addedKeys } = mergeDiscoveredZhCnArticles(mapping, discovered);
+
+  console.log(
+    `Broader (ATCG) title sweep found ${discovered.length} candidate(s); ${addedCount} new entr(y/ies) would be merged.`
+  );
+  for (const key of addedKeys) console.log(`  [discovered] ${key}`);
+
+  if (cli.dryRun) {
+    console.log('Dry run -- zh-cn-articles.json not written.');
+    return;
+  }
+  await writeFile(ZH_CN_ARTICLES_PATH, JSON.stringify(merged, null, 2), 'utf8');
+  console.log(`zh-cn-articles.json updated: ${mapping.sets.length} -> ${merged.sets.length} entries.`);
+}
+
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
   if (cli.job === 'missing-sets') await runMissingSets(cli);
-  else await runEnrich(cli);
+  else if (cli.job === 'enrich') await runEnrich(cli);
+  else if (cli.job === 'images') await runImages(cli);
+  else if (cli.job === 'retry-failed') await runRetryFailed(cli);
+  else await runDiscoverZhCn(cli);
 }
 
 // Only run main() when executed directly (not when imported by tests).

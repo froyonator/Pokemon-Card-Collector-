@@ -231,13 +231,32 @@ function buildRow(params: string[], hasRarity: boolean): SetlistRow {
   };
 }
 
-/** Extracts every `{{Setlist/entry}}` (or `{{Setlist/nmentry}}`) row from wikitext. Malformed individual rows are skipped, not fatal to the whole page. */
+/**
+ * Extracts every `{{Setlist/entry}}` (or `{{Setlist/nmentry}}`) row from
+ * wikitext. Malformed individual rows are skipped, not fatal to the whole
+ * page. The marker match is case-insensitive on the template name itself
+ * (though the extracted params keep their original casing) -- a zero-row
+ * harvest outcome with no other explanation (retry-report TODO: confirm
+ * against a real dumped page) could be a template-name capitalization
+ * variant, and matching case-insensitively costs nothing against the real,
+ * correctly-cased pages.
+ *
+ * Deliberately does NOT restrict itself to one `{{Setlist/header}}`/
+ * `{{Setlist/footer}}` block: a page with a card list split across several
+ * subset sections (each with its own header/footer, e.g. a two-subset
+ * zh-cn release) still has every row found, because this scans the whole
+ * (optionally section-sliced, see parseSetPageWikitext) text for every
+ * occurrence of the entry marker regardless of which header/footer pair it
+ * sits between.
+ */
 function extractSetlistRows(wikitext: string, templateSuffix: 'entry' | 'nmentry'): SetlistRow[] {
   const marker = `{{Setlist/${templateSuffix}|`;
+  const markerLower = marker.toLowerCase();
+  const lowerWikitext = wikitext.toLowerCase();
   const rows: SetlistRow[] = [];
   let searchFrom = 0;
   for (;;) {
-    const start = wikitext.indexOf(marker, searchFrom);
+    const start = lowerWikitext.indexOf(markerLower, searchFrom);
     if (start === -1) break;
     const template = extractBalancedBraces(wikitext, start);
     if (!template) {
@@ -253,6 +272,43 @@ function extractSetlistRows(wikitext: string, templateSuffix: 'entry' | 'nmentry
     rows.push(buildRow(params, templateSuffix === 'entry'));
   }
   return rows;
+}
+
+// --- Section targeting (a job can request only a named list section) -------
+
+/**
+ * Slices `wikitext` down to the body of one `==Heading==` (or any other
+ * level, `=Heading=`/`===Heading===`/...) section, matched case- and
+ * whitespace-insensitively against `sectionTitle`. The section ends at the
+ * next heading of the same or shallower level, or at the end of the text.
+ * Returns the input unchanged when `sectionTitle` is not given, or when no
+ * heading matches it -- callers can tell "the section wasn't found" apart
+ * from "the section was found but empty" by checking whether the returned
+ * rows are non-empty against what the un-sliced page would have produced.
+ */
+export function extractWikitextSection(wikitext: string, sectionTitle: string | null | undefined): string {
+  if (!sectionTitle) return wikitext;
+  const headingPattern = /^(=+)\s*(.*?)\s*\1[ \t]*$/gm;
+  const target = sectionTitle.trim().toLowerCase();
+
+  let match: RegExpExecArray | null;
+  let sectionLevel = -1;
+  let contentStart = -1;
+  while ((match = headingPattern.exec(wikitext))) {
+    const level = match[1].length;
+    const heading = match[2].trim().toLowerCase();
+    if (contentStart === -1) {
+      if (heading === target) {
+        sectionLevel = level;
+        contentStart = headingPattern.lastIndex;
+      }
+      continue;
+    }
+    if (level <= sectionLevel) {
+      return wikitext.slice(contentStart, match.index);
+    }
+  }
+  return contentStart === -1 ? wikitext : wikitext.slice(contentStart);
 }
 
 // --- Set infobox extraction -------------------------------------------------
@@ -338,12 +394,26 @@ export function extractCsCode(setInfo: Pick<SetInfobox, 'raw'>): string | null {
 
 // --- Public API --------------------------------------------------------------
 
+export interface ParseSetPageOptions {
+  /**
+   * When given, only rows from this named `==Heading==` section are
+   * returned (see extractWikitextSection) -- for a job that shares one
+   * wiki article with another language/list and needs just its own
+   * Setlist section (see the article-overrides.json `sectionTitle` field
+   * and the harvester's ja-glosses fix). The infobox is always read from
+   * the FULL page regardless of this option, since set metadata usually
+   * lives outside any one list section.
+   */
+  sectionTitle?: string | null;
+}
+
 /** Parses a set article's full wikitext into its infobox metadata plus main/additional card-list rows. */
-export function parseSetPageWikitext(wikitext: string): ParsedSetPage {
+export function parseSetPageWikitext(wikitext: string, options: ParseSetPageOptions = {}): ParsedSetPage {
+  const scoped = extractWikitextSection(wikitext, options.sectionTitle);
   return {
     setInfo: parseSetInfobox(wikitext),
-    cardListRows: extractSetlistRows(wikitext, 'entry'),
-    additionalCardRows: extractSetlistRows(wikitext, 'nmentry'),
+    cardListRows: extractSetlistRows(scoped, 'entry'),
+    additionalCardRows: extractSetlistRows(scoped, 'nmentry'),
   };
 }
 
