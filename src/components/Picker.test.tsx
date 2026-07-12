@@ -17,6 +17,16 @@ vi.mock('../state/imageResize', () => ({
   resizeImageForUpload: vi.fn(),
 }));
 
+// Fully mocked to "no static data": "Show all cards" now enriches its live
+// results from the static database (see loadCardData's enrichFromStatic),
+// which would otherwise issue its own data/cards/<language>.json fetch
+// through the same global fetch several tests here stub and assert against.
+// Null keeps every fetch these tests observe a live-API fetch, exactly as
+// before enrichment existed.
+vi.mock('../api/staticDatabase', () => ({
+  loadStaticCardData: vi.fn(async () => null),
+}));
+
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
 }

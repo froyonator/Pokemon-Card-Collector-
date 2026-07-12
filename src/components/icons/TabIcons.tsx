@@ -52,10 +52,35 @@ export function SummaryIcon() {
   );
 }
 
-// A ring binder, used as the Binder view's icon in Sidebar's view toggle --
-// unlike the Sprite/Card view icons (real Pikachu artwork, resolved in
-// Sidebar.tsx), there's no equivalent "real" binder asset already in the
-// app to reuse, so this one is drawn from scratch.
+// Poke Ball outline for the Sprite view toggle. The view toggle previously
+// used real Pikachu artwork (a sprite and a cached card image) as its own
+// icons; charming in isolation, but the mixed art styles read as clutter
+// next to the line-drawn icons everywhere else (reported directly), so all
+// three view icons are now drawn from the same hand as the tab icons.
+export function SpriteViewIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M2.75 10h5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12.25 10h5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="10" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+// A trading card (portrait rounded rect with an art window) for the Card
+// view toggle -- same line family as SpriteViewIcon above.
+export function CardViewIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true">
+      <rect x="5" y="2.5" width="10" height="15" rx="1.8" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="7.2" y="5" width="5.6" height="5" rx="0.8" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M7.2 12.5h5.6M7.2 14.8h3.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// A ring binder, used as the Binder view's icon in Sidebar's view toggle.
 export function BinderIcon() {
   return (
     <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true">

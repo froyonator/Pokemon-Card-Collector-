@@ -2,10 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Sidebar } from './Sidebar';
-import { spriteUrl } from '../api/pokeapi';
 import { useAppStore } from '../state/store';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
-import { setCachedCards } from '../storage/cardCache';
 
 function TestIcon() {
   return <span aria-hidden="true">icon</span>;
@@ -68,55 +66,19 @@ describe('Sidebar', () => {
     expect(onSetView).toHaveBeenCalledWith('binder');
   });
 
-  it("uses Pikachu's sprite as the Card view icon when no Pikachu card is cached yet", () => {
+  // The view toggle previously used real Pikachu artwork (a live sprite and
+  // a cached card image) as its Sprite/Card icons -- replaced with icons
+  // drawn in the same line family as the rest of the app's iconography
+  // after the mixed art styles were reported as visually out of place. The
+  // toggle's icons are decorative SVGs now; only the buttons' names and
+  // behavior are contract.
+  it('renders all three view buttons with drawn icons, not fetched artwork', () => {
     renderSidebar();
-    const cardButton = screen.getByRole('button', { name: 'Card' });
-    const img = cardButton.querySelector('img');
-    expect(img).toHaveAttribute('src', spriteUrl(25));
-  });
-
-  it("uses a real cached Pikachu card image as the Card view icon once one is available", () => {
-    setCachedCards('en', 25, [
-      {
-        id: 'sv03.5-236',
-        name: 'Pikachu',
-        dexNumber: 25,
-        setId: 'sv03.5',
-        setName: '151',
-        localId: '236',
-        rarity: 'Illustration rare',
-        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/236',
-        language: 'en',
-      },
-    ]);
-    renderSidebar();
-    const cardButton = screen.getByRole('button', { name: 'Card' });
-    const img = cardButton.querySelector('img');
-    expect(img).toHaveAttribute('src', 'https://assets.tcgdex.net/en/sv/sv03.5/236/low.webp');
-  });
-
-  it("prefers the cached Pikachu card's hostedThumbUrl over the live-API-constructed URL when present", () => {
-    setCachedCards('en', 25, [
-      {
-        id: 'sv03.5-236',
-        name: 'Pikachu',
-        dexNumber: 25,
-        setId: 'sv03.5',
-        setName: '151',
-        localId: '236',
-        rarity: 'Illustration rare',
-        imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/236',
-        hostedThumbUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/236/thumb.webp',
-        language: 'en',
-      },
-    ]);
-    renderSidebar();
-    const cardButton = screen.getByRole('button', { name: 'Card' });
-    const img = cardButton.querySelector('img');
-    expect(img).toHaveAttribute(
-      'src',
-      'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/236/thumb.webp'
-    );
+    for (const name of ['Sprite', 'Card', 'Binder']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.querySelector('svg')).toBeInTheDocument();
+      expect(button.querySelector('img')).toBeNull();
+    }
   });
 
   it('shows a disabled, in-flight state on the refresh button while loading, and calls onRefresh when clicked', async () => {

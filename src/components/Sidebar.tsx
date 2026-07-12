@@ -1,10 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { spriteUrl } from '../api/pokeapi';
-import { cardImageUrl } from '../api/tcgdex';
-import { getCachedCards } from '../storage/cardCache';
-import { useAppStore } from '../state/store';
-import { BinderIcon } from './icons/TabIcons';
+import { BinderIcon, CardViewIcon, SpriteViewIcon } from './icons/TabIcons';
 import { BinderSettings } from './BinderSettings';
 import { CollectionStats } from './CollectionStats';
 import { FilterBar } from './FilterBar';
@@ -17,14 +13,6 @@ export interface SidebarTab<TabId extends string = string> {
   label: string;
   icon: ReactNode;
 }
-
-// Pikachu (#25) -- used as the Sprite/Card view toggle's own icons, since
-// showing an actual sprite/card is a more immediate "this is what that view
-// looks like" preview than an abstract icon would be. The card image falls
-// back to the sprite if Pikachu's card data hasn't been cached yet (e.g. the
-// user has deselected Generation 1, or the initial fetch hasn't landed) --
-// see pikachuCardImageBase below.
-const VIEW_ICON_DEX_NUMBER = 25;
 
 export interface SidebarProps<TabId extends string = string> {
   view: DexView;
@@ -66,19 +54,6 @@ export function Sidebar<TabId extends string = string>({
   showDexGridControls,
 }: SidebarProps<TabId>) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const language = useAppStore((s) => s.language);
-  // A real Pikachu card image for the Card view icon, resolved from
-  // whatever's already cached for the current language -- not a fetch of
-  // its own, so it stays undefined (falling back to the sprite below) until
-  // Pikachu's own card data happens to already be cached.
-  const pikachuCard = getCachedCards(language, VIEW_ICON_DEX_NUMBER)?.[0];
-  const pikachuCardImageBase = pikachuCard?.imageBase;
-  // A pre-resolved hosted thumbnail, preferred over the live-API imageBase
-  // construction below whenever it's present -- see CardImage's own
-  // hostedThumbUrl prop, which this icon has no CardImage instance to route
-  // through (it's a plain <img>), so the same preference is applied here
-  // directly instead.
-  const pikachuCardHostedThumbUrl = pikachuCard?.hostedThumbUrl;
 
   return (
     <aside
@@ -155,7 +130,7 @@ export function Sidebar<TabId extends string = string>({
                 aria-pressed={view === 'sprite'}
                 onClick={() => onSetView('sprite')}
               >
-                <img src={spriteUrl(VIEW_ICON_DEX_NUMBER)} alt="" />
+                <SpriteViewIcon />
                 <span>Sprite</span>
               </button>
               <button
@@ -164,16 +139,7 @@ export function Sidebar<TabId extends string = string>({
                 aria-pressed={view === 'card'}
                 onClick={() => onSetView('card')}
               >
-                <img
-                  src={
-                    pikachuCardHostedThumbUrl
-                      ? pikachuCardHostedThumbUrl
-                      : pikachuCardImageBase
-                        ? cardImageUrl(pikachuCardImageBase)
-                        : spriteUrl(VIEW_ICON_DEX_NUMBER)
-                  }
-                  alt=""
-                />
+                <CardViewIcon />
                 <span>Card</span>
               </button>
               <button

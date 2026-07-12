@@ -1,5 +1,6 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
+import { loadStaticCardData } from '../api/staticDatabase';
 import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
 import { mapWithConcurrency } from './concurrency';
 import {
@@ -107,6 +108,36 @@ interface DexAccumulator {
 interface Job {
   entry: DexEntry;
   rarity: string;
+}
+
+// Folds the self-hosted static database's extra knowledge onto a batch of
+// LIVE-fetched cards before they're cached: the pre-resolved hosted image
+// URLs (which the live API knows nothing about), and a real rarity for
+// cards the live API left rarity-less. Without this, every live code path
+// (Refresh Data, "Show all cards") silently STRIPPED hostedThumbUrl/
+// hostedFullUrl from previously-enriched cache entries the moment it
+// overwrote them -- reported live as hosted images "not working" and
+// showing up empty despite the static database having them. Resolves to
+// the input unchanged when the language has no static file (nl/ru/pl) or
+// the static lookup fails; loadStaticCardData memoizes per language, so
+// this costs one fetch per language per session, not one per write.
+async function enrichFromStatic(language: string, cards: CardRecord[]): Promise<CardRecord[]> {
+  const staticData = await loadStaticCardData(language);
+  if (!staticData) return cards;
+  return cards.map((card) => {
+    const bucket = staticData[card.dexNumber];
+    const staticCard = bucket?.find((c) => c.id === card.id);
+    if (!staticCard) return card;
+    return {
+      ...card,
+      hostedThumbUrl: card.hostedThumbUrl ?? staticCard.hostedThumbUrl,
+      hostedFullUrl: card.hostedFullUrl ?? staticCard.hostedFullUrl,
+      rarity:
+        card.rarity && card.rarity !== 'Unknown' && card.rarity !== 'None'
+          ? card.rarity
+          : staticCard.rarity,
+    };
+  });
 }
 
 // If this dex number has an owned and/or wishlisted card that this curated
@@ -266,12 +297,18 @@ export async function loadAllCardData(
       }
       accumulator.remaining -= 1;
       if (accumulator.remaining === 0) {
+        // Enriched BEFORE the generation check re-runs below: enrichment
+        // awaits (the static database fetch, memoized per language), and a
+        // competing writer could land during that await -- checking
+        // isLatestWriteGeneration again on the far side of the await is
+        // what keeps this write race-safe, exactly like every other
+        // writer of this cache.
+        const enriched = await enrichFromStatic(
+          language,
+          mergeReferencedCards(accumulator, owned, wishlist, language)
+        );
         if (isLatestWriteGeneration(language, entry.number, accumulator.generation)) {
-          setCachedCards(
-            language,
-            entry.number,
-            mergeReferencedCards(accumulator, owned, wishlist, language)
-          );
+          setCachedCards(language, entry.number, enriched);
           // A curated-only fetch just overwrote this dex number's cache slot
           // with the narrower rarity-filtered subset, so any earlier "Show all
           // cards" full-print-history flag for it no longer describes what's
@@ -362,11 +399,16 @@ export async function loadAllPrintingsForDex(
       };
       return card;
     });
+    // Hosted image URLs (and rarities for cards the live API left
+    // rarity-less) ride in from the static database -- see enrichFromStatic.
+    // Applied to the RETURN value too, not just the cache write, since the
+    // Picker renders this function's result directly.
+    const enriched = await enrichFromStatic(language, cards);
     if (isLatestWriteGeneration(language, dexNumber, generation)) {
-      setCachedCards(language, dexNumber, cards);
+      setCachedCards(language, dexNumber, enriched);
       markFullPrintHistoryFetched(language, dexNumber);
     }
-    return cards;
+    return enriched;
   } catch (err) {
     // Same rationale as loadAllCardData: an abort is expected, not a real
     // failure, and must resolve rather than reject. Not currently wired up

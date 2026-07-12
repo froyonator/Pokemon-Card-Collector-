@@ -40,6 +40,10 @@
   width: 68px;
   height: 68px;
   object-fit: contain;
+  /* A grounding shadow behind every sprite: on the dark plates, light-
+     bodied Pokemon (Seel, Jynx, Togepi-types) otherwise dissolve into the
+     background with nothing anchoring them. */
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
 }
 
 .tile--available {
@@ -65,16 +69,26 @@
   color: var(--color-owned-strong);
 }
 
+/* "No special-art card exists for this Pokemon yet": must read as clearly
+   EMPTY next to a colored, available tile at a glance. On the dark theme a
+   mild desaturation wasn't enough (light-bodied Pokemon looked nearly the
+   same either way -- reported directly), so unavailable sprites drop to a
+   dim ghost: fully greyscale, darkened, translucent, on a visibly sunken
+   plate with the caption faded too. */
 .tile--unavailable {
-  background: var(--color-unavailable-soft);
+  background: rgba(0, 0, 0, 0.25);
   border-style: dashed;
   border-color: var(--color-border);
-  box-shadow: none;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .tile--unavailable img {
-  filter: saturate(0.25) brightness(0.75);
-  opacity: 0.45;
+  filter: grayscale(1) brightness(0.5) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
+  opacity: 0.38;
+}
+
+.tile--unavailable .name {
+  color: var(--color-text-faint);
 }
 
 /* Card view is specifically about collecting status: a Pokemon with no

@@ -271,6 +271,19 @@ textarea {
     box-shadow var(--transition-fast);
 }
 
+/* The dropdown POPUP is painted by the OS/UA, not by the select's own
+   styles -- without an explicit dark scheme + option colors it can render
+   cream text on the platform's light-grey list (illegible). option
+   backgrounds are one of the few popup properties Chromium honors. */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
 input[type='checkbox'],
 input[type='radio'] {
   accent-color: var(--color-accent);

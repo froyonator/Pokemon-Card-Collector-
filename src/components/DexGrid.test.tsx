@@ -640,15 +640,18 @@ describe('Static database preload', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('only live-fetches the dex numbers the static database does not cover', async () => {
-    // Bulbasaur (#1) is covered by the static file; Charizard (#6) is a
-    // real gap in it (e.g. a thin language, or a dex number the static
-    // build genuinely has no data for) and must still fall through to the
-    // existing live fetch, exactly as if no static preload existed.
+  it('treats the static database as the complete truth: a dex number it does not mention is cached as having no cards, with NO live fetch at all', async () => {
+    // Bulbasaur (#1) has cards in the static file; every other dex number
+    // is absent from it. The file was built from a full crawl of its
+    // language, so absence means "genuinely no cards" -- Charizard must
+    // render as unavailable WITHOUT any live API traffic. (The previous
+    // absent-means-fetch-live reading fired hundreds of live requests for
+    // thin languages, defeating the static database's whole purpose.)
     const partialCoverage: Record<number, CardRecord[]> = {
       1: [staticRecord(1, 'Bulbasaur')],
     };
     vi.mocked(loadStaticCardData).mockResolvedValueOnce(partialCoverage);
+    const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
 
     render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
@@ -658,16 +661,11 @@ describe('Static database preload', () => {
       expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveClass(/tile--available/);
     });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--unavailable/);
     });
 
-    const queried = queriedDexNumbers();
-    // Bulbasaur came from the static preload -- the live path must never
-    // have queried its dex number.
-    expect(queried.has(1)).toBe(false);
-    // Charizard was NOT covered by the static file -- it still goes out
-    // over the live path, unchanged.
-    expect(queried.has(6)).toBe(true);
+    expect(queriedDexNumbers().size).toBe(0);
+    expect(vi.mocked(loadAllCardData).mock.calls.length).toBe(loadAllCardDataCallsBefore);
   });
 
   it('falls back to the existing full live-fetch behavior, completely unchanged, when the static database preload fails', async () => {
@@ -722,8 +720,11 @@ describe('Static database preload', () => {
     // stale-by-generation) data for the same dex number.
     resolveStatic({ 1: [staticRecord(1, 'Bulbasaur')] });
 
+    // The preload settles the rest of the dex as "no cards" (complete-truth
+    // semantics) -- Charizard flipping to unavailable is the signal that
+    // the preload's write pass has fully run.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--unavailable/);
     });
     expect(getCachedCards('en', 1)).toEqual([competingCard]);
   });

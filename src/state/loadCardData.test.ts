@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAllCachedCardsForDex, loadAllCardData, loadAllPrintingsForDex } from './loadCardData';
+import { loadStaticCardData } from '../api/staticDatabase';
 import { setCachedCards } from '../storage/cardCache';
+
+// Fully mocked, defaulting to "no static data": every pre-existing test
+// below then sees exactly the behavior that existed before live fetches
+// started enriching their results from the static database (enrichment is
+// a no-op on null). The enrichment tests at the bottom override this
+// per-call to provide real static records.
+vi.mock('../api/staticDatabase', () => ({
+  loadStaticCardData: vi.fn(async () => null),
+}));
 
 function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -838,5 +848,109 @@ describe('3-way interleaving: curated load + Show-All + a mid-flight abort, all 
     // the write-generation race (it never got that far) nor because
     // aborting somehow bypassed the guard.
     expect(getAllCachedCardsForDex('en', 4)).toEqual(showAllResult);
+  });
+});
+
+describe('static-database enrichment of live fetches', () => {
+  // Every live write path must fold in what the static database knows that
+  // the live API does not -- most importantly the pre-resolved hosted image
+  // URLs. Before this, a Refresh Data or "Show all cards" pass silently
+  // STRIPPED hostedThumbUrl/hostedFullUrl from every cache entry it
+  // overwrote, regressing enriched records back to live-API-only data.
+  it('"Show all cards" results carry hosted image URLs and rarities from the static database', async () => {
+    vi.mocked(loadStaticCardData).mockResolvedValue({
+      6: [
+        {
+          id: 'sv03.5-199',
+          name: 'Charizard ex',
+          dexNumber: 6,
+          setId: 'sv03.5',
+          setName: '151',
+          localId: '199',
+          rarity: 'Special illustration rare',
+          imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+          hostedThumbUrl: 'https://example.com/hosted/199/thumb.webp',
+          hostedFullUrl: 'https://example.com/hosted/199/original.webp',
+          language: 'en',
+        },
+      ],
+    });
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/cards/sv03.5-199')) {
+        return jsonResponse({
+          id: 'sv03.5-199',
+          localId: '199',
+          name: 'Charizard ex',
+          // The live API has no rarity for this card -- the static record's
+          // rarity must fill the gap instead of 'Unknown'.
+          rarity: undefined,
+          set: { id: 'sv03.5', name: '151' },
+        });
+      }
+      return jsonResponse([
+        {
+          id: 'sv03.5-199',
+          localId: '199',
+          name: 'Charizard ex',
+          image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+        },
+      ]);
+    });
+
+    const result = await loadAllPrintingsForDex('en', 6, 'Charizard', fetchImpl);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].hostedThumbUrl).toBe('https://example.com/hosted/199/thumb.webp');
+    expect(result[0].hostedFullUrl).toBe('https://example.com/hosted/199/original.webp');
+    expect(result[0].rarity).toBe('Special illustration rare');
+    // The cache write got the same enrichment as the returned value.
+    expect(getAllCachedCardsForDex('en', 6)).toEqual(result);
+    vi.mocked(loadStaticCardData).mockResolvedValue(null);
+  });
+
+  it('a curated load (Refresh Data path) preserves hosted image URLs instead of stripping them', async () => {
+    vi.mocked(loadStaticCardData).mockResolvedValue({
+      6: [
+        {
+          id: 'sv03.5-199',
+          name: 'Charizard ex',
+          dexNumber: 6,
+          setId: 'sv03.5',
+          setName: '151',
+          localId: '199',
+          rarity: 'Special illustration rare',
+          imageBase: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+          hostedThumbUrl: 'https://example.com/hosted/199/thumb.webp',
+          language: 'en',
+        },
+      ],
+    });
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/sets')) {
+        return jsonResponse([{ id: 'sv03.5', name: '151' }]);
+      }
+      if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+        return jsonResponse([
+          {
+            id: 'sv03.5-199',
+            localId: '199',
+            name: 'Charizard ex',
+            image: 'https://assets.tcgdex.net/en/sv/sv03.5/199',
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    await loadAllCardData('en', {
+      dexEntries: [{ number: 6, name: 'Charizard' }],
+      rarities: ['Special illustration rare'],
+      fetchImpl,
+    });
+
+    const cached = getAllCachedCardsForDex('en', 6);
+    expect(cached).toHaveLength(1);
+    expect(cached[0].hostedThumbUrl).toBe('https://example.com/hosted/199/thumb.webp');
+    vi.mocked(loadStaticCardData).mockResolvedValue(null);
   });
 });

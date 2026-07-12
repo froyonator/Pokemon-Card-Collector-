@@ -213,14 +213,20 @@ export function DexGrid({
 
       let stillMissing = missingEntries;
       if (staticData) {
-        const remaining: typeof missingEntries = [];
+        // The static file is the COMPLETE truth for its language -- it was
+        // built from a full crawl of every set, so a dex number it doesn't
+        // mention genuinely has zero cards in that language, and caching
+        // that emptiness is as valid as caching cards. This is what makes a
+        // static-covered language load with ZERO live API calls: the
+        // previous "absent key -> fall through to the live fetch" reading
+        // still fired hundreds of live requests for thin languages (e.g.
+        // Chinese, where most dex numbers have no cards), which is exactly
+        // the latency the static database exists to eliminate. Languages
+        // with no static file at all (nl/ru/pl) never reach this branch and
+        // keep the full live path.
         let wroteAny = false;
         for (const entry of missingEntries) {
-          const cards = staticData[entry.number];
-          if (cards === undefined) {
-            remaining.push(entry);
-            continue;
-          }
+          const cards = staticData[entry.number] ?? [];
           const generation = reservedGenerations.get(entry.number);
           // A competing writer (e.g. "Show all cards") reserved a newer
           // generation for this dex number while this preload's fetch was
@@ -233,7 +239,7 @@ export function DexGrid({
             wroteAny = true;
           }
         }
-        stillMissing = remaining;
+        stillMissing = [];
         // Bumped here -- even for a partial preload, and even when (in the
         // branch below) it turns out to cover 100% of what was missing --
         // so the tile grid's cardsByDexNumber memo (keyed on dataVersion)
