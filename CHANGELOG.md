@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Around 2,500 French, German, Spanish, Italian, and Portuguese cards that showed a "no image available" placeholder now display their card art. The artwork of a given print is identical across languages, so these cards now borrow the already-hosted English scan of the exact same card.
 - "Refresh Data" was extremely slow for languages already covered by the built-in card database: it always re-fetched every Pokemon from the live source instead of reusing the fast local path the app already uses on startup. Refresh now re-checks the local database first and only falls back to the live source for languages it doesn't cover, matching the speed of the initial load.
 - The binder bookshelf had lost its 3D feel: each binder just sat flat instead of leaning toward you as you moved the cursor over it. Volumes now tilt in real 3D following your cursor, easing back to their resting angle when you look away, and still keep their original cover-flip effect on hover. Anyone with reduced motion turned on still gets a simple hover highlight instead of the tilt.
 - A binder's uploaded cover picture showed up as a small framed plate instead of covering the whole front of the binder. It now fills the entire cover edge to edge, with the binder name still readable on top thanks to a subtle shading behind the text.
