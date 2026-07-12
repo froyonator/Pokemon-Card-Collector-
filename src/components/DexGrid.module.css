@@ -19,6 +19,28 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: var(--space-3);
+  /* One gentle rise on mount -- the whole shelf settling into place. Kept
+     at the grid level (not per-tile stagger) so dataVersion-driven
+     re-renders during a cold-start load never replay 151 competing
+     entrance animations. */
+  animation: grid-rise 480ms var(--ease-out);
+}
+
+@keyframes grid-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid {
+    animation: none;
+  }
 }
 
 .emptyState {

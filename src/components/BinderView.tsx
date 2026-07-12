@@ -759,6 +759,9 @@ export function BinderView({
           >
             &larr;
           </button>
+          <span className={styles.pageIndicator} aria-label={`Spread ${spreadIndex + 1} of ${spreads.length}`}>
+            {spreadIndex + 1} / {spreads.length}
+          </span>
           <button
             type="button"
             aria-label="Next page"
@@ -815,6 +818,17 @@ export function BinderView({
           onWheel={handleWheel}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
         >
+          {/* The binder's ring spine: purely decorative hardware, absolutely
+              positioned in the center channel between the two pages of a
+              spread (and along a lone page's hinged edge, which sits at the
+              same centerline -- see .pageRight:only-child). Rendered outside
+              AnimatePresence so page turns never unmount the rings. */}
+          <div className={styles.spine} aria-hidden="true">
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+            <span className={styles.ring} />
+          </div>
           {/* mode="popLayout": .spread is a plain flex row, so without this an
               exiting page (kept mounted by AnimatePresence during its exit
               animation) stays a normal flex sibling of the newly-entering

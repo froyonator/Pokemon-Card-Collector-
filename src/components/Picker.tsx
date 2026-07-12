@@ -315,7 +315,22 @@ export function Picker({
                   ? styles.cardBodySelected
                   : styles.cardBody;
               return (
-                <div key={card.id} className={styles.card}>
+                // Tilt tracking (ref + mouse handlers) lives on this outer,
+                // never-transformed cell; only the inner card body below
+                // receives the rotation style. Listening on the rotated
+                // element itself let the card's projected edge slide out
+                // from under a cursor parked right at the boundary,
+                // oscillating leave/enter (the "vibrates at the edge" bug)
+                // -- the cell's footprint never moves, so tracking is
+                // stable everywhere. Same pattern as CardZoomOverlay.
+                <PickerCardTilt key={card.id} disabled={hasNoImage}>
+                  {(tilt) => (
+                    <div
+                      className={styles.card}
+                      ref={tilt.ref}
+                      onMouseMove={tilt.onMouseMove}
+                      onMouseLeave={tilt.onMouseLeave}
+                    >
                   <button
                     type="button"
                     className={styles.enlarge}
@@ -337,18 +352,15 @@ export function Picker({
                   >
                     {isWishlisted ? '★' : '☆'}
                   </button>
-                  <PickerCardTilt disabled={hasNoImage}>
-                    {(tilt) => (
-                      // A plain <button> here would nest the placeholder's
-                      // own Search/Upload/Remove <button>s (rendered by
-                      // CardImage below) inside this outer button, which is
-                      // invalid HTML and trips React's validateDOMNesting
-                      // warning. A div with an explicit button role,
-                      // tabIndex, and matching keyboard handling preserves
-                      // the same click/keyboard-activation behavior without
-                      // that nesting.
+                      {/* A plain <button> here would nest the placeholder's
+                          own Search/Upload/Remove <button>s (rendered by
+                          CardImage below) inside this outer button, which is
+                          invalid HTML and trips React's validateDOMNesting
+                          warning. A div with an explicit button role,
+                          tabIndex, and matching keyboard handling preserves
+                          the same click/keyboard-activation behavior without
+                          that nesting. */}
                       <div
-                        ref={tilt.ref}
                         role="button"
                         tabIndex={0}
                         aria-pressed={isSelectMode ? selectedCardIds.has(card.id) : undefined}
@@ -358,8 +370,6 @@ export function Picker({
                             : baseCardBodyClass
                         }
                         style={tilt.style}
-                        onMouseMove={tilt.onMouseMove}
-                        onMouseLeave={tilt.onMouseLeave}
                         onClick={() =>
                           isSelectMode ? toggleCardSelected(card.id) : setPendingCard(card)
                         }
@@ -410,24 +420,24 @@ export function Picker({
                         </span>
                         <span className={styles.rarity}>{card.rarity}</span>
                       </div>
-                    )}
-                  </PickerCardTilt>
-                  <select
-                    className={styles.classify}
-                    aria-label={`Classify ${card.name} (${card.setName} #${card.localId}) as`}
-                    value={cardOverrides[card.id] ?? ''}
-                    onChange={(event) =>
-                      setCardOverride(card.id, event.target.value === '' ? null : event.target.value)
-                    }
-                  >
-                    <option value="">Use this card&apos;s own rarity</option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                      <select
+                        className={styles.classify}
+                        aria-label={`Classify ${card.name} (${card.setName} #${card.localId}) as`}
+                        value={cardOverrides[card.id] ?? ''}
+                        onChange={(event) =>
+                          setCardOverride(card.id, event.target.value === '' ? null : event.target.value)
+                        }
+                      >
+                        <option value="">Use this card&apos;s own rarity</option>
+                        {groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </PickerCardTilt>
               );
             })}
           </div>

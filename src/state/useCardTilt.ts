@@ -105,6 +105,13 @@ export function useCardTilt(options: UseCardTiltOptions = {}): UseCardTiltResult
         '--tilt-shine-x': `${tilt.shineX}%`,
         '--tilt-shine-y': `${tilt.shineY}%`,
         '--tilt-shine-opacity': isActive ? String(SHINE_OPACITY) : '0',
+        // Unitless copies of the rotation, for CSS that wants to DERIVE
+        // something from the tilt angle rather than rotate by it -- e.g.
+        // CardZoomOverlay's parallax drop shadow, which slides opposite the
+        // tilt via calc(var(--tilt-ry) * -2px) so the card seems to lift
+        // off a surface the shadow stays on.
+        '--tilt-rx': String(tilt.rotateX),
+        '--tilt-ry': String(tilt.rotateY),
       } as CSSProperties);
 
   return { ref, style, isActive, onMouseMove: handleMouseMove, onMouseLeave: handleMouseLeave };

@@ -1,3 +1,6 @@
+/* One dex entry in the grid: a small mounted specimen — dark plate, mono
+   catalog number, the sprite or owned card art as the lit subject. */
+
 .tileWrapper {
   position: relative;
 }
@@ -7,14 +10,17 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+  width: 100%;
   padding: var(--space-3) var(--space-2) var(--space-2);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(240, 231, 211, 0.045), transparent),
+    var(--color-surface);
   cursor: pointer;
   font: inherit;
   color: inherit;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--bevel-highlight), var(--shadow-sm);
   transition:
     border-color var(--transition-fast),
     box-shadow var(--transition-fast),
@@ -22,8 +28,11 @@
 }
 
 .tile:hover {
-  border-color: var(--color-border-strong);
-  box-shadow: var(--shadow-md);
+  border-color: rgba(217, 164, 65, 0.4);
+  box-shadow:
+    var(--bevel-highlight),
+    0 0 0 1px rgba(217, 164, 65, 0.18),
+    0 12px 26px -10px rgba(0, 0, 0, 0.7);
   transform: none; /* framer-motion owns the hover scale */
 }
 
@@ -41,13 +50,15 @@
 }
 
 .tile--owned {
-  background: var(--color-owned-soft);
-  border-color: var(--color-owned);
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(124, 199, 154, 0.08), transparent),
+    var(--color-surface);
+  border-color: rgba(88, 168, 120, 0.45);
 }
 
 .tile--owned .spriteImg {
-  filter: grayscale(0.85) brightness(0.85);
-  opacity: 0.75;
+  filter: grayscale(0.85) brightness(0.8);
+  opacity: 0.7;
 }
 
 .tile--owned .number {
@@ -58,19 +69,20 @@
   background: var(--color-unavailable-soft);
   border-style: dashed;
   border-color: var(--color-border);
+  box-shadow: none;
 }
 
 .tile--unavailable img {
-  filter: saturate(0.25) brightness(0.9);
-  opacity: 0.55;
+  filter: saturate(0.25) brightness(0.75);
+  opacity: 0.45;
 }
 
 /* Card view is specifically about collecting status: a Pokemon with no
    cards at all should read as starkly, unmistakably dull there, more so
    than the lighter dulling above used in sprite view. */
 .dullCardView img {
-  filter: grayscale(0.9) brightness(0.75);
-  opacity: 0.4;
+  filter: grayscale(0.9) brightness(0.6);
+  opacity: 0.35;
 }
 
 /* Distinct from .tile--unavailable's dashed-border/desaturated "confirmed
@@ -89,10 +101,10 @@
 @keyframes tile-pulse {
   0%,
   100% {
-    opacity: 0.45;
+    opacity: 0.4;
   }
   50% {
-    opacity: 0.85;
+    opacity: 0.8;
   }
 }
 
@@ -104,10 +116,10 @@
 }
 
 .number {
-  font-family: var(--font-body);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   color: var(--color-text-faint);
 }
 
@@ -137,7 +149,7 @@
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 50%;
-  background: rgba(20, 14, 10, 0.5);
+  background: rgba(15, 11, 7, 0.55);
   backdrop-filter: blur(3px);
   color: #fff;
   cursor: pointer;
@@ -155,5 +167,5 @@
 
 .enlarge:hover {
   transform: scale(1.12);
-  background: rgba(20, 14, 10, 0.75);
+  background: rgba(15, 11, 7, 0.8);
 }

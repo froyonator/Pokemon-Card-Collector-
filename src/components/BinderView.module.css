@@ -1,5 +1,10 @@
-/* height: 100% + align-items: stretch (not the previous center) is required
-   for BinderView.tsx's ResizeObserver-driven measured slot sizing
+/* The binder view: an open collector's album lying on the desk. The spread
+   is a leather-bound shell; each page is a textured album leaf with punched
+   holes riding on metal rings at the spine; each slot (see
+   BinderSlot.module.css) is a clear card pocket. */
+
+/* height: 100% + align-items: stretch (not center) is required for
+   BinderView.tsx's ResizeObserver-driven measured slot sizing
    (src/state/binderSlotSizing.ts) to actually work: .spread below is what
    gets measured, and both its width AND height need to come from something
    OTHER than its own children's rendered size, or the measurement is
@@ -9,20 +14,7 @@
    width of .binder, itself the full width of its ancestor chain -- see
    App.module.css's .dexGridPanel and DexGrid.module.css's .panel); height:
    100% (resolved against that same ancestor chain) gives .spread's own
-   flex: 1 below something real to grow into for height.
-
-   Disclosure: align-items: stretch, height: 100%, and min-height: 0 here
-   were added in commit 85ca29a -- a commit titled as a "Task 3" fix --
-   using the exact values Task 4 Step 1 of
-   docs/superpowers/plans/2026-07-11-binder-view-redesign-plan.md later
-   specifies for this same rule. Task 4's own commit (bdd2ae3) ran roughly
-   30 minutes afterward and built its Step 1 diff on top of these
-   already-landed values (only touching .spread and .page below) rather
-   than authoring .binder fresh, entangling the two tasks' diffs. The
-   BinderPage/usePageSize per-page refactor further down this file is Task
-   4's own work (also bdd2ae3), not Task 3's. Queued for formal resolution
-   (for both Task 3's and Task 4's commit trails) in Task 10's "Queued from
-   a Task 3 spec-compliance review" note and its Step 2. */
+   flex: 1 below something real to grow into for height. */
 .binder {
   display: flex;
   flex-direction: column;
@@ -32,34 +24,59 @@
   min-height: 0;
 }
 
+/* The album shell: oxblood leather with a stitched hem. The inner stitched
+   line is a dashed border inset from the edge -- the kind of detail that
+   sells "object" over "panel". flex/overflow/perspective mechanics are
+   unchanged from the pre-redesign rules (see .binder's comment above). */
 .spread {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-6);
   overflow-x: auto;
   perspective: 2400px;
-  /* flex: 1 (not an intrinsic/content height) is the other half of the
-     height fix described above .binder -- it claims the remaining vertical
-     space in .binder after .nav, instead of shrinking to fit its own
-     (measurement-dependent) children. min-height: 0 lets it actually shrink
-     below its children's hypothetical content size, which a flex item's
-     default min-height: auto would otherwise prevent. No cross-axis
-     alignment override here (default stretch) -- each .page below stretches
-     to the full height of .spread and claims an equal share of its width via
-     its own flex: 1, which is what makes a two-page spread split the screen
-     evenly down the center, and lets a lone page (nothing else in the row)
-     naturally fill the full width on its own. */
+  position: relative;
   flex: 1;
   min-height: 0;
+  padding: var(--space-5);
+  border-radius: 18px;
+  background:
+    var(--grain),
+    radial-gradient(130% 100% at 50% 0%, rgba(255, 220, 170, 0.05), transparent 55%),
+    linear-gradient(160deg, #3a1f16 0%, #2c1710 45%, #241209 100%);
+  background-blend-mode: overlay, normal, normal;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 225, 180, 0.08),
+    inset 0 0 60px rgba(0, 0, 0, 0.45),
+    var(--shadow-lg);
 }
 
+/* Stitching, inset just inside the leather hem. */
+.spread::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 12px;
+  border: 1.5px dashed rgba(224, 178, 116, 0.22);
+  pointer-events: none;
+}
+
+/* Album pages: warm charcoal leaves. Rounded more on the outer corners than
+   the spine side, like a real punched page. */
 .page {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-xl);
-  background: #050403;
+  padding: var(--space-3);
+  background:
+    var(--grain),
+    linear-gradient(175deg, #211d18 0%, #1a1712 60%, #171310 100%);
+  background-blend-mode: soft-light, normal;
   transform-style: preserve-3d;
   backface-visibility: hidden;
+  position: relative;
+  border: 1px solid rgba(240, 231, 211, 0.06);
+  box-shadow:
+    0 1px 0 rgba(240, 231, 211, 0.04) inset,
+    0 10px 30px -12px rgba(0, 0, 0, 0.8);
   /* flex: 1 splits a two-page spread's width evenly between both pages (a
      lone page has no sibling to share with, so it fills the row on its
      own); min-width: 0 lets it shrink below its grid tracks' hypothetical
@@ -77,13 +94,74 @@
 /* The left page of a spread hinges on its RIGHT edge (the spine); the right
    page (or a lone first page, which has no left-hand partner) hinges on its
    LEFT edge. Framer Motion's rotateY needs a matching transform-origin here
-   to actually pivot at that edge instead of the element's center. */
+   to actually pivot at that edge instead of the element's center.
+   Each page also gets: rounded OUTER corners only, punched ring holes along
+   its spine edge (::before), and a soft gutter shadow where the paper curves
+   into the spine (::after). */
 .pageLeft {
   transform-origin: right center;
+  border-radius: 12px 3px 3px 12px;
+  /* Extra room on the spine side so the card grid never sits on top of the
+     punched holes (the ::before strip below is 22px wide + 2px inset).
+     ResizeObserver's contentRect excludes padding, so BinderView's measured
+     slot sizing adapts to this automatically. */
+  padding-right: 30px;
 }
 
 .pageRight {
   transform-origin: left center;
+  border-radius: 3px 12px 12px 3px;
+  padding-left: 30px;
+}
+
+/* Punched holes: dark circles with a lit lower rim, evenly spaced down the
+   spine edge. Sized/spaced to visually pair with the .ring hardware. */
+.page::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0.85) 0 4.5px,
+    rgba(240, 231, 211, 0.13) 5.5px,
+    transparent 7px
+  );
+  background-size: 22px 25%;
+  background-position: 0 12.5%;
+  background-repeat: repeat-y;
+}
+
+.pageLeft::before {
+  right: 2px;
+}
+
+.pageRight::before {
+  left: 2px;
+}
+
+/* Gutter shading: the page dims slightly as it curves into the rings. */
+.page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 56px;
+  pointer-events: none;
+}
+
+.pageLeft::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0.42), transparent);
+  border-radius: 0 3px 3px 0;
+}
+
+.pageRight::after {
+  left: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent);
+  border-radius: 3px 0 0 3px;
 }
 
 /* A lone first page (no left-hand partner) still gets .pageRight (see
@@ -95,24 +173,125 @@
    stretching past a real right page's own width; margin-left: auto pushes
    it to the row's right edge instead of leaving it flush left. */
 .pageRight:only-child {
-  flex: 0 1 calc(50% - var(--space-4) / 2);
+  flex: 0 1 calc(50% - var(--space-6) / 2);
   margin-left: auto;
+}
+
+/* The ring spine: a shadowed channel down the centerline with four metal
+   rings. Sits behind the pages' spine edges (they overlap it slightly), so
+   the rings read as passing through the punched holes. */
+.spine {
+  position: absolute;
+  top: var(--space-5);
+  bottom: var(--space-5);
+  left: 50%;
+  width: 44px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 0, 0, 0.5) 30%,
+    rgba(0, 0, 0, 0.62) 50%,
+    rgba(0, 0, 0, 0.5) 70%,
+    transparent
+  );
+}
+
+/* One metal ring: a torus drawn with a conic highlight over a steel base,
+   with a hollow center punched out via a smaller inner circle. */
+.ring {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 5px solid #6f6a62;
+  background: transparent;
+  box-shadow:
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.45),
+    inset 0 -1.5px 1.5px rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+
+/* Specular glint on each ring's upper arc. */
+.ring::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 4px;
+  width: 12px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 250, 240, 0.5);
+  filter: blur(1.5px);
+}
+
+/* Page-turn shading: while a page plays its 0.8s hinge flip (data-turning,
+   set by BinderView.tsx), a shadow sweeps off it -- paper catching the room
+   light as it settles. Runs once on mount (entering pages), matching the
+   flip duration; purely decorative. */
+.page[data-turning='true'] {
+  animation: page-settle-shade 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes page-settle-shade {
+  0% {
+    filter: brightness(0.55);
+  }
+  60% {
+    filter: brightness(0.85);
+  }
+  100% {
+    filter: brightness(1);
+  }
 }
 
 .nav {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-3);
   align-items: center;
+}
+
+/* Prev/next as round hardware buttons. */
+.nav > button[aria-label='Previous page'],
+.nav > button[aria-label='Next page'] {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  font-size: var(--text-md);
+}
+
+.pageIndicator {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  letter-spacing: 0.06em;
+  min-width: 52px;
+  text-align: center;
 }
 
 .editorOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 10, 8, 0.6);
-  backdrop-filter: blur(3px);
+  background: rgba(10, 7, 4, 0.72);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 200;
   padding: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page[data-turning='true'] {
+    animation: none;
+  }
 }

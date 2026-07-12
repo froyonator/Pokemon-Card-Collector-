@@ -1,26 +1,32 @@
 /* =========================================================================
-   Card Collector — design tokens & base styles
-   Aesthetic: "collector's ledger" — a moody card-shop catalog. Deep ink
-   surfaces with a warm parchment counterpoint, a Poke Ball crimson as the
-   primary accent, and a foil-gold secondary for anything "owned" or rare.
-   A soft four-colour holo gradient is reserved for small decorative
-   flourishes (panel edges, focus rings on favourites) so it reads as a
-   deliberate accent, not a background wash.
+   Collector's Ledger — design tokens & base styles
 
-   Fraunces (display) and Karla (body) are loaded via <link rel="stylesheet">
-   in index.html's <head> instead of an @import here, so the browser's
-   preload scanner can discover and fetch them without waiting on this
-   stylesheet to parse. The --font-display/--font-body stacks below still
-   list system fallbacks in case that link is ever removed or fails to load.
+   Aesthetic: "the collector's study at night." One committed dark theme:
+   deep espresso and walnut surfaces lit by warm lamplight, cream ink,
+   brass-and-gold hardware, and Poke Ball crimson reserved for primary
+   actions only. Card art is the sole saturated element on screen — the
+   surrounding room stays hushed so the cards glow like framed pieces in a
+   gallery. Paper grain and a soft vignette keep surfaces tactile rather
+   than flat.
+
+   Deliberately a single theme (no prefers-color-scheme split): the light
+   variant diluted both looks, and a collection of glowing card art reads
+   best against a dark room. color-scheme: dark keeps native form controls
+   (selects, checkboxes, scrollbars) matching.
+
+   Fraunces (display serif) and Karla (body) are loaded via <link> in
+   index.html so the preload scanner finds them early; Spline Sans Mono
+   joins them for ledger-style numerals (dex numbers, counts, set codes).
+   The stacks below keep system fallbacks in case that link ever fails.
    ========================================================================= */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
   /* ---- type ---- */
   --font-display: 'Fraunces', ui-serif, Georgia, 'Iowan Old Style', serif;
-  --font-body:
-    'Karla', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Karla', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   --text-xs: 0.6875rem; /* 11px */
   --text-sm: 0.8125rem; /* 13px */
@@ -51,102 +57,69 @@
 
   /* ---- motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --transition-fast: 140ms var(--ease-out);
   --transition-base: 220ms var(--ease-out);
+  --transition-slow: 420ms var(--ease-out);
 
-  /* ---- palette: light ---- */
-  --color-bg: #f8f3e9;
-  --color-bg-wash-a: rgba(198, 40, 57, 0.07);
-  --color-bg-wash-b: rgba(201, 138, 31, 0.08);
-  --color-surface: #fffdf8;
-  --color-surface-raised: #ffffff;
-  --color-surface-sunken: rgba(30, 24, 18, 0.04);
-  --color-border: rgba(36, 26, 20, 0.12);
-  --color-border-strong: rgba(36, 26, 20, 0.22);
+  /* ---- palette: the study ---- */
+  --color-bg: #131009;
+  --color-bg-wash-a: rgba(224, 158, 70, 0.09); /* lamplight, upper left */
+  --color-bg-wash-b: rgba(198, 62, 66, 0.06); /* ember glow, upper right */
 
-  --color-text: #241a14;
-  --color-text-muted: #6b5f56;
-  --color-text-faint: #948779;
+  --color-surface: #1d1811;
+  --color-surface-raised: #262017;
+  --color-surface-sunken: rgba(0, 0, 0, 0.3);
+  --color-border: rgba(235, 205, 160, 0.11);
+  --color-border-strong: rgba(235, 205, 160, 0.24);
 
-  --color-accent: #c62839;
-  --color-accent-strong: #a11f2d;
-  --color-accent-soft: rgba(198, 40, 57, 0.12);
-  --color-accent-contrast: #fff8f2;
+  --color-text: #f0e7d3;
+  --color-text-muted: #b4a68d;
+  --color-text-faint: #857863;
 
-  --color-gold: #b8790f;
-  --color-gold-strong: #8f5c0a;
-  --color-gold-soft: rgba(184, 121, 15, 0.16);
+  --color-accent: #e2544a;
+  --color-accent-strong: #f0685e;
+  --color-accent-soft: rgba(226, 84, 74, 0.17);
+  --color-accent-contrast: #1c0e0a;
 
-  --color-danger: #c62839;
-  --color-danger-soft: rgba(198, 40, 57, 0.1);
+  --color-gold: #d9a441;
+  --color-gold-strong: #f0be62;
+  --color-gold-soft: rgba(217, 164, 65, 0.15);
 
-  /* Dex Grid tile states only. Deliberately separate from --color-gold and
-     --color-danger (used elsewhere for wishlist/rarity and warnings/delete
-     actions) -- reusing those here made "owned" and "no card exists yet"
-     read as near-identical warm washes at a glance. Owned reads as a clear
-     positive (green); unavailable reads as neutral/empty (grey), not an
-     error, since a Pokemon with no released special-art card isn't a
-     problem to fix. */
-  --color-owned: #3f8f5b;
-  --color-owned-strong: #2f7248;
-  --color-owned-soft: rgba(63, 143, 91, 0.16);
+  --color-danger: #e2544a;
+  --color-danger-soft: rgba(226, 84, 74, 0.14);
 
-  --color-unavailable: #948779;
-  --color-unavailable-soft: rgba(107, 95, 86, 0.1);
+  /* Dex Grid tile states only. Owned reads as a clear positive (felt
+     green); unavailable reads as neutral/empty (warm grey), not an error,
+     since a Pokemon with no released special-art card isn't a problem to
+     fix. Deliberately separate from --color-gold / --color-danger. */
+  --color-owned: #58a878;
+  --color-owned-strong: #7cc79a;
+  --color-owned-soft: rgba(88, 168, 120, 0.15);
+
+  --color-unavailable: #857863;
+  --color-unavailable-soft: rgba(133, 120, 99, 0.1);
 
   --holo-gradient: linear-gradient(
     115deg,
-    #e8b23d 0%,
-    #c62839 32%,
-    #7a5fc7 64%,
-    #2f8f5b 100%
+    #f0be62 0%,
+    #e2544a 30%,
+    #8f7bd8 62%,
+    #58a878 100%
   );
 
-  --shadow-sm: 0 1px 2px rgba(36, 26, 20, 0.08);
-  --shadow-md: 0 8px 24px -8px rgba(36, 26, 20, 0.22);
-  --shadow-lg: 0 24px 64px -16px rgba(36, 26, 20, 0.32);
-  --shadow-focus: 0 0 0 3px var(--color-accent-soft);
-}
+  /* Paper grain: inline SVG turbulence, tiled. Used by body::before and any
+     surface that wants tactility (binder cover, start screen). */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #15131a;
-    --color-bg-wash-a: rgba(226, 71, 87, 0.1);
-    --color-bg-wash-b: rgba(240, 180, 41, 0.07);
-    --color-surface: #1f1c26;
-    --color-surface-raised: #262230;
-    --color-surface-sunken: rgba(0, 0, 0, 0.22);
-    --color-border: rgba(255, 255, 255, 0.09);
-    --color-border-strong: rgba(255, 255, 255, 0.18);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 10px 28px -10px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 28px 70px -18px rgba(0, 0, 0, 0.75);
+  --shadow-focus: 0 0 0 3px var(--color-gold-soft), 0 0 0 1.5px var(--color-gold);
 
-    --color-text: #f3ede2;
-    --color-text-muted: #b3a9bb;
-    --color-text-faint: #837a8f;
-
-    --color-accent: #e2495b;
-    --color-accent-strong: #ef6274;
-    --color-accent-soft: rgba(226, 73, 91, 0.18);
-    --color-accent-contrast: #1a1014;
-
-    --color-gold: #f0b429;
-    --color-gold-strong: #f7c65a;
-    --color-gold-soft: rgba(240, 180, 41, 0.16);
-
-    --color-danger: #e2495b;
-    --color-danger-soft: rgba(226, 73, 91, 0.16);
-
-    --color-owned: #4caf7d;
-    --color-owned-strong: #6fcf9a;
-    --color-owned-soft: rgba(76, 175, 125, 0.18);
-
-    --color-unavailable: #837a8f;
-    --color-unavailable-soft: rgba(131, 122, 143, 0.14);
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
-    --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.65);
-    --shadow-focus: 0 0 0 3px var(--color-accent-soft);
-  }
+  /* Warm inner top-light on raised controls — the "brass under lamplight"
+     bevel every button/panel shares. */
+  --bevel-highlight: inset 0 1px 0 rgba(240, 231, 211, 0.07);
 }
 
 *,
@@ -169,7 +142,8 @@ body {
   background-color: var(--color-bg);
   background-image:
     radial-gradient(1100px 560px at 12% -8%, var(--color-bg-wash-a), transparent 60%),
-    radial-gradient(900px 480px at 100% 0%, var(--color-bg-wash-b), transparent 55%);
+    radial-gradient(900px 480px at 100% 0%, var(--color-bg-wash-b), transparent 55%),
+    radial-gradient(140% 120% at 50% 30%, transparent 55%, rgba(0, 0, 0, 0.42) 100%);
   background-repeat: no-repeat;
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
@@ -178,6 +152,21 @@ body {
      inputs opt back in below, since they need normal select/edit behaviour. */
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Paper grain over everything, at a whisper. pointer-events: none and a
+   fixed position keep it purely atmospheric — it never intercepts clicks,
+   never scrolls, never repaints with content. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: var(--grain);
+  background-repeat: repeat;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 2147483647;
+  mix-blend-mode: overlay;
 }
 
 input,
@@ -233,11 +222,13 @@ button {
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
-  background: var(--color-surface-raised);
+  background:
+    linear-gradient(180deg, var(--color-surface-raised), var(--color-surface));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 0.5rem 0.9rem;
   cursor: pointer;
+  box-shadow: var(--bevel-highlight);
   transition:
     background-color var(--transition-fast),
     border-color var(--transition-fast),
@@ -248,11 +239,15 @@ button {
 
 button:hover {
   border-color: var(--color-border-strong);
+  box-shadow:
+    var(--bevel-highlight),
+    0 3px 10px -2px rgba(0, 0, 0, 0.5);
   transform: translateY(-1px);
 }
 
 button:active {
   transform: translateY(0);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 button:disabled {
@@ -267,7 +262,7 @@ textarea {
   font-family: var(--font-body);
   font-size: var(--text-sm);
   color: var(--color-text);
-  background: var(--color-surface-raised);
+  background: var(--color-surface-sunken);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.6rem;
@@ -290,13 +285,13 @@ fieldset {
 }
 
 legend {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 650;
-  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text-faint);
   padding: 0 0 var(--space-2);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
 }
 
 label {
@@ -311,8 +306,8 @@ label {
 }
 
 ::selection {
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
+  background: var(--color-gold);
+  color: #1c1408;
 }
 
 /* Themed scrollbars for the app's scrollable panels (Firefox + WebKit). */

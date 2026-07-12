@@ -677,31 +677,46 @@ describe('Picker', () => {
       return screen.getByAltText(altText).closest('[role="button"]') as HTMLElement;
     }
 
-    it('tracks mouse movement over a card, updating its 3D tilt and shine position', () => {
+    // Tracking (ref + mouse handlers) lives on the card's outer,
+    // never-transformed CELL; the rotation style lands on the inner card
+    // body. Listening on the rotated element itself caused the "vibrates at
+    // the card edge" bug: the tilt moved the projected edge out from under
+    // a cursor parked at the boundary, oscillating leave/enter. These tests
+    // pin both halves of that contract.
+    function getCardCell(cardBody: HTMLElement) {
+      return cardBody.parentElement as HTMLElement;
+    }
+
+    it('tracks mouse movement over the stationary cell, tilting the inner card body', () => {
       render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
       const cardBody = getCardBody(/charizard ex from 151/i);
-      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+      const cell = getCardCell(cardBody);
+      cell.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
 
       expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('0');
 
-      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+      fireEvent.mouseMove(cell, { clientX: 200, clientY: 0 });
 
       expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).not.toBe('0');
       expect(cardBody.style.getPropertyValue('--tilt-shine-x')).toBe('100%');
       expect(cardBody.style.getPropertyValue('--tilt-shine-y')).toBe('0%');
       expect(cardBody.style.transform).toContain('rotateX');
       expect(cardBody.style.transform).toContain('rotateY');
+      // The tracked cell itself must never carry the rotation -- that's the
+      // stationary-hitbox guarantee that prevents edge jitter.
+      expect(cell.style.transform).toBe('');
     });
 
-    it('resets the tilt and hides the shine again when the cursor leaves the card', () => {
+    it('resets the tilt and hides the shine again when the cursor leaves the cell', () => {
       render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
       const cardBody = getCardBody(/charizard ex from 151/i);
-      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+      const cell = getCardCell(cardBody);
+      cell.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
 
-      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+      fireEvent.mouseMove(cell, { clientX: 200, clientY: 0 });
       expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).not.toBe('0');
 
-      fireEvent.mouseLeave(cardBody);
+      fireEvent.mouseLeave(cell);
 
       expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('0');
       expect(cardBody.style.transform).toContain('rotateX(0deg)');
@@ -712,9 +727,10 @@ describe('Picker', () => {
       const noImageCard: CardRecord = { ...cardA, id: 'no-image-card', imageBase: '' };
       render(<Picker dexNumber={6} pokemonName="Charizard" cards={[noImageCard]} onClose={() => {}} />);
       const cardBody = screen.getByText(/no image available/i).closest('[role="button"]') as HTMLElement;
-      cardBody.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
+      const cell = getCardCell(cardBody);
+      cell.getBoundingClientRect = () => new DOMRect(0, 0, 200, 280);
 
-      fireEvent.mouseMove(cardBody, { clientX: 200, clientY: 0 });
+      fireEvent.mouseMove(cell, { clientX: 200, clientY: 0 });
 
       expect(cardBody.style.transform).toBe('');
       expect(cardBody.style.getPropertyValue('--tilt-shine-opacity')).toBe('');

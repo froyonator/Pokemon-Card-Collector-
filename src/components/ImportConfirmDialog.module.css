@@ -1,8 +1,8 @@
 .confirm {
   position: fixed;
   inset: 0;
-  background: rgba(15, 10, 8, 0.6);
-  backdrop-filter: blur(3px);
+  background: rgba(10, 7, 4, 0.76);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   align-items: center;

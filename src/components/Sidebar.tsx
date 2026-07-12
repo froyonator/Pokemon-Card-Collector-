@@ -101,7 +101,16 @@ export function Sidebar<TabId extends string = string>({
           (and clickable) even while the sidebar is collapsed, since the tabs
           are the only way to navigate between Dex Grid/Collection/Wishlist/
           Summary. */}
-      {!isCollapsed && <h1 className={styles.title}>Collector&apos;s Ledger</h1>}
+      {!isCollapsed && (
+        <div className={styles.masthead}>
+          <h1 className={styles.title}>Collector&apos;s Ledger</h1>
+          <div className={styles.titleRule} aria-hidden="true">
+            <span />
+            <span className={styles.titleGem} />
+            <span />
+          </div>
+        </div>
+      )}
 
       <nav className={styles.tabs} data-tutorial="tabs">
         {tabs.map((tab) => (
@@ -114,7 +123,10 @@ export function Sidebar<TabId extends string = string>({
             title={tab.label}
             onClick={() => onTabChange(tab.id)}
           >
-            {tab.icon}
+            <span className={styles.tabIcon} aria-hidden="true">
+              {tab.icon}
+            </span>
+            <span className={styles.tabLabel}>{tab.label}</span>
           </button>
         ))}
       </nav>
