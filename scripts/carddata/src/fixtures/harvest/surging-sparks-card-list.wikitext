@@ -1,0 +1,6 @@
+{{Setlist/header|title=Surging Sparks|tablecol=F8E22E|bordercol=7B0800|cellcol=0FBDED|rarity=yes|symbol=yes|image=SetSymbolSurging Sparks.png}}
+{{Setlist/entry|001/191|H|{{TCG ID|Surging Sparks|Exeggcute|1}}|Grass||Common}}
+{{Setlist/entry|057/191|H|[[Pikachu ex (Surging Sparks 57)|Pikachu]]{{Tera ex}}|Lightning||Double Rare}}
+{{Setlist/entry|191/191|H|{{TCG ID|Surging Sparks|Enriching Energy|191}}|Energy|Colorless|ACE SPEC Rare}}
+{{Setlist/entry|247/191|H|[[Pikachu ex (Surging Sparks 247)|Pikachu]]{{Tera ex}}|Lightning||Hyper Rare}}
+{{Setlist/footer|cellcol=0FBDED}}

@@ -1,0 +1,14 @@
+{{TCGExpansionInfobox
+|jname=
+|jtrans=
+|logo=Surging Sparks Logo.png
+|symbol=SetSymbolSurging Sparks.png
+|series=Scarlet & Violet Series
+|encards=191
+|ensetnum=13
+|enrelease=November 8, 2024
+|jasetnum=
+|jarelease=
+|prevset=Stellar Crown
+|nextset=Journey Together
+}}

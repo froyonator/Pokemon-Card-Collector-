@@ -1,0 +1,5 @@
+{{Setlist/header|title=Battle Partners|textcolor=fff|tablecol=329dc9|bordercol=fee659|cellcol=d35588|rarity=yes|symbol=yes|image=SetSymbolBattle Partners.png}}
+{{Setlist/entry|001/100|I|{{TCG ID|Battle Partners|Caterpie|1}}|Grass||C}}
+{{Setlist/entry|017/100|I|[[Volcanion ex (Battle Partners 17)|Volcanion]]{{ex}}|Fire||RR}}
+{{Setlist/entry|132/100|I|{{TCG ID|Battle Partners|Spiky Energy|132}}|Energy|Colorless|UR}}
+{{Setlist/footer|cellcol=d35588}}

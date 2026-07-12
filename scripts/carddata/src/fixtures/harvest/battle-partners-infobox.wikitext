@@ -1,0 +1,11 @@
+{{TCGExpansionInfobox
+|jasetname=バトルパートナーズ
+|logo=Battle Partners Logo.png
+|symbol=SetSymbolBattle Partners.png
+|series=Scarlet & Violet Series
+|cards=132
+|setnum=96
+|release=Japan: January 24, 2025<br>Korea: March 21, 2025
+|prevset=
+|nextset=
+}}

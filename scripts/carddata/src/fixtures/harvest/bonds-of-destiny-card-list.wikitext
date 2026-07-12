@@ -1,0 +1,4 @@
+{{Setlist/header|title=Bonds of Destiny|tablecol=00b2cb|bordercol=a40d74|cellcol=bad7d7|rarity=yes|symbol=yes|image=SetSymbolBonds of Destiny Indonesian.png}}
+{{Setlist/entry|001/139|I|{{TCG ID|Bonds of Destiny|Caterpie|1}}|Grass||C}}
+{{Setlist/entry|007/139|I|{{TCG ID|Bonds of Destiny|Yanmega ex|7|Yanmega}}{{ex}}|Grass||RR}}
+{{Setlist/footer|cellcol=bad7d7}}
