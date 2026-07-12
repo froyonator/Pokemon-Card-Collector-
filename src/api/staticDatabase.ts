@@ -13,8 +13,8 @@ const staticDataCache = new Map<string, Promise<Record<number, CardRecord[]> | n
 
 // Fetches the pre-built static card database for a language, keyed by Gen1
 // dex number, from this app's own `public/data/cards/<language>.json`
-// (produced by scripts/scraper's buildStaticDatabase.ts, not the live
-// TCGdex API). Returns `null` -- never throws -- on any failure: a non-2xx
+// (produced by scripts/carddata's buildStaticDatabase.ts, not the live
+// primary-source API). Returns `null` -- never throws -- on any failure: a non-2xx
 // response, a network error, or malformed JSON. `null` is the fallback
 // signal callers key off of to mean "no static data for this language, fall
 // back to the existing live-API path exactly as before", so a failure here

@@ -1,0 +1,26 @@
+{
+  "name": "card-data-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "enumerate-sets": "tsx src/enumerateSets.ts",
+    "snapshot-primary": "tsx src/snapshotPrimarySource.ts",
+    "snapshot-english-fallback": "tsx src/snapshotEnglishFallback.ts",
+    "snapshot-japanese-fallback": "tsx src/snapshotJapaneseFallback.ts",
+    "harvest-set": "tsx src/scrapeSet.ts",
+    "build-database": "tsx src/buildStaticDatabase.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "cheerio": "^1.0.0",
+    "image-size": "^2.0.2",
+    "playwright": "^1.45.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

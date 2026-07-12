@@ -195,10 +195,10 @@ export function DexGrid({
 
     (async () => {
       // Preload step: check this app's own static, self-hosted card
-      // database (built ahead of time from TCGdex, see
-      // scripts/scraper/src/buildStaticDatabase.ts) for the entries computed
-      // as missing above, BEFORE falling back to the live TCGdex API fetch
-      // below. Writes pre-populate the exact same cache missingEntries was
+      // database (built ahead of time from the primary source, see
+      // scripts/carddata/src/buildStaticDatabase.ts) for the entries computed
+      // as missing above, BEFORE falling back to the live primary-source API
+      // fetch below. Writes pre-populate the exact same cache missingEntries was
       // just computed from, so any dex number the static file covers is
       // subtracted from the live fetch's own work below instead of being
       // re-fetched live. Any dex number it doesn't cover (a real gap -- e.g.
