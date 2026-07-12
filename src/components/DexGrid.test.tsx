@@ -349,6 +349,49 @@ describe('DexGrid', () => {
     );
   });
 
+  it('drops every tile back into the loading state while its own refresh is in flight, even though old data is still cached', async () => {
+    // The generic loading condition (isLoading && !hasLoaded) can never
+    // fire during a refresh -- the cache still holds the previous data, so
+    // hasLoaded stays true -- which silently killed the per-tile refresh
+    // flash (reported live). This pins the pendingRefreshDex mechanism
+    // that restores it.
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
+    });
+
+    // Installed only now, AFTER the mount's own auto-load has already run
+    // and settled -- mockImplementationOnce would otherwise be consumed by
+    // that first call instead of the refresh this test is about.
+    let resolveLoad!: () => void;
+    vi.mocked(loadAllCardData).mockImplementationOnce(
+      (_language, options) =>
+        new Promise<void>((resolve) => {
+          // Land ONE dex number's fresh data immediately (Bulbasaur), keep
+          // the rest of the refresh hanging.
+          options?.onDexLoaded?.(1);
+          resolveLoad = resolve;
+        })
+    );
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    // Charizard's refresh hasn't landed: back to loading despite cached data.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveAttribute('aria-busy', 'true');
+    });
+    // Bulbasaur's fresh data already landed: not stuck in loading.
+    expect(screen.getByRole('button', { name: /bulbasaur/i })).toHaveAttribute('aria-busy', 'false');
+
+    resolveLoad();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveAttribute('aria-busy', 'false');
+    });
+  });
+
   it('colors a tile as available when its only matching card comes from a manual override, not its raw rarity', async () => {
     // Pre-seed the cache directly, bypassing the fetch-driven loadAllCardData
     // loop, with a Charizard record whose rarity is 'Promo' -- a string that

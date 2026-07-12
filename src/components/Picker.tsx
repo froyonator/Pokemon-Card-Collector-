@@ -9,6 +9,7 @@ import type { CardRecord, Condition } from '../types';
 import { CardImage } from './CardImage';
 import { CardZoomOverlay } from './CardZoomOverlay';
 import { ConditionPicker } from './ConditionPicker';
+import { PokeballSpinner } from './PokeballSpinner';
 import { MagnifyIcon } from './icons/TabIcons';
 import styles from './Picker.module.css';
 
@@ -277,7 +278,14 @@ export function Picker({
             </button>
           </div>
         )}
-        {isLoadingAllCards && <p className={styles.loading}>Loading all cards...</p>}
+        {isLoadingAllCards && (
+          <div className={styles.loading}>
+            {/* The visible loading signal is the Poke Ball animation; the
+                text lives inside it, visually hidden but announced to
+                screen readers (and findable by tests). */}
+            <PokeballSpinner size={32} label="Loading all cards..." />
+          </div>
+        )}
         {owned && (
           <button type="button" className={styles.unmark} onClick={() => unmarkOwned(dexNumber)}>
             Remove owned card

@@ -290,6 +290,17 @@ export function DexGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, dexEntries]);
 
+  // Dex numbers whose refresh is still in flight, or null when no refresh
+  // is running. The tile grid's generic "loading" condition (isLoading &&
+  // !hasLoaded) can never fire during a refresh -- the cache still HOLDS
+  // the previous data for every dex number, so hasLoaded is always true --
+  // which silently killed the per-tile loading flash the refresh used to
+  // show (reported live). Seeding this set with every entry at refresh
+  // start and removing each dex as its fresh data lands restores it: tiles
+  // drop back into the loading animation one by one until their own
+  // refresh completes.
+  const [pendingRefreshDex, setPendingRefreshDex] = useState<Set<number> | null>(null);
+
   async function handleRefreshData() {
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -300,6 +311,7 @@ export function DexGrid({
 
     setIsLoading(true);
     onLoadingChange(true);
+    setPendingRefreshDex(new Set(dexEntries.map((entry) => entry.number)));
     try {
       await loadAllCardData(language, {
         dexEntries,
@@ -307,9 +319,15 @@ export function DexGrid({
         owned,
         wishlist,
         signal: controller.signal,
-        onDexLoaded: () => {
+        onDexLoaded: (dexNumber) => {
           if (loadGeneration.current !== thisGeneration) return;
           scheduleDataVersionBump();
+          setPendingRefreshDex((prev) => {
+            if (!prev?.has(dexNumber)) return prev;
+            const next = new Set(prev);
+            next.delete(dexNumber);
+            return next;
+          });
         },
       });
     } catch (err) {
@@ -327,6 +345,7 @@ export function DexGrid({
         setIsLoading(false);
         onLoadingChange(false);
         setDataVersion((v) => v + 1);
+        setPendingRefreshDex(null);
       }
     }
   }
@@ -461,7 +480,8 @@ export function DexGrid({
             // not 'loading' -> the availableCount === 0 branch ->
             // 'unavailable', a reasonable fallback instead of a spinner
             // stuck forever.
-            const isLoadingDex = isLoading && !hasLoaded;
+            const isLoadingDex =
+              (isLoading && !hasLoaded) || (pendingRefreshDex?.has(entry.number) ?? false);
             const state = computeTileState(Boolean(ownedRecord), cards.length, isLoadingDex);
             const ownedCard = ownedRecord
               ? allCards.find((c) => c.id === ownedRecord.cardId)

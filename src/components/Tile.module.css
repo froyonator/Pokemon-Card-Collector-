@@ -36,6 +36,16 @@
   transform: none; /* framer-motion owns the hover scale */
 }
 
+/* Same footprint as the sprite it stands in for, so a tile doesn't change
+   size when it flips between loading and loaded. */
+.spinnerBox {
+  width: 68px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .tile img {
   width: 68px;
   height: 68px;

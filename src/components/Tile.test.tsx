@@ -219,6 +219,34 @@ describe('Tile', () => {
     expect(button).toHaveAttribute('title', 'Loading card data for Metapod...');
   });
 
+  it('shows the Poke Ball loading animation instead of the sprite while loading, and the sprite once loaded', () => {
+    const { rerender } = render(
+      <Tile
+        dexNumber={11}
+        name="Metapod"
+        spriteUrl="https://example.com/11.png"
+        state="loading"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+
+    rerender(
+      <Tile
+        dexNumber={11}
+        name="Metapod"
+        spriteUrl="https://example.com/11.png"
+        state="available"
+        view="sprite"
+        onClick={() => {}}
+      />
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('img')).toBeInTheDocument();
+  });
+
   it('applies the extra dull-in-card-view class only when unavailable and in card view', () => {
     const { rerender } = render(
       <Tile

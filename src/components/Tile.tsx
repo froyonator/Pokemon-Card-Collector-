@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
 import { CardImage } from './CardImage';
+import { PokeballSpinner } from './PokeballSpinner';
 import { MagnifyIcon } from './icons/TabIcons';
 import styles from './Tile.module.css';
 
@@ -105,7 +106,15 @@ export const Tile = memo(function Tile({
         }
       >
         <span className={styles.number}>#{String(dexNumber).padStart(3, '0')}</span>
-        {view === 'card' && ownedCardImageBase !== undefined ? (
+        {state === 'loading' ? (
+          // While this dex number's card data is still on its way (a cold
+          // load, or an in-flight Refresh Data pass), the art area shows
+          // the Poke Ball catching its color instead of a sprite -- an
+          // unmissable "not downloaded yet" signal.
+          <span className={styles.spinnerBox}>
+            <PokeballSpinner size={44} label={`Loading card data for ${name}`} />
+          </span>
+        ) : view === 'card' && ownedCardImageBase !== undefined ? (
           <CardImage
             imageBase={ownedCardImageBase}
             hostedThumbUrl={ownedCardHostedThumbUrl}
