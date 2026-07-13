@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Big Gen 1 database growth in the languages that needed it most: Simplified Chinese grew from 86 to 733 cards, Indonesian from 244 to 827, Thai from 299 to 685, plus new English and Japanese promo sets. All new cards come with card images.
 
+### Changed
+
+- Pokemon sprites in the dex grid now animate: a Pokemon you don't own yet shows a lively animated sprite, while one you already own shows the same animation but heavily greyed out, so collected and uncollected Pokemon are easy to tell apart at a glance. Pokemon with no cards released yet still show a plain, dulled still image. Sprites now load from the app itself instead of a third-party site, so the dex grid loads faster and stays smooth while scrolling, and automatically switches to still images if your system prefers reduced motion.
+
 ### Fixed
 
 - Hundreds of Japanese cards that displayed a bare set code (like "SVM") instead of a real set name now show the proper Japanese set name, and about 760 Japanese and 820 Traditional Chinese cards gained their missing rarity, so rarity filters catch them correctly.

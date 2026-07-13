@@ -9,6 +9,7 @@ import {
 } from '../api/staticDatabase';
 import type { DexEntry } from '../data/gen1Dex';
 import { entriesForGenerations, generationForDexNumber } from '../data/generations';
+import { loadSpriteManifest, spriteUrls } from '../data/sprites';
 import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
@@ -110,6 +111,21 @@ export function DexGrid({
   // call site, so they never disagree.
   const [isLoading, setIsLoading] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
+  // Bumped once (at most) when src/data/sprites.ts's manifest fetch
+  // resolves, purely to trigger a re-render so the tile map below picks up
+  // real animated-sprite coverage instead of staying on spriteUrls()'s
+  // pre-load "no animated coverage yet" default for the rest of the
+  // session. spriteUrls() itself stays a synchronous, stateless lookup --
+  // this is just what makes DexGrid re-read it once there's something new
+  // to read.
+  const [spriteManifestVersion, setSpriteManifestVersion] = useState(0);
+  // Never read below -- like dataVersion's own `void` reference further
+  // down, this exists purely so the state variable counts as "used" for
+  // react-hooks/exhaustive-deps and eslint's no-unused-vars. The real work
+  // is done by setSpriteManifestVersion just triggering a re-render, which
+  // is what makes the tile map below re-call spriteUrls() and actually see
+  // manifest coverage that arrived after the very first render.
+  void spriteManifestVersion;
 
   // Memoized so the array reference is stable across renders that don't
   // change selectedGenerations, and reused below by the auto-load effect,
@@ -173,6 +189,22 @@ export function DexGrid({
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Kicks off the self-hosted sprite manifest's ONE memoized fetch (see
+  // loadSpriteManifest) once, near app start, so every tile's animated
+  // sprite is available from as early a render as possible without any
+  // per-tile fetch. Bumps spriteManifestVersion once it resolves (success
+  // or failure -- loadSpriteManifest never rejects) purely to trigger the
+  // re-render that lets the tile map below actually pick up real coverage.
+  useEffect(() => {
+    let cancelled = false;
+    loadSpriteManifest().then(() => {
+      if (!cancelled) setSpriteManifestVersion((v) => v + 1);
+    });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -594,6 +626,7 @@ export function DexGrid({
             const allCards = cardsByDexNumber.get(entry.number) ?? [];
             const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
             const ownedRecord = owned[entry.number];
+            const entrySpriteUrls = spriteUrls(entry.number);
             // Self-heals if a fetch fails outright for some dex number: once
             // isLoading flips back to false in loadAllCardData's .finally(),
             // any dex number that never got a cache entry (its request
@@ -612,7 +645,9 @@ export function DexGrid({
                 <Tile
                   dexNumber={entry.number}
                   name={entry.name}
-                  spriteUrl={spriteUrl(entry.number)}
+                  spriteStaticUrl={entrySpriteUrls.staticUrl}
+                  spriteAnimatedUrl={entrySpriteUrls.animatedUrl}
+                  spriteFallbackUrl={spriteUrl(entry.number)}
                   state={state}
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}

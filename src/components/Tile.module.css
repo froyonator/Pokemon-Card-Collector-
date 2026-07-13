@@ -70,9 +70,17 @@
   border-color: rgba(88, 168, 120, 0.45);
 }
 
+/* The sprite in this state is now animated (see Tile.tsx's
+   wantsAnimatedSprite) -- this filter has to read as strongly "done/
+   collected" at a glance while the art is actively moving, so it goes
+   stronger than the old static-sprite dulling used to (heavier grayscale,
+   darker brightness). drop-shadow is restated alongside grayscale/
+   brightness -- like .tile--unavailable img below -- because `filter` is
+   not additive across rules; the more specific selector here replaces,
+   rather than layers onto, the base .tile img rule's own drop-shadow. */
 .tile--owned .spriteImg {
-  filter: grayscale(0.85) brightness(0.8);
-  opacity: 0.7;
+  filter: grayscale(0.95) brightness(0.55) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
+  opacity: 0.8;
 }
 
 .tile--owned .number {

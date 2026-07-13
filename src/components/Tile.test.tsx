@@ -1,7 +1,22 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useReducedMotion } from 'framer-motion';
 import { Tile } from './Tile';
+
+// Defaults to motion enabled -- matches every existing test in this file,
+// none of which care about reduced motion, and mirrors the exact
+// convention BinderShelf.test.tsx/BinderView.test.tsx already use. The
+// dedicated "sprite state" describe block below flips this to true for its
+// own reduced-motion test only.
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion');
+  return { ...actual, useReducedMotion: vi.fn(() => false) };
+});
+
+beforeEach(() => {
+  vi.mocked(useReducedMotion).mockReturnValue(false);
+});
 
 describe('Tile', () => {
   it('renders the dex number and name', () => {
@@ -9,7 +24,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={6}
         name="Charizard"
-        spriteUrl="https://example.com/6.png"
+        spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="sprite"
         onClick={() => {}}
@@ -24,7 +41,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="unavailable"
         view="sprite"
         onClick={() => {}}
@@ -39,7 +58,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={25}
         name="Pikachu"
-        spriteUrl="https://example.com/25.png"
+        spriteStaticUrl="https://example.com/25.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="sprite"
         onClick={onClick}
@@ -60,7 +81,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={25}
         name="Pikachu"
-        spriteUrl="https://example.com/25.png"
+        spriteStaticUrl="https://example.com/25.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="sprite"
         onClick={onClick}
@@ -75,7 +98,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={6}
         name="Charizard"
-        spriteUrl="https://example.com/6.png"
+        spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase="https://example.com/card"
@@ -90,7 +115,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={4}
         name="Charmander"
-        spriteUrl="https://example.com/4.png"
+        spriteStaticUrl="https://example.com/4.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase=""
@@ -107,7 +134,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={4}
         name="Charmander"
-        spriteUrl="https://example.com/4.png"
+        spriteStaticUrl="https://example.com/4.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase=""
@@ -125,7 +154,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={25}
         name="Pikachu"
-        spriteUrl="https://example.com/25.png"
+        spriteStaticUrl="https://example.com/25.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/236"
@@ -141,7 +172,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={6}
         name="Charizard"
-        spriteUrl="https://example.com/6.png"
+        spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
@@ -160,7 +193,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={6}
         name="Charizard"
-        spriteUrl="https://example.com/6.png"
+        spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="owned"
         view="card"
         ownedCardImageBase="https://assets.tcgdex.net/en/sv/sv03.5/199"
@@ -178,7 +213,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={1}
         name="Bulbasaur"
-        spriteUrl="https://example.com/1.png"
+        spriteStaticUrl="https://example.com/1.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="card"
         onClick={() => {}}
@@ -193,7 +230,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={1}
         name="Bulbasaur"
-        spriteUrl="https://example.com/1.png"
+        spriteStaticUrl="https://example.com/1.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="sprite"
         onClick={() => {}}
@@ -207,7 +246,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="loading"
         view="sprite"
         onClick={() => {}}
@@ -224,7 +265,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="loading"
         view="sprite"
         onClick={() => {}}
@@ -237,7 +280,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="sprite"
         onClick={() => {}}
@@ -252,7 +297,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="unavailable"
         view="sprite"
         onClick={() => {}}
@@ -264,7 +311,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={11}
         name="Metapod"
-        spriteUrl="https://example.com/11.png"
+        spriteStaticUrl="https://example.com/11.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="unavailable"
         view="card"
         onClick={() => {}}
@@ -278,7 +327,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={1}
         name="Bulbasaur"
-        spriteUrl="https://example.com/1.png"
+        spriteStaticUrl="https://example.com/1.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="card"
         onClick={() => {}}
@@ -292,7 +343,9 @@ describe('Tile', () => {
       <Tile
         dexNumber={1}
         name="Bulbasaur"
-        spriteUrl="https://example.com/1.png"
+        spriteStaticUrl="https://example.com/1.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
         state="available"
         view="sprite"
         onClick={() => {}}
@@ -307,7 +360,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={6}
           name="Charizard"
-          spriteUrl="https://example.com/6.png"
+          spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="owned"
           view="card"
           ownedCardImageBase="https://example.com/card"
@@ -323,7 +378,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={6}
           name="Charizard"
-          spriteUrl="https://example.com/6.png"
+          spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="owned"
           view="sprite"
           ownedCardImageBase="https://example.com/card"
@@ -339,7 +396,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={1}
           name="Bulbasaur"
-          spriteUrl="https://example.com/1.png"
+          spriteStaticUrl="https://example.com/1.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="available"
           view="card"
           onEnlarge={() => {}}
@@ -354,7 +413,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={6}
           name="Charizard"
-          spriteUrl="https://example.com/6.png"
+          spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="owned"
           view="card"
           ownedCardImageBase="https://example.com/card"
@@ -371,7 +432,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={6}
           name="Charizard"
-          spriteUrl="https://example.com/6.png"
+          spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="owned"
           view="card"
           ownedCardImageBase="https://example.com/card"
@@ -393,7 +456,9 @@ describe('Tile', () => {
         <Tile
           dexNumber={6}
           name="Charizard"
-          spriteUrl="https://example.com/6.png"
+          spriteStaticUrl="https://example.com/6.png"
+        spriteAnimatedUrl={null}
+        spriteFallbackUrl="https://example.com/fallback.png"
           state="owned"
           view="card"
           ownedCardImageBase="https://example.com/card"
@@ -403,6 +468,155 @@ describe('Tile', () => {
       );
       await userEvent.click(screen.getByRole('button', { name: /enlarge charizard card/i }));
       expect(onEnlarge).toHaveBeenCalledWith(6);
+    });
+  });
+
+  describe('sprite state (self-hosted static/animated, see src/data/sprites.ts)', () => {
+    it('renders the animated URL for an available tile with animated coverage', () => {
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteStaticUrl="https://example.com/static/6.png"
+          spriteAnimatedUrl="https://example.com/animated/6.gif"
+          spriteFallbackUrl="https://example.com/fallback/6.png"
+          state="available"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      expect(screen.getByAltText('Charizard')).toHaveAttribute(
+        'src',
+        'https://example.com/animated/6.gif'
+      );
+    });
+
+    it('renders the animated URL, plus the owned-state strong-grey filter selector target, for an owned tile with animated coverage', () => {
+      render(
+        <Tile
+          dexNumber={25}
+          name="Pikachu"
+          spriteStaticUrl="https://example.com/static/25.png"
+          spriteAnimatedUrl="https://example.com/animated/25.gif"
+          spriteFallbackUrl="https://example.com/fallback/25.png"
+          state="owned"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      const img = screen.getByAltText('Pikachu');
+      expect(img).toHaveAttribute('src', 'https://example.com/animated/25.gif');
+      // The strong grayscale/brightness dulling is applied by Tile.module.css's
+      // `.tile--owned .spriteImg` descendant selector, not a class on the img
+      // itself -- so the actual "very greyed out" look is this exact
+      // combination: the img keeps its ordinary spriteImg class, and the
+      // ancestor button carries tile--owned.
+      expect(img.className).toContain('spriteImg');
+      expect(screen.getByRole('button')).toHaveClass('tile--owned');
+    });
+
+    it('always renders the static URL for an unavailable tile, even when animated coverage exists', () => {
+      render(
+        <Tile
+          dexNumber={11}
+          name="Metapod"
+          spriteStaticUrl="https://example.com/static/11.png"
+          spriteAnimatedUrl="https://example.com/animated/11.gif"
+          spriteFallbackUrl="https://example.com/fallback/11.png"
+          state="unavailable"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      expect(screen.getByAltText('Metapod')).toHaveAttribute(
+        'src',
+        'https://example.com/static/11.png'
+      );
+    });
+
+    it('renders the static URL, not the animated one, for an available/owned tile when there is no animated coverage (manifest miss)', () => {
+      render(
+        <Tile
+          dexNumber={999}
+          name="Missingno"
+          spriteStaticUrl="https://example.com/static/999.png"
+          spriteAnimatedUrl={null}
+          spriteFallbackUrl="https://example.com/fallback/999.png"
+          state="available"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      expect(screen.getByAltText('Missingno')).toHaveAttribute(
+        'src',
+        'https://example.com/static/999.png'
+      );
+    });
+
+    it('forces the static URL for every tile state when prefers-reduced-motion is set, even with animated coverage', () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteStaticUrl="https://example.com/static/6.png"
+          spriteAnimatedUrl="https://example.com/animated/6.gif"
+          spriteFallbackUrl="https://example.com/fallback/6.png"
+          state="owned"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      expect(screen.getByAltText('Charizard')).toHaveAttribute(
+        'src',
+        'https://example.com/static/6.png'
+      );
+    });
+
+    it('falls back to the OLD remote sprite URL once the self-hosted sprite fails to load', () => {
+      render(
+        <Tile
+          dexNumber={6}
+          name="Charizard"
+          spriteStaticUrl="https://example.com/static/6.png"
+          spriteAnimatedUrl="https://example.com/animated/6.gif"
+          spriteFallbackUrl="https://example.com/fallback/6.png"
+          state="available"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      const img = screen.getByAltText('Charizard');
+      expect(img).toHaveAttribute('src', 'https://example.com/animated/6.gif');
+      // Simulates the self-hosted animated file 404ing (e.g. a manifest/file
+      // mismatch from a partial deploy) -- this must swap to the old remote
+      // URL rather than leaving a broken image icon showing. The img is
+      // re-queried afterward, not reused: Tile.tsx keys this element on its
+      // own intended src (see that file's comment on why), so the fallback
+      // is a freshly-mounted element, not the original one mutated in place.
+      fireEvent.error(img);
+      expect(screen.getByAltText('Charizard')).toHaveAttribute(
+        'src',
+        'https://example.com/fallback/6.png'
+      );
+    });
+
+    it('loads sprite images lazily with async decoding', () => {
+      render(
+        <Tile
+          dexNumber={1}
+          name="Bulbasaur"
+          spriteStaticUrl="https://example.com/static/1.png"
+          spriteAnimatedUrl={null}
+          spriteFallbackUrl="https://example.com/fallback/1.png"
+          state="available"
+          view="sprite"
+          onClick={() => {}}
+        />
+      );
+      const img = screen.getByAltText('Bulbasaur');
+      expect(img).toHaveAttribute('loading', 'lazy');
+      expect(img).toHaveAttribute('decoding', 'async');
     });
   });
 });

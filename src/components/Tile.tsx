@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { TileState } from '../state/selectors';
 import { CardImage } from './CardImage';
@@ -9,7 +9,21 @@ import styles from './Tile.module.css';
 export interface TileProps {
   dexNumber: number;
   name: string;
-  spriteUrl: string;
+  // This app's own self-hosted static sprite (see src/data/sprites.ts) --
+  // always used for the 'unavailable' state, and used everywhere else too
+  // whenever spriteAnimatedUrl is null or reduced motion is requested.
+  spriteStaticUrl: string;
+  // This app's own self-hosted animated sprite, or null when
+  // src/data/sprites.ts's manifest has no animated coverage for this dex
+  // number (including "hasn't resolved yet"). Only ever actually shown for
+  // the 'available'/'owned' states -- 'unavailable' and 'loading' always
+  // use the static sprite regardless of this being set.
+  spriteAnimatedUrl: string | null;
+  // The OLD live third-party sprite URL (src/api/pokeapi.ts's spriteUrl) --
+  // rendered only as an onError fallback if the self-hosted static/animated
+  // file this tile picked fails to load (e.g. a manifest/file mismatch),
+  // so a missing local file never shows a broken image icon.
+  spriteFallbackUrl: string;
   state: TileState;
   view: 'sprite' | 'card';
   ownedCardImageBase?: string;
@@ -53,7 +67,9 @@ export interface TileProps {
 export const Tile = memo(function Tile({
   dexNumber,
   name,
-  spriteUrl,
+  spriteStaticUrl,
+  spriteAnimatedUrl,
+  spriteFallbackUrl,
   state,
   view,
   ownedCardImageBase,
@@ -63,6 +79,35 @@ export const Tile = memo(function Tile({
   onClick,
 }: TileProps) {
   const shouldReduceMotion = useReducedMotion();
+
+  // AVAILABLE/OWNED are the only states that ever show the animated sprite
+  // -- UNAVAILABLE must read as a static "confirmed empty" ghost, and
+  // LOADING shows the Poke Ball spinner instead of any sprite at all (see
+  // below). Also respects prefers-reduced-motion (the same
+  // framer-motion hook this component already uses for its hover/tap
+  // animations): when set, every tile falls back to the static sprite,
+  // matching the CSS media query already governing the loading pulse.
+  const wantsAnimatedSprite =
+    (state === 'available' || state === 'owned') &&
+    spriteAnimatedUrl !== null &&
+    !shouldReduceMotion;
+  const preferredSpriteSrc = wantsAnimatedSprite ? spriteAnimatedUrl : spriteStaticUrl;
+
+  // If the self-hosted sprite this tile picked (static or animated) fails
+  // to load -- e.g. a manifest/file mismatch from a partial deploy -- this
+  // falls back to the OLD live third-party URL exactly once, the same
+  // "never show a broken image icon" contract CardImage's own retry state
+  // follows. Reset whenever the tile's own identity or intended sprite
+  // changes, so a stale failure from a previous dex number/state (this
+  // component stays mounted across most state transitions -- see the
+  // memo comment above) doesn't leak into a tile that's since moved on to
+  // a different sprite.
+  const [spriteFailed, setSpriteFailed] = useState(false);
+  useEffect(() => {
+    setSpriteFailed(false);
+  }, [dexNumber, preferredSpriteSrc]);
+  const spriteSrc = spriteFailed ? spriteFallbackUrl : preferredSpriteSrc;
+
   const title =
     state === 'loading'
       ? `Loading card data for ${name}...`
@@ -124,7 +169,36 @@ export const Tile = memo(function Tile({
             width={68}
           />
         ) : (
-          <img src={spriteUrl} alt={name} loading="lazy" className={styles.spriteImg} />
+          // decoding="async" alongside the existing loading="lazy" -- for
+          // an animated sprite in particular, decoding off the main thread
+          // matters (a GIF/WEBP decode is heavier than a static PNG's), and
+          // it's harmless for the static case too. No per-tile
+          // IntersectionObserver: native lazy loading already limits actual
+          // network/decode work to tiles that scroll into view.
+          //
+          // key={spriteSrc} forces React to mount a brand-new <img> (rather
+          // than mutate the existing one's src) every time the intended
+          // sprite target actually changes -- most notably the very common
+          // "static at first paint, then animated once the sprite manifest
+          // resolves a moment later" transition every available/owned tile
+          // goes through (see spriteUrls/loadSpriteManifest in
+          // src/data/sprites.ts). Browsers only make their native
+          // loading="lazy" fetch-or-defer decision once for a given <img>
+          // element; changing an already-decided element's `src` after the
+          // fact can leave that element permanently un-fetched instead of
+          // re-evaluating against its current (likely already-visible)
+          // position. A fresh element gets its own fresh decision, so a
+          // tile that's already on screen when the manifest lands actually
+          // loads its animated sprite instead of silently staying blank.
+          <img
+            key={spriteSrc}
+            src={spriteSrc}
+            alt={name}
+            loading="lazy"
+            decoding="async"
+            className={styles.spriteImg}
+            onError={() => setSpriteFailed(true)}
+          />
         )}
         <span className={styles.name}>{name}</span>
       </motion.button>
