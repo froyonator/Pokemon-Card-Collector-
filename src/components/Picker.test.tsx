@@ -649,9 +649,16 @@ describe('Picker', () => {
       const zoomDialog = screen.getByRole('dialog', { name: `${cardA.name} enlarged` });
       await userEvent.click(within(zoomDialog).getByRole('button', { name: 'Close' }));
 
-      expect(
-        screen.queryByRole('dialog', { name: `${cardA.name} enlarged` })
-      ).not.toBeInTheDocument();
+      // The overlay now plays a reverse spin-and-shrink exit (see
+      // CardZoomOverlay's AnimatePresence-driven close) before AnimatePresence
+      // actually removes it, so it lingers in the DOM briefly after the click
+      // rather than vanishing on the same tick -- waitFor gives that exit
+      // animation time to finish.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: `${cardA.name} enlarged` })
+        ).not.toBeInTheDocument();
+      });
       expect(
         screen.getByRole('dialog', { name: /card options for charizard/i })
       ).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { spriteUrl } from '../api/pokeapi';
 import {
@@ -1119,13 +1119,21 @@ export function BinderView({
           </div>,
           document.body
         )}
-      {zoomedCard && (
-        <CardZoomOverlay
-          card={zoomedCard}
-          uploadedImageUri={uploadedImages[zoomedCard.id]}
-          onClose={() => setZoomedCard(null)}
-        />
-      )}
+      {/* AnimatePresence gives CardZoomOverlay's own exit prop (the reverse
+          spin-and-shrink close) somewhere to actually play: without it,
+          React would rip the overlay out of the tree the instant
+          zoomedCard goes back to null, same as any other conditional
+          render. */}
+      <AnimatePresence>
+        {zoomedCard && (
+          <CardZoomOverlay
+            key={zoomedCard.id}
+            card={zoomedCard}
+            uploadedImageUri={uploadedImages[zoomedCard.id]}
+            onClose={() => setZoomedCard(null)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }

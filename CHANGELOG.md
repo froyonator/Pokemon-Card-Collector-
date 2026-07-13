@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Clicking a card to enlarge it now feels a bit magical: the card launches from its resting size and turns one full flip while growing continuously, landing exactly at its final large size the instant the turn completes. Anyone with reduced motion turned on still gets the simple, non-spinning entrance from before.
+- Clicking a card to enlarge it now feels a bit magical: the card launches from its resting size and turns one full flip while growing continuously, landing exactly at its final large size the instant the turn completes, then closing plays the same flip in reverse, spinning and shrinking back down in one motion before it disappears. Anyone with reduced motion turned on still gets the simple, non-spinning entrance and exit from before.
 - Pokemon sprites in the dex grid now animate: a Pokemon you don't own yet shows a lively animated sprite, while one you already own shows the same animation but heavily greyed out, so collected and uncollected Pokemon are easy to tell apart at a glance. Pokemon with no cards released yet still show a plain, dulled still image. Sprites now load from the app itself instead of a third-party site, so the dex grid loads faster and stays smooth while scrolling, and automatically switches to still images if your system prefers reduced motion.
 
 ### Fixed

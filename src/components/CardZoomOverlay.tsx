@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCardTilt } from '../state/useCardTilt';
 import type { CardRecord } from '../types';
@@ -17,6 +17,15 @@ export interface CardZoomOverlayProps {
 // effect, so the two can never drift apart -- one number, one source of
 // truth, comfortably inside the "roughly 600-900ms" the effect calls for.
 const ENTRANCE_DURATION_MS = 720;
+
+// The mirror-image close: one continuous reverse spin-and-shrink back down
+// to the resting pose, then the caller (whichever of Picker/DexGrid/
+// BinderView is holding the zoomedCard state that mounted this overlay)
+// removes it from the tree. Kept a touch faster than the entrance -- a
+// dismissal reads best when it gets out of the way slightly quicker than it
+// arrived -- while staying in the same "single tween, no bounce" duration
+// class the entrance uses.
+const EXIT_DURATION_MS = 560;
 
 export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOverlayProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -48,17 +57,38 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
     return () => window.clearTimeout(timer);
   }, [shouldReduceMotion]);
 
-  const tilt = useCardTilt({ disabled: hasNoImage || !hasEntered, maxTiltDeg: 10 });
+  // True from the instant any close path fires. This component doesn't
+  // unmount itself -- the parent holding the zoomedCard state does, by
+  // rendering it inside <AnimatePresence> and dropping it from the tree --
+  // but it keeps rendering with these same props for the length of the exit
+  // animation. isLeaving is the local signal that flight has begun, so the
+  // tilt/glint (which would otherwise be free to layer their own transforms
+  // on top of the reverse spin) switch off the moment closing starts rather
+  // than lingering until the parent actually unmounts.
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  const tilt = useCardTilt({ disabled: hasNoImage || !hasEntered || isLeaving, maxTiltDeg: 10 });
+
+  // The single entry point for every close path (Escape, backdrop click,
+  // close button): flips isLeaving first so the exit render (tilt/glint off)
+  // commits in the same tick as the state change that starts unmounting this
+  // overlay in the parent, then notifies the parent. Order doesn't matter to
+  // React's batching, but keeping it symmetric with "close means closing" is
+  // easier to reason about than firing onClose first.
+  const handleClose = useCallback(() => {
+    setIsLeaving(true);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        onClose();
+        handleClose();
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [handleClose]);
 
   // The overlay only ever fades, so it needs no reduced-motion variant of
   // its own. The card's entrance is the "jewel box" moment: it launches
@@ -92,6 +122,15 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // is the standard way to give a single element's own rotateY real depth
   // anyway -- it reads as the card tipping through 3D space rather than a
   // flat horizontal squash.
+  //
+  // The close mirrors the entrance: one continuous reverse spin back down to
+  // the resting pose (rotateY unwinds from wherever the entrance left it,
+  // typically 360, back to 0 -- the same full turn, run backwards) while the
+  // card shrinks back to its launch scale, landing and fading out together
+  // rather than in separate phases. This only actually plays when a parent
+  // renders this overlay inside <AnimatePresence> (see Picker/DexGrid/
+  // BinderView) -- without one, framer-motion applies the exit target
+  // instantly on unmount, same as any other exit prop.
   const overlayMotion = {
     initial: { opacity: 0 },
     animate: { opacity: 1 },
@@ -107,7 +146,24 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
     : {
         initial: { opacity: 0, scale: 0.3, rotateY: 0 },
         animate: { opacity: 1, scale: 1, rotateY: 360 },
-        exit: { opacity: 0, scale: 0.92 },
+        // A target object's own `transition` overrides the shared one below
+        // for that specific animation -- this is what lets the close run a
+        // touch faster (EXIT_DURATION_MS) and with the mirror-image ease
+        // (roughly the entrance's curve run backwards: a slow start easing
+        // into an accelerating finish) without touching the entrance's own
+        // timing. Still a single plain tween, same as the entrance -- no
+        // spring, so nothing can overshoot past the resting pose and swing
+        // back for a second phase.
+        exit: {
+          opacity: 0,
+          scale: 0.3,
+          rotateY: 0,
+          transition: {
+            duration: EXIT_DURATION_MS / 1000,
+            ease: [0.64, 0, 0.78, 0] as const,
+            opacity: { duration: 0.2, ease: 'easeIn' as const },
+          },
+        },
         transition: {
           duration: ENTRANCE_DURATION_MS / 1000,
           ease: [0.22, 1, 0.36, 1] as const,
@@ -135,22 +191,29 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
       className={styles.overlay}
       role="dialog"
       aria-label={`${card.name} enlarged`}
-      onClick={onClose}
+      onClick={handleClose}
       onMouseMove={tilt.onMouseMove}
       onMouseLeave={tilt.onMouseLeave}
       {...overlayMotion}
     >
       <motion.div
         className={styles.panel}
-        // Marks which entrance this panel is playing, independent of
-        // framer-motion's own animation internals -- a stable, directly
-        // testable signal that the flip-and-grow entrance (vs. the reduced-
-        // motion fade) is the one actually wired up.
+        // Marks which entrance/exit pairing this panel is playing,
+        // independent of framer-motion's own animation internals -- a
+        // stable, directly testable signal that the flip-and-grow flight
+        // (vs. the reduced-motion fade) is the one actually wired up. Same
+        // attribute for both directions since it's one continuous pairing:
+        // whichever way it launched is the way it turns to leave.
         data-entrance={shouldReduceMotion ? 'fade' : 'flip'}
+        // Set the instant any close path fires (see handleClose above) and
+        // never cleared -- there's no way back from "closing" short of the
+        // whole overlay unmounting. A directly testable signal that the
+        // reverse-spin phase, not the entrance, is the one now playing.
+        data-leaving={isLeaving ? 'true' : undefined}
         onClick={(event) => event.stopPropagation()}
         {...panelMotion}
       >
-        <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
+        <button type="button" className={styles.close} onClick={handleClose} aria-label="Close">
           ✕
         </button>
         {/* The stationary footprint the tilt measures against (see above) --
@@ -177,11 +240,13 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
                     actually landed (hasEntered) -- mounting it only then
                     means its sweep animation starts fresh right as the
                     card settles, rather than racing the flip and reading as
-                    two effects fighting over the same half-second. Then the
+                    two effects fighting over the same half-second. Unmounted
+                    again the instant closing starts (isLeaving) so it can't
+                    sweep across the card mid reverse-spin. Then the
                     cursor-tracked glare + iridescent sheen, both purely
                     decorative and gated off the same way via useCardTilt's
                     disabled option. */}
-                {!shouldReduceMotion && hasEntered && (
+                {!shouldReduceMotion && hasEntered && !isLeaving && (
                   <span className={styles.glint} aria-hidden="true" />
                 )}
                 <span className={styles.sheen} aria-hidden="true" />

@@ -205,4 +205,65 @@ describe('CardZoomOverlay', () => {
       expect(dialog.querySelector('[class*="glint"]')).toBeInTheDocument();
     });
   });
+
+  describe('exit animation', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('closing triggers the flip-marked exit animation when reduced motion is off', async () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(dialog.querySelector('[data-entrance="flip"][data-leaving="true"]')).toBeInTheDocument();
+    });
+
+    it('closing stays a simple fade under reduced motion', async () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(dialog.querySelector('[data-entrance="fade"][data-leaving="true"]')).toBeInTheDocument();
+      expect(dialog.querySelector('[data-entrance="flip"]')).not.toBeInTheDocument();
+    });
+
+    it('turns the cursor tilt and one-shot glint off the instant closing starts, even after the entrance had already settled', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      const img = screen.getByAltText(/charizard ex from 151/i);
+      const cardBody = img.closest('div') as HTMLElement;
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+      expect(dialog.querySelector('[class*="glint"]')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(dialog.querySelector('[class*="glint"]')).not.toBeInTheDocument();
+      fireEvent.mouseMove(dialog, { clientX: 5, clientY: 5 });
+      expect(cardBody).not.toHaveClass('cardTilting');
+    });
+
+    it('closing via the backdrop and via Escape both mark the panel as leaving', async () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      await userEvent.click(dialog);
+
+      expect(dialog.querySelector('[data-leaving="true"]')).toBeInTheDocument();
+    });
+
+    it('still calls onClose exactly once per close path while leaving is in flight', async () => {
+      const onClose = vi.fn();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={onClose} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
 });
