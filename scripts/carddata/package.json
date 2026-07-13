@@ -12,6 +12,7 @@
     "snapshot-all-gens": "tsx src/snapshotAllGens.ts",
     "snapshot-english-fallback": "tsx src/snapshotEnglishFallback.ts",
     "snapshot-japanese-fallback": "tsx src/snapshotJapaneseFallback.ts",
+    "ingest-bulk-export": "tsx src/bulkExportIngest.ts",
     "harvest-set": "tsx src/scrapeSet.ts",
     "harvest": "tsx src/harvest/runHarvest.ts",
     "harvest:merge": "tsx src/harvest/mergeHarvest.ts",

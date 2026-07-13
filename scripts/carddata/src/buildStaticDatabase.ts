@@ -296,7 +296,7 @@ const LANGUAGE_SNAPSHOTS: ReadonlyArray<{ language: string; snapshotDirName: str
   { language: 'ko', snapshotDirName: 'tcgdex-2026-07-11T08-34-51-800Z' },
 ];
 
-/** Pure: `--gen <N>` CLI parsing. Returns null for the default (Gen1) invocation, matching outputPathForLanguage's own null convention. */
+/** Pure: `--gen <N>` CLI parsing. Returns null for the default (Gen1) invocation, matching outputPathForLanguage's own null convention. Tolerates (skips over) a `--langs <csv>` flag without erroring so the two flags can be combined on one command line -- see parseLanguagesFlag below for that flag's own parsing -- but still rejects any other unrecognized flag exactly as before. */
 export function parseGenerationFlag(argv: string[]): number | null {
   const args = [...argv];
   let generation: number | null = null;
@@ -311,9 +311,45 @@ export function parseGenerationFlag(argv: string[]): number | null {
       generation = parsed;
       continue;
     }
+    if (flag === '--langs') {
+      args.shift(); // value consumed here; parseLanguagesFlag reads the real value.
+      continue;
+    }
     throw new Error(`Unknown option: ${flag}`);
   }
   return generation;
+}
+
+/**
+ * Pure: `--langs <csv>` CLI parsing, optional and only meaningful for a
+ * Gen2-9 build (`--gen` also supplied) -- restricts buildGeneration to
+ * exactly this set of languages instead of every language discovered under
+ * data/snapshot-all-gens/. Returns null when the flag is absent, meaning
+ * "discover and build every language present" (the original, unrestricted
+ * default behavior, unchanged). Added so a Gen2-9 build triggered by a
+ * partial-data ingestion process (e.g. bulkExportIngest.ts) can be scoped
+ * away from a language whose data/snapshot-all-gens/<language>/ directory
+ * happens to exist but is owned by an unrelated, possibly still-running,
+ * separate process (concretely: `en`, owned by snapshotAllGens.ts) --
+ * without that scoping, ANY `--gen N` invocation sweeps in every language
+ * directory it finds on disk, including a partially-written one.
+ */
+export function parseLanguagesFlag(argv: string[]): string[] | null {
+  const args = [...argv];
+  while (args.length > 0) {
+    const flag = args.shift();
+    const value = args.shift();
+    if (flag === '--langs') {
+      if (!value) throw new Error('--langs requires a comma-separated value.');
+      const languages = value
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (languages.length === 0) throw new Error('--langs requires at least one language.');
+      return languages;
+    }
+  }
+  return null;
 }
 
 /** Languages that actually have a Gen2-9 snapshot directory to build from -- data/snapshot-all-gens/<language>/, produced by snapshotAllGens.ts. Not every language snapshotAllGens.ts supports has necessarily been run yet, so this discovers what's really on disk rather than assuming every LANGUAGE_SNAPSHOTS entry has a Gen2-9 counterpart. */
@@ -343,12 +379,26 @@ async function buildGen1(outputDir: string): Promise<void> {
   console.log(`Grand total output size across ${LANGUAGE_SNAPSHOTS.length} languages: ${(grandTotalBytes / 1024).toFixed(1)} KB`);
 }
 
-async function buildGeneration(generation: number, outputDir: string): Promise<void> {
-  const languages = await discoverSnapshotAllGensLanguages();
-  if (languages.length === 0) {
+async function buildGeneration(generation: number, outputDir: string, languageFilter: string[] | null): Promise<void> {
+  const discovered = await discoverSnapshotAllGensLanguages();
+  if (discovered.length === 0) {
     console.log(
       `No data/snapshot-all-gens/<language>/ directories found -- run "npm run snapshot-all-gens -- <language>" first.`
     );
+    return;
+  }
+
+  const languages = languageFilter
+    ? discovered.filter((language) => languageFilter.includes(language))
+    : discovered;
+  if (languageFilter) {
+    const missing = languageFilter.filter((language) => !discovered.includes(language));
+    if (missing.length > 0) {
+      console.log(`--langs requested ${missing.join(',')} but no snapshot directory exists for them; skipping.`);
+    }
+  }
+  if (languages.length === 0) {
+    console.log('No requested language has a data/snapshot-all-gens/<language>/ directory to build from.');
     return;
   }
 
@@ -369,13 +419,14 @@ async function main(): Promise<void> {
   // snapshotPrimarySource.ts's `path.join('data', snapshotId)`), so the repo
   // root is two levels up.
   const generation = parseGenerationFlag(process.argv.slice(2));
+  const languageFilter = parseLanguagesFlag(process.argv.slice(2));
   const outputDir = path.resolve(process.cwd(), '..', '..', 'public', 'data', 'cards');
   await mkdir(outputDir, { recursive: true });
 
   if (generation === null) {
     await buildGen1(outputDir);
   } else {
-    await buildGeneration(generation, outputDir);
+    await buildGeneration(generation, outputDir, languageFilter);
   }
 }
 

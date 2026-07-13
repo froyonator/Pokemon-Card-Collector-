@@ -4,6 +4,7 @@ import {
   mergeResolvedAssets,
   outputPathForLanguage,
   parseGenerationFlag,
+  parseLanguagesFlag,
   recordToCardRecords,
   type CardRecord,
   type PrimarySourceSnapshotRecord,
@@ -168,5 +169,29 @@ describe('parseGenerationFlag', () => {
 
   it('rejects an unknown flag', () => {
     expect(() => parseGenerationFlag(['--bogus'])).toThrow();
+  });
+
+  it('tolerates a combined --langs flag without erroring', () => {
+    expect(parseGenerationFlag(['--gen', '2', '--langs', 'ja,fr'])).toBe(2);
+  });
+});
+
+describe('parseLanguagesFlag', () => {
+  it('returns null when --langs is absent (unrestricted default)', () => {
+    expect(parseLanguagesFlag([])).toBeNull();
+    expect(parseLanguagesFlag(['--gen', '2'])).toBeNull();
+  });
+
+  it('parses a comma-separated list', () => {
+    expect(parseLanguagesFlag(['--langs', 'ja,fr,de'])).toEqual(['ja', 'fr', 'de']);
+  });
+
+  it('works combined with --gen in either order', () => {
+    expect(parseLanguagesFlag(['--gen', '2', '--langs', 'ja'])).toEqual(['ja']);
+    expect(parseLanguagesFlag(['--langs', 'ja', '--gen', '2'])).toEqual(['ja']);
+  });
+
+  it('rejects an empty value', () => {
+    expect(() => parseLanguagesFlag(['--langs', ''])).toThrow();
   });
 });
