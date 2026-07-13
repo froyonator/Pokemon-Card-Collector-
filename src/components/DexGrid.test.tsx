@@ -1326,4 +1326,54 @@ describe('Mega grouping', () => {
     });
     expect(useAppStore.getState().owned[6]).toBeUndefined();
   });
+
+  // Regression: a Mega entry's cache slot is a computed VIEW over its base
+  // species' cards, not its own fetch -- its mere PRESENCE in the cache
+  // says nothing about whether it reflects the CURRENT filter logic. A
+  // session that cached a Mega entry's cards under an older (pre-fix)
+  // matcher, then reloaded after the fix shipped, must not keep serving
+  // that stale result forever just because auto-load's "missing entries"
+  // check saw a cache hit and skipped it (reported live: this is exactly
+  // what happened for the Absol/Garchomp/Lucario Z-form bleed fix -- see
+  // isSyntheticDexNumber in data/generations.ts and its use in this
+  // component's auto-load effect). Only a manual Refresh Data used to pick
+  // this up; auto-load (a fresh page load, no button click) must too.
+  it('recomputes a Mega entry from current data on auto-load even when a stale (pre-fix) filtered result is already cached, never trusting cache presence as freshness for synthetic entries', async () => {
+    useAppStore.setState({ selectedGenerations: ['mega'] });
+    const lucarioZ = MEGA_DEX_ENTRIES.find((e) => e.slug === 'lucario-mega-z')!;
+
+    // Dirty the cache BEFORE the component ever mounts, exactly like a
+    // leftover localStorage entry from an earlier session: a wrong,
+    // pre-fix result that wrongly includes the classic (non-Z) print on
+    // the Z tile.
+    setCachedCards('en', lucarioZ.number, [
+      megaCard({ id: 'stale-wrong', name: 'M Lucario EX', dexNumber: 448 }),
+    ]);
+
+    // Lucario is dex 448, Generation 4 -- routed through
+    // loadStaticCardDataForGen, not loadStaticCardData (Gen 1's loader).
+    vi.mocked(loadStaticCardDataForGen).mockImplementation(async (_language, gen) => {
+      const result: Record<number, CardRecord[]> = {};
+      if (gen === 4) {
+        result[448] = [
+          megaCard({ id: 'classic', name: 'M Lucario EX', dexNumber: 448 }),
+          megaCard({ id: 'z-form', name: 'Mega Lucario Z ex', dexNumber: 448 }),
+        ];
+      }
+      return result;
+    });
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /mega lucario z/i });
+    await userEvent.click(tile);
+    const dialog = await screen.findByRole('dialog');
+
+    // Re-derived from the CURRENT filter: only the Z-tagged print, not the
+    // stale classic one the cache was dirtied with.
+    await waitFor(() => {
+      expect(within(dialog).getByRole('img', { name: /mega lucario z ex from/i })).toBeInTheDocument();
+    });
+    expect(within(dialog).queryByRole('img', { name: /^m lucario ex from/i })).not.toBeInTheDocument();
+  });
 });

@@ -1,6 +1,13 @@
 // scripts/carddata/src/data/megaDex.test.ts
 import { describe, expect, it } from 'vitest';
-import { MEGA_DEX, MEGA_NAME_PATTERNS, isMegaCardName, megaFormBySlug, megaFormsForDex } from './megaDex';
+import {
+  MEGA_DEX,
+  MEGA_NAME_PATTERNS,
+  VARIANT_OVERRIDES,
+  isMegaCardName,
+  megaFormBySlug,
+  megaFormsForDex,
+} from './megaDex';
 
 describe('MEGA_DEX', () => {
   it('has exactly 96 forms, matching the source wiki article\'s total', () => {
@@ -149,5 +156,23 @@ describe('MEGA_NAME_PATTERNS / isMegaCardName', () => {
   it('exposes one regex per documented pattern id', () => {
     const ids = MEGA_NAME_PATTERNS.map((p) => p.id);
     expect(ids).toEqual(['legacy-m-ex', 'modern-mega-ex-gx', 'ja-modern-mega']);
+  });
+});
+
+describe('VARIANT_OVERRIDES (data mirror of the app-side table)', () => {
+  it('resolves the confirmed BREAKthrough Mewtwo prints (the wiki source states the ndex field and Origin prose directly)', () => {
+    expect(VARIANT_OVERRIDES['XY8::63']).toBe('X');
+    expect(VARIANT_OVERRIDES['XY8::64']).toBe('Y');
+  });
+
+  it('resolves the confirmed Charizard prints across Generations/Flashfire/Evolutions', () => {
+    expect(VARIANT_OVERRIDES['G1::12']).toBe('X');
+    expect(VARIANT_OVERRIDES['XY2::13']).toBe('Y');
+    expect(VARIANT_OVERRIDES['XY2::69']).toBe('X');
+  });
+
+  it('has no Raichu (dex 26) entries -- no printed Mega Raichu cards exist in the data yet', () => {
+    const raichuLikeKeys = Object.keys(VARIANT_OVERRIDES).filter((k) => k.startsWith('RAICHU'));
+    expect(raichuLikeKeys).toHaveLength(0);
   });
 });

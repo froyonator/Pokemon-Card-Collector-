@@ -4,6 +4,7 @@ import {
   allDexEntries,
   entriesForGenerations,
   generationForDexNumber,
+  isSyntheticDexNumber,
 } from './generations';
 import { GEN1_DEX } from './gen1Dex';
 import { GEN2_DEX, GEN9_DEX } from './fullDex';
@@ -141,5 +142,24 @@ describe('generationForDexNumber', () => {
   it('returns undefined for a dex number outside every known generation', () => {
     expect(generationForDexNumber(0)).toBeUndefined();
     expect(generationForDexNumber(99999)).toBeUndefined();
+  });
+});
+
+describe('isSyntheticDexNumber', () => {
+  it('is false for every real national dex number, including the highest one (Gen 9)', () => {
+    expect(isSyntheticDexNumber(1)).toBe(false);
+    expect(isSyntheticDexNumber(151)).toBe(false);
+    expect(isSyntheticDexNumber(GEN9_DEX[GEN9_DEX.length - 1].number)).toBe(false);
+  });
+
+  it('is true for MEGA_DEX_BASE itself and every real Mega entry number', () => {
+    expect(isSyntheticDexNumber(MEGA_DEX_BASE)).toBe(true);
+    for (const entry of MEGA_DEX_ENTRIES) {
+      expect(isSyntheticDexNumber(entry.number)).toBe(true);
+    }
+  });
+
+  it('is true for a hypothetical future synthetic family reusing the same >= MEGA_DEX_BASE convention', () => {
+    expect(isSyntheticDexNumber(MEGA_DEX_BASE + 500)).toBe(true);
   });
 });

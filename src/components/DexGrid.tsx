@@ -8,7 +8,7 @@ import {
   refreshStaticCardDataForGen,
 } from '../api/staticDatabase';
 import type { DexEntry } from '../data/gen1Dex';
-import { entriesForGenerations, generationForDexNumber } from '../data/generations';
+import { entriesForGenerations, generationForDexNumber, isSyntheticDexNumber } from '../data/generations';
 import { megaDexEntryByNumber, type MegaDexEntry } from '../data/megaDex';
 import { loadSpriteManifest, megaSpriteUrls, spriteUrls } from '../data/sprites';
 import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
@@ -252,12 +252,18 @@ export function DexGrid({
     const missingEntries = normalDexEntries.filter(
       (entry) => getCachedCards(language, entry.number) === undefined
     );
-    // Same "missing" check, over the Mega entries currently in scope --
-    // see loadMegaCardData.ts for why these need an entirely separate
-    // fetch path from missingEntries above.
-    const missingMegaEntries = megaDexEntriesInScope.filter(
-      (entry) => getCachedCards(language, entry.number) === undefined
-    );
+    // Every Mega entry currently in scope, NOT just the ones with no cache
+    // entry yet -- unlike missingEntries above, a synthetic entry's cache
+    // slot being present doesn't mean it's fresh: it's a computed VIEW over
+    // its base species' cards (see loadMegaCardData.ts), so a stale slot
+    // from before a matcher/filter fix shipped would otherwise sit there
+    // forever, never recomputed, until a manual Refresh Data (reported live:
+    // a dirty cache from an old session kept serving pre-fix results after
+    // reload). See isSyntheticDexNumber's own doc comment for the general
+    // contract this follows -- recomputation itself is cheap (zero network
+    // calls), so always redoing it here costs nothing but a redundant
+    // filter pass.
+    const missingMegaEntries = megaDexEntriesInScope.filter((entry) => isSyntheticDexNumber(entry.number));
     if (missingEntries.length === 0 && missingMegaEntries.length === 0) return;
 
     abortControllerRef.current?.abort();

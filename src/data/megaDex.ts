@@ -307,14 +307,186 @@ function extractVariantToken(cardName: string): MegaVariant | null {
   return null;
 }
 
+// --- Curated X/Y overrides for cards a wiki source confirms depict one
+// specific Mega form, even though their own card name carries no X/Y token
+// (the legacy "M Charizard EX" / "M Mewtwo EX" family never does -- see
+// AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX above). Where a card's own
+// TCG-reference-wiki article (fetched politely via harvest/wikiApiClient.ts,
+// see scripts/carddata/data/gap-audit/, gitignored, for the raw wikitext
+// evidence) states outright which Mega form it depicts -- e.g. its
+// "===Origin===" section reading "This card depicts {{me|Mewtwo}} X." -- that
+// beats the token-absence default below, splitting the print onto its one
+// true tile instead of showing it on both. A print with NO such determinable
+// evidence stays on every variant tile, exactly as before this table
+// existed.
+//
+// Keyed by normalized setId + leading-zero-stripped localId, mirroring
+// scripts/carddata's own dedup key (augmentFromSupplemental.ts's dedupKey:
+// `${setId.toUpperCase()}::${localId with leading zeros stripped}`) so a
+// card independently re-derived by a different source (or a different
+// language's copy of the SAME physical print, which shares setId+localId
+// with the English one -- verified live against this table's own German
+// entries, see megaDex.test.ts) lands on the identical key. Verified against
+// two live Japanese examples (dex 6 and dex 150's XY-era sets): the
+// Japanese static database uses ITS OWN independent setId scheme for
+// XY-era sets (e.g. "M2" for what English calls "xy2") and, independently,
+// carries none of the ambiguous tokenless "M<Species>EX" prints at all for
+// Charizard/Mewtwo -- only the already-tokened modern "メガ<Species>Xex"
+// family -- so this table needs no Japanese entries for either species; the
+// setId-sharing assumption holds for the European localizations (verified
+// live: German/French/Spanish/Italian/Portuguese all reuse the exact same
+// "xy2"/"xy8"/"g1" setIds as English for these prints) but does not need to
+// and does not hold for Japanese.
+function overrideKey(setId: string, localId: string): string {
+  return `${setId.toUpperCase()}::${String(localId).replace(/^0+(?=\d)/, '')}`;
+}
+
+export const VARIANT_OVERRIDES: Record<string, MegaVariant> = {
+  // --- Charizard (dex 6) ---
+  // "M Charizard-EX (Generations 12)": ndex=006MX, "This card depicts
+  // Charizard X."
+  [overrideKey('g1', '12')]: 'X',
+  // "M Charizard-EX (Flashfire 13)": ndex=006MY, "This card depicts
+  // Charizard Y." Also covers its own listed reprints: the Flashfire 107
+  // Secret print, and the Evolutions 13/101 Regular and Full Art reprints
+  // (same artwork, same card, per that article's own reprint gallery).
+  [overrideKey('xy2', '13')]: 'Y',
+  [overrideKey('xy2', '107')]: 'Y',
+  [overrideKey('xy12', '13')]: 'Y',
+  [overrideKey('xy12', '101')]: 'Y',
+  // "M Charizard-EX (Flashfire 69)": ndex=006MX, "This card depicts
+  // Charizard X." Also covers its own listed reprint: the Flashfire 108
+  // Secret print.
+  [overrideKey('xy2', '69')]: 'X',
+  [overrideKey('xy2', '108')]: 'X',
+  // --- Mewtwo (dex 150) ---
+  // "M Mewtwo-EX (BREAKthrough 63)": ndex=150MX, "This card depicts Mewtwo
+  // X." Also covers its own listed reprint: the BREAKthrough 159 Full Art
+  // print.
+  [overrideKey('xy8', '63')]: 'X',
+  [overrideKey('xy8', '159')]: 'X',
+  // "M Mewtwo-EX (BREAKthrough 64)": ndex=150MY, "This card depicts Mewtwo
+  // Y." Also covers its own listed reprint: the BREAKthrough 160 Full Art
+  // print.
+  [overrideKey('xy8', '64')]: 'Y',
+  [overrideKey('xy8', '160')]: 'Y',
+  // No override entries for Raichu (dex 26): the newest game wave's DLC
+  // Mega Raichu X/Y forms have zero printed TCG cards in the data today
+  // (verified live: dex 26's static bucket, every language, carries no
+  // Mega-tagged card at all), so there is nothing tokenless to disambiguate
+  // yet. Add entries here the same way the moment a real print appears.
+};
+
+function lookupVariantOverride(setId: string | undefined, localId: string | undefined): MegaVariant | null {
+  if (!setId || !localId) return null;
+  return VARIANT_OVERRIDES[overrideKey(setId, localId)] ?? null;
+}
+
+// Extracts the species token immediately adjacent to a card's Mega marker,
+// for multi-Pokemon ("&"-joined TAG TEAM) card names only -- e.g. "Mega
+// Sableye & Tyranitar GX" or the German "Mega-Zobiris & Despotar GX". Real
+// TCG naming convention always puts the Mega-tagged Pokemon FIRST in such a
+// name (confirmed against every "&" mega-tagged card observed in the data,
+// see megaDex.test.ts), so only the segment before the first "&" is ever
+// the Mega one; whatever species follows "&" is just a same-card teammate
+// with no Mega tag of its own. Returns null for a plain (non-"&") card name
+// -- the adjacency guard in cardMatchesMegaEntry only ever needs to run for
+// the multi-Pokemon shape; a single-species card's Mega tag unambiguously
+// belongs to that one species already (see the module comment up top).
+function megaAdjacentSpeciesToken(cardName: string): string | null {
+  const ampIndex = cardName.indexOf('&');
+  if (ampIndex === -1) return null;
+  const firstSegment = cardName.slice(0, ampIndex).trim();
+  const latinMatch = firstSegment.match(/^(?:Mega|M)[- ](.+)$/);
+  if (latinMatch) return latinMatch[1].trim();
+  const jaMatch = firstSegment.match(/^メガ(.+)$/);
+  if (jaMatch) return jaMatch[1].trim();
+  return null;
+}
+
+// Loose match between a Mega-adjacent species token pulled off a card name
+// (see megaAdjacentSpeciesToken) and a plain reference species name derived
+// straight from the data (see derivePlainSpeciesName) -- tolerant of a
+// trailing X/Y/Z variant letter on the token side (e.g. token "Charizard X"
+// against reference "Charizard"), since a hypothetical future TAG TEAM card
+// naming an X/Y-split species would carry one.
+function speciesTokenMatches(token: string, referenceSpeciesName: string): boolean {
+  const normalize = (s: string) => s.trim().toLowerCase();
+  const normalizedToken = normalize(token);
+  const normalizedReference = normalize(referenceSpeciesName);
+  if (normalizedToken === normalizedReference) return true;
+  return normalizedToken.replace(/\s+[xyz]$/, '') === normalizedReference;
+}
+
+// Derives a plain (non-Mega, non-multi-Pokemon) reference name for whatever
+// species a card bucket belongs to, straight from that bucket's own sibling
+// cards -- no per-language species-name table needed. Picks the SHORTEST
+// such name in the bucket (ties broken by first occurrence): a bare print
+// (e.g. "Sableye") is reliably shorter than a modified one that happens to
+// share the same species (e.g. "Sableye G", "Dark Tyranitar", "Team
+// Rocket's Tyranitar"), so this is robust against which exact plain card
+// happens to appear in the bucket. Returns null if the bucket has no plain
+// card at all to derive from (e.g. a species whose only static coverage is
+// Mega prints) -- callers treat that as "can't determine," not "no match,"
+// so the multi-Pokemon adjacency guard in cardMatchesMegaEntry is skipped
+// entirely rather than wrongly rejecting every card.
+function derivePlainSpeciesName<T extends { name: string }>(cards: T[]): string | null {
+  let best: string | null = null;
+  for (const card of cards) {
+    const name = card.name.trim();
+    if (name.includes('&') || isMegaCardName(name)) continue;
+    if (best === null || name.length < best.length) best = name;
+  }
+  return best;
+}
+
 // Whether a card name belongs to a given Mega dex entry. Callers are
 // expected to have already scoped `cardName` to the entry's base species
 // (see the module comment above) -- this only adds the Mega-family check
 // and, for the six variant-split species, the X/Y/Z split.
-export function cardMatchesMegaEntry(cardName: string, entry: MegaDexEntry): boolean {
+//
+// `referenceSpeciesName` (from derivePlainSpeciesName) guards against a
+// multi-Pokemon TAG TEAM card bleeding onto a teammate species' OWN Mega
+// tile just because that teammate is independently a Mega species too --
+// e.g. "Mega Sableye & Tyranitar GX" is filed under both Sableye's and
+// Tyranitar's dex buckets (it depicts both), and both have their own Mega
+// entry, but the "Mega" tag itself belongs only to Sableye, the adjacent
+// name (regression: reported live as Mega Tyranitar showing this card).
+// Omitted (or a card with no plain sibling to derive it from), this guard
+// is skipped -- see derivePlainSpeciesName's own doc comment.
+//
+// `overrideVariant` (from lookupVariantOverride) is curated evidence that a
+// specific print, even a tokenless one, is confirmed as one specific X/Y
+// form -- see VARIANT_OVERRIDES above. It's consulted BEFORE the name-token
+// heuristic below: a tokenless card WITH an override is no longer
+// ambiguous, so it stops showing on every variant tile and instead shows
+// only on its one confirmed one.
+export function cardMatchesMegaEntry(
+  cardName: string,
+  entry: MegaDexEntry,
+  options: { referenceSpeciesName?: string | null; overrideVariant?: MegaVariant | null } = {}
+): boolean {
+  const { referenceSpeciesName = null, overrideVariant = null } = options;
   if (!isMegaCardName(cardName)) return false;
+
+  if (referenceSpeciesName) {
+    const adjacentToken = megaAdjacentSpeciesToken(cardName);
+    if (adjacentToken !== null && !speciesTokenMatches(adjacentToken, referenceSpeciesName)) {
+      return false;
+    }
+  }
+
   if (!VARIANT_SPLIT_BASE_DEX.has(entry.baseDexNumber)) return true;
   const wantedVariant = entryVariant(entry);
+
+  if (overrideVariant !== null) {
+    // A curated override is always an explicit X/Y/Z call, so for a
+    // classic-vs-Z species it can never belong to the un-suffixed classic
+    // entry (wantedVariant === null) -- only to the one matching suffixed
+    // entry, exactly like a real name-token would.
+    return wantedVariant !== null && overrideVariant === wantedVariant;
+  }
+
   const cardVariant = extractVariantToken(cardName);
   if (wantedVariant === null) {
     // The un-suffixed "classic" entry of a Z-form species (Absol/Garchomp/
@@ -327,18 +499,27 @@ export function cardMatchesMegaEntry(cardName: string, entry: MegaDexEntry): boo
     return cardVariant === null;
   }
   if (cardVariant === null) {
-    // No readable variant token: shown on every variant tile for the
-    // X/Y-only families (there's no un-suffixed entry for it to belong to
-    // instead, see AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX above).
-    // For a Z-form species this branch is unreachable for a tokenless card
-    // -- it already matched the wantedVariant === null entry above and
-    // returned there -- so this only ever evaluates false for one of the
-    // three Z entries, correctly excluding it.
+    // No readable variant token and no override: shown on every variant
+    // tile for the X/Y-only families (there's no un-suffixed entry for it
+    // to belong to instead, see AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX
+    // above). For a Z-form species this branch is unreachable for a
+    // tokenless card -- it already matched the wantedVariant === null
+    // entry above and returned there -- so this only ever evaluates false
+    // for one of the three Z entries, correctly excluding it.
     return AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX.has(entry.baseDexNumber);
   }
   return cardVariant === wantedVariant;
 }
 
-export function cardsForMegaEntry<T extends { name: string }>(cards: T[], entry: MegaDexEntry): T[] {
-  return cards.filter((card) => cardMatchesMegaEntry(card.name, entry));
+export function cardsForMegaEntry<T extends { name: string; setId?: string; localId?: string }>(
+  cards: T[],
+  entry: MegaDexEntry
+): T[] {
+  const referenceSpeciesName = derivePlainSpeciesName(cards);
+  return cards.filter((card) =>
+    cardMatchesMegaEntry(card.name, entry, {
+      referenceSpeciesName,
+      overrideVariant: lookupVariantOverride(card.setId, card.localId),
+    })
+  );
 }

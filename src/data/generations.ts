@@ -10,7 +10,7 @@ import {
   GEN8_DEX,
   GEN9_DEX,
 } from './fullDex';
-import { MEGA_DEX_ENTRIES } from './megaDex';
+import { MEGA_DEX_BASE, MEGA_DEX_ENTRIES } from './megaDex';
 
 // A real national-dex generation is numbered 1-9; 'mega' is a special,
 // non-numeric grouping id for the synthetic-numbered Mega Evolution entries
@@ -92,4 +92,28 @@ export function generationForDexNumber(dexNumber: number): GenerationId | undefi
     return dexNumber >= first && dexNumber <= last;
   });
   return generation?.id;
+}
+
+// Any dex number at or above MEGA_DEX_BASE (20000) is a SYNTHETIC one: not a
+// real national dex entry with its own fetched data, but a computed VIEW
+// over some other dex number's already-cached cards (Mega entries today --
+// see loadMegaCardData.ts -- and the planned VMAX/regional families next,
+// which are expected to keep reusing this same numbering convention so this
+// helper covers them automatically; if a future family ever needs a
+// non-contiguous range instead, widen this check to a small array of
+// [start, end) ranges rather than adding a second ad hoc helper).
+//
+// This is the load-freshness contract every synthetic family must honor: a
+// synthetic entry's cache slot being PRESENT says nothing about whether it
+// reflects the CURRENT filter/derivation logic (a code change -- e.g. a
+// mega-matcher fix -- doesn't retroactively rewrite whatever an old session
+// already wrote to localStorage). Callers that decide whether to (re)compute
+// an entry by checking cache presence (see DexGrid's auto-load effect) must
+// treat every synthetic dex number as always needing recomputation, never
+// "already cached, skip" -- the recomputation itself is cheap (zero network
+// calls, a filter over already-loaded base-species data), so this costs
+// nothing but a redundant filter pass, in exchange for never silently
+// serving stale derived data until a manual Refresh Data.
+export function isSyntheticDexNumber(dexNumber: number): boolean {
+  return dexNumber >= MEGA_DEX_BASE;
 }

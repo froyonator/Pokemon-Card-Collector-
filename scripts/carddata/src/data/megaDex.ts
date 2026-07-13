@@ -250,3 +250,63 @@ export const MEGA_NAME_PATTERNS: MegaNamePattern[] = [
 export function isMegaCardName(name: string): boolean {
   return MEGA_NAME_PATTERNS.some((p) => p.re.test(name));
 }
+
+// --- Curated X/Y variant overrides (data mirror only) -----------------------
+//
+// This pipeline package has no runtime consumer for these -- the X/Y/Z
+// variant SPLIT (cardMatchesMegaEntry, cardsForMegaEntry) lives only in the
+// app's own src/data/megaDex.ts (see that file's module comment for why:
+// app code can't import across the package boundary, and this pipeline
+// module never needed the split logic for its own build/audit steps). This
+// table is mirrored here anyway, data-only, so a future pipeline audit step
+// (or a human re-deriving the app's table from scratch) has one place to
+// diff against instead of only the app copy.
+//
+// Card names in the legacy "M <Species> EX" family (see legacy-m-ex above)
+// never distinguish which Mega form they depict in the name text itself --
+// e.g. "M Mewtwo EX" prints exist as both an X-artwork and a Y-artwork
+// physical card, told apart only by set + card number. Where a card's own
+// TCG-reference-wiki article (fetched politely via harvest/wikiApiClient.ts,
+// see data/gap-audit/, gitignored, for the raw wikitext evidence) states
+// outright which Mega form it depicts, that evidence is recorded here.
+//
+// Keyed by normalized setId + leading-zero-stripped localId -- the same
+// dedup key augmentFromSupplemental.ts's dedupKey already uses
+// (`${setId.toUpperCase()}::${localId with leading zeros stripped}`) -- so a
+// card independently re-derived by a different source, or a different
+// language's copy of the SAME physical print (verified live: the European
+// localizations -- German/French/Spanish/Italian/Portuguese -- reuse the
+// exact same "xy2"/"xy8"/"g1" setIds as English for these prints), lands on
+// the identical key. The Japanese static database does NOT share this
+// setId scheme for XY-era sets (it uses its own, e.g. "M2" for what English
+// calls "xy2") -- verified live against dex 6 and dex 150 -- but also
+// carries none of these ambiguous tokenless prints at all for
+// Charizard/Mewtwo, only the already-tokened modern "メガ<Species>Xex"
+// family, so no Japanese entries are needed here.
+export const VARIANT_OVERRIDES: Record<string, 'X' | 'Y' | 'Z'> = {
+  // --- Charizard (dex 6) ---
+  // "M Charizard-EX (Generations 12)": depicts Charizard X.
+  'G1::12': 'X',
+  // "M Charizard-EX (Flashfire 13)": depicts Charizard Y. Covers its own
+  // listed reprints too: Flashfire 107 (Secret) and Evolutions 13/101
+  // (Regular/Full Art) are the same card.
+  'XY2::13': 'Y',
+  'XY2::107': 'Y',
+  'XY12::13': 'Y',
+  'XY12::101': 'Y',
+  // "M Charizard-EX (Flashfire 69)": depicts Charizard X. Covers its own
+  // listed reprint too: Flashfire 108 (Secret) is the same card.
+  'XY2::69': 'X',
+  'XY2::108': 'X',
+  // --- Mewtwo (dex 150) ---
+  // "M Mewtwo-EX (BREAKthrough 63)": depicts Mewtwo X. Covers its own
+  // listed reprint too: BREAKthrough 159 (Full Art) is the same card.
+  'XY8::63': 'X',
+  'XY8::159': 'X',
+  // "M Mewtwo-EX (BREAKthrough 64)": depicts Mewtwo Y. Covers its own
+  // listed reprint too: BREAKthrough 160 (Full Art) is the same card.
+  'XY8::64': 'Y',
+  'XY8::160': 'Y',
+  // No entries for Raichu (dex 26): zero printed Mega Raichu TCG cards
+  // exist in the data today, so nothing tokenless needs disambiguating yet.
+};

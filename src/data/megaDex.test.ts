@@ -282,3 +282,174 @@ describe('cardMatchesMegaEntry / cardsForMegaEntry', () => {
     expect(cardsForMegaEntry(realBlastoiseCards, blastoiseMega)).toHaveLength(7);
   });
 });
+
+describe('multi-Pokemon (TAG TEAM) Mega adjacency guard', () => {
+  // Regression: reported live as Mega Tyranitar's tile showing the "Mega
+  // Sableye & Tyranitar-GX" TAG TEAM card. Both Sableye (dex 302) and
+  // Tyranitar (dex 248) are independently Mega species, and this one
+  // physical card is filed under BOTH their dex buckets (it depicts both
+  // Pokemon) -- real card names pulled directly from
+  // public/data/cards/en/gen2.json's dex-248 bucket and
+  // public/data/cards/en/gen3.json's dex-302 bucket. The "Mega" tag itself
+  // belongs only to the FIRST-named (adjacent) species, per real TCG
+  // naming convention -- confirmed against every "&" mega-tagged card
+  // found anywhere in the static database (public/data/cards/**), all of
+  // which put the Mega'd Pokemon first.
+  const tyranitarMega = MEGA_DEX_ENTRIES.find((e) => e.slug === 'tyranitar-mega')!;
+  const sableyeMega = MEGA_DEX_ENTRIES.find((e) => e.slug === 'sableye-mega')!;
+
+  it('cardMatchesMegaEntry: rejects a TAG TEAM card whose adjacent species is a different Mega entry, once a reference species name is supplied', () => {
+    expect(
+      cardMatchesMegaEntry('Mega Sableye & Tyranitar GX', sableyeMega, { referenceSpeciesName: 'Sableye' })
+    ).toBe(true);
+    expect(
+      cardMatchesMegaEntry('Mega Sableye & Tyranitar GX', tyranitarMega, { referenceSpeciesName: 'Tyranitar' })
+    ).toBe(false);
+  });
+
+  it('cardMatchesMegaEntry: the adjacency guard is a no-op when no reference species name is supplied (existing 2-arg call sites keep their pre-fix behavior)', () => {
+    expect(cardMatchesMegaEntry('Mega Sableye & Tyranitar GX', tyranitarMega)).toBe(true);
+  });
+
+  it("cardsForMegaEntry: Tyranitar's own dex-248 bucket does not show the Sableye TAG TEAM card, but Sableye's dex-302 bucket does (real card names)", () => {
+    const tyranitarBucket = [
+      { name: 'Tyranitar', setId: 'neo2', localId: '12' },
+      { name: 'M Tyranitar EX', setId: 'xy7', localId: '42' },
+      { name: 'Mega Sableye & Tyranitar GX', setId: 'sm11', localId: '126' },
+    ];
+    const sableyeBucket = [
+      { name: 'Sableye', setId: 'xy1', localId: '68' },
+      { name: 'Mega Sableye & Tyranitar GX', setId: 'sm11', localId: '126' },
+    ];
+    expect(cardsForMegaEntry(tyranitarBucket, tyranitarMega).map((c) => c.name)).toEqual(['M Tyranitar EX']);
+    expect(cardsForMegaEntry(sableyeBucket, sableyeMega).map((c) => c.name)).toEqual([
+      'Mega Sableye & Tyranitar GX',
+    ]);
+  });
+
+  it('applies the same adjacency guard to the real German localization ("Mega-Zobiris & Despotar GX"), deriving the reference species name straight from the data with no hardcoded translation table', () => {
+    const despotarBucket = [
+      { name: 'Despotar', setId: 'neo2', localId: '12' },
+      { name: 'Mega-Zobiris & Despotar GX', setId: 'sm11', localId: '126' },
+    ];
+    const zobirisBucket = [
+      { name: 'Zobiris', setId: 'xy1', localId: '68' },
+      { name: 'Mega-Zobiris & Despotar GX', setId: 'sm11', localId: '126' },
+    ];
+    expect(cardsForMegaEntry(despotarBucket, tyranitarMega)).toHaveLength(0);
+    expect(cardsForMegaEntry(zobirisBucket, sableyeMega).map((c) => c.name)).toEqual([
+      'Mega-Zobiris & Despotar GX',
+    ]);
+  });
+
+  // No Japanese equivalent of this TAG TEAM pairing exists anywhere in the
+  // static database (verified live: neither public/data/cards/ja.json nor
+  // any public/data/cards/ja/gen*.json file has a card whose name contains
+  // "&" alongside a Mega marker) -- confirmed by scanning every language
+  // file for a "&"-joined Mega-tagged name; only English and German carry
+  // this pairing (and the Lopunny/Jigglypuff one, which never bled since
+  // Jigglypuff has no Mega entry of its own to bleed onto). Nothing to test
+  // for ja here as a result.
+
+  it("derivePlainSpeciesName (via cardsForMegaEntry) picks the SHORTEST plain sibling name, not just the first one, so a modified print like 'Sableye G' occurring before the bare 'Sableye' print doesn't corrupt the reference", () => {
+    const sableyeBucketWithModifiedFirst = [
+      { name: 'Sableye G', setId: 'pl3', localId: '41' },
+      { name: 'Sableye', setId: 'xy1', localId: '68' },
+      { name: 'Mega Sableye & Tyranitar GX', setId: 'sm11', localId: '126' },
+    ];
+    expect(cardsForMegaEntry(sableyeBucketWithModifiedFirst, sableyeMega).map((c) => c.name)).toEqual([
+      'Mega Sableye & Tyranitar GX',
+    ]);
+  });
+
+  it('never applies the adjacency guard to a plain (non-"&") card name, even with a mismatched reference species name supplied', () => {
+    // megaAdjacentSpeciesToken only ever returns non-null for a "&"-joined
+    // name -- a plain card's Mega tag is scoped entirely by the caller's
+    // dex-bucket filtering (see the module comment up top), never by this
+    // guard, so even a deliberately WRONG reference name here must not
+    // reject it.
+    const charizardX = MEGA_DEX_ENTRIES.find((e) => e.slug === 'charizard-mega-x')!;
+    expect(
+      cardMatchesMegaEntry('Mega Charizard X ex', charizardX, { referenceSpeciesName: 'NotCharizard' })
+    ).toBe(true);
+  });
+});
+
+describe('VARIANT_OVERRIDES', () => {
+  const charizardX = MEGA_DEX_ENTRIES.find((e) => e.slug === 'charizard-mega-x')!;
+  const charizardY = MEGA_DEX_ENTRIES.find((e) => e.slug === 'charizard-mega-y')!;
+  const mewtwoX = MEGA_DEX_ENTRIES.find((e) => e.slug === 'mewtwo-mega-x')!;
+  const mewtwoY = MEGA_DEX_ENTRIES.find((e) => e.slug === 'mewtwo-mega-y')!;
+
+  // Evidence: the reference wiki's own card articles state outright which
+  // Mega form each print depicts -- "M Mewtwo-EX (BREAKthrough 63)"'s
+  // structured ndex field reads "150MX" and its Origin section reads "This
+  // card depicts Mewtwo X."; "M Mewtwo-EX (BREAKthrough 64)"'s reads
+  // "150MY" / "This card depicts Mewtwo Y." -- fetched live via
+  // harvest/wikiApiClient.ts, raw wikitext kept under
+  // scripts/carddata/data/gap-audit/ (gitignored) for the record.
+  it('overrides a tokenless card to its one confirmed variant, beating the token-absence default that would otherwise show it on every tile', () => {
+    expect(
+      cardMatchesMegaEntry('M Mewtwo EX', mewtwoX, { overrideVariant: 'X' })
+    ).toBe(true);
+    expect(
+      cardMatchesMegaEntry('M Mewtwo EX', mewtwoY, { overrideVariant: 'X' })
+    ).toBe(false);
+    expect(
+      cardMatchesMegaEntry('M Mewtwo EX', mewtwoY, { overrideVariant: 'Y' })
+    ).toBe(true);
+    expect(
+      cardMatchesMegaEntry('M Mewtwo EX', mewtwoX, { overrideVariant: 'Y' })
+    ).toBe(false);
+  });
+
+  it('cardsForMegaEntry: BREAKthrough 63 (confirmed Mewtwo X) shows ONLY on the X tile, BREAKthrough 64 (confirmed Mewtwo Y) shows ONLY on the Y tile', () => {
+    const bucket = [
+      { name: 'M Mewtwo EX', setId: 'xy8', localId: '63' },
+      { name: 'M Mewtwo EX', setId: 'xy8', localId: '64' },
+    ];
+    expect(cardsForMegaEntry(bucket, mewtwoX).map((c) => c.localId)).toEqual(['63']);
+    expect(cardsForMegaEntry(bucket, mewtwoY).map((c) => c.localId)).toEqual(['64']);
+  });
+
+  it('cardsForMegaEntry: also resolves the confirmed Charizard prints (Generations 12 = X, Flashfire 13/107 = Y, Flashfire 69/108 = X, Evolutions 13/101 = Y)', () => {
+    const bucket = [
+      { name: 'M Charizard EX', setId: 'g1', localId: '12' },
+      { name: 'M Charizard EX', setId: 'xy2', localId: '13' },
+      { name: 'M Charizard EX', setId: 'xy2', localId: '107' },
+      { name: 'M Charizard EX', setId: 'xy2', localId: '69' },
+      { name: 'M Charizard EX', setId: 'xy2', localId: '108' },
+      { name: 'M Charizard EX', setId: 'xy12', localId: '13' },
+      { name: 'M Charizard EX', setId: 'xy12', localId: '101' },
+    ];
+    expect(cardsForMegaEntry(bucket, charizardX).map((c) => c.localId).sort()).toEqual(['108', '12', '69']);
+    expect(cardsForMegaEntry(bucket, charizardY).map((c) => c.localId).sort()).toEqual(['101', '107', '13', '13']);
+  });
+
+  it('a tokenless card with NO override entry still shows on every variant tile, unchanged from before this table existed', () => {
+    const bucket = [{ name: 'M Charizard EX', setId: 'not-a-real-set', localId: '999' }];
+    expect(cardsForMegaEntry(bucket, charizardX)).toHaveLength(1);
+    expect(cardsForMegaEntry(bucket, charizardY)).toHaveLength(1);
+  });
+
+  it('overrides never affect the classic-vs-Z split for Absol/Garchomp/Lucario: a real (non-overridden) print keeps its existing behavior even when it carries setId/localId fields', () => {
+    const lucario = MEGA_DEX_ENTRIES.find((e) => e.slug === 'lucario-mega')!;
+    const lucarioZ = MEGA_DEX_ENTRIES.find((e) => e.slug === 'lucario-mega-z')!;
+    const bucket = [{ name: 'M Lucario EX', setId: 'xy1', localId: '78' }];
+    expect(cardsForMegaEntry(bucket, lucario)).toHaveLength(1);
+    expect(cardsForMegaEntry(bucket, lucarioZ)).toHaveLength(0);
+  });
+
+  it('has no entries for Raichu (dex 26): zero printed Mega Raichu cards exist in the data today, so nothing is disambiguated yet', () => {
+    const raichuX = MEGA_DEX_ENTRIES.find((e) => e.slug === 'raichu-mega-x')!;
+    const raichuY = MEGA_DEX_ENTRIES.find((e) => e.slug === 'raichu-mega-y')!;
+    // No real card data to test against -- this just documents that a
+    // tokenless Raichu card (should one ever be printed) would fall
+    // through to the same "shows on every variant tile" default as any
+    // other non-overridden ambiguous print, until a real print's evidence
+    // is added to VARIANT_OVERRIDES.
+    const hypothetical = [{ name: 'M Raichu EX', setId: 'not-yet-printed', localId: '1' }];
+    expect(cardsForMegaEntry(hypothetical, raichuX)).toHaveLength(1);
+    expect(cardsForMegaEntry(hypothetical, raichuY)).toHaveLength(1);
+  });
+});
