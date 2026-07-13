@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - All nine generations (Kanto through Paldea, dex #1 to #1025) are now selectable, not just Kanto. The generation filter is a true multi-select: pick any combination and the grid shows exactly those Pokemon. Existing collections are unaffected and keep showing Kanto only until you opt in to more.
-- Built-in card databases for generations 2 through 9 in eleven languages (Japanese, French, German, Spanish, Italian, Portuguese, Traditional and Simplified Chinese, Thai, Indonesian, and Korean), nearly 63,000 cards, so the newly selectable generations load instantly with no live lookups in covered languages. English coverage for the new generations follows in this release too.
+- Built-in card databases for generations 2 through 9 in eleven languages (Japanese, French, German, Spanish, Italian, Portuguese, Traditional and Simplified Chinese, Thai, Indonesian, and Korean), nearly 63,000 cards, so the newly selectable generations load instantly with no live lookups in covered languages. English joins them with another 14,300 cards covering every generation 2 to 9 species.
 
 - Big Gen 1 database growth in the languages that needed it most: Simplified Chinese grew from 86 to 733 cards, Indonesian from 244 to 827, Thai from 299 to 685, plus new English and Japanese promo sets. All new cards come with card images.
 
