@@ -15,6 +15,7 @@ import { setCachedCards } from '../storage/cardCache';
 // per-call to provide real static records.
 vi.mock('../api/staticDatabase', () => ({
   loadStaticCardData: vi.fn(async () => null),
+  loadStaticCardDataForGen: vi.fn(async () => null),
 }));
 
 function jsonResponse(body: unknown) {

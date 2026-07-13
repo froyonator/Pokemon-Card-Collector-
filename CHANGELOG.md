@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bookshelf binders now turn to show their spine on hover, matching the classic book-shelf feel: hovering (or keyboard-focusing) a binder swings it smoothly toward you, revealing its spine label, and it eases back the moment you look away.
+
 ### Fixed
 
 - "Show all cards" in a Pokemon's picker could hang for several minutes with no result, especially for Pokemon with many prints, because it always fetched every single print live one at a time instead of using the built-in card database. It now reads the complete print list straight from the built-in database for any language it covers, so it opens almost instantly with no live lookups at all. Languages without database coverage still fetch live, but every one of those requests now gives up after 15 seconds instead of hanging forever, and if a fetch does fail or time out, the picker shows a plain "Couldn't load the full card list. Try again." message with a retry button instead of spinning forever.

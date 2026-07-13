@@ -16,11 +16,14 @@
 // for it, exactly like any other static-only gap -- kept this way so every
 // synthetic family makes ZERO live calls, same contract as every other
 // static-covered tile.
-import { generationForDexNumber } from '../data/generations';
+import { generationForDexNumber, SYNTHETIC_FILTER_VERSION } from '../data/generations';
 import {
+  getCachedCards,
+  getSyntheticFilterVersion,
   isLatestWriteGeneration,
   reserveWriteGeneration,
   setCachedCards,
+  setSyntheticFilterVersion,
 } from '../storage/cardCache';
 import { preserveReferencedCards } from './loadCardData';
 import type { CardRecord, OwnedRecord, WishlistRecord } from '../types';
@@ -52,6 +55,14 @@ export interface LoadSyntheticFormOptions {
   onEntryLoaded?: (dexNumber: number) => void;
 }
 
+// Returns whether this call actually wrote anything -- `false` when
+// `entries` was empty, or (via loadSyntheticFormCardData's needsRecompute
+// narrowing) every entry passed in was already stamped with the current
+// SYNTHETIC_FILTER_VERSION. Callers (DexGrid's auto-load effect) use this to
+// only bump their own re-render-triggering dataVersion counter when a form
+// family genuinely produced fresh data, instead of unconditionally bumping
+// it -- and paying for the render and cardsByDexNumber recompute that
+// implies -- on every single load whether or not anything actually changed.
 async function loadEntries<E extends SyntheticFormEntry>(
   language: string,
   entries: E[],
@@ -59,9 +70,9 @@ async function loadEntries<E extends SyntheticFormEntry>(
   loadGen: StaticLoaderForGen,
   matchCards: (baseCards: CardRecord[], entry: E) => CardRecord[],
   options: LoadSyntheticFormOptions
-): Promise<void> {
+): Promise<boolean> {
   const { owned = {}, wishlist = {}, onEntryLoaded } = options;
-  if (entries.length === 0) return;
+  if (entries.length === 0) return false;
 
   // One static fetch per distinct BASE species' generation, not one per
   // form entry -- e.g. Urshifu's two VMAX Styles share a single dex-892
@@ -78,6 +89,7 @@ async function loadEntries<E extends SyntheticFormEntry>(
     )
   );
 
+  let wroteAny = false;
   for (const entry of entries) {
     const staticData = staticByBaseDex.get(entry.baseDexNumber);
     const baseCards = staticData?.[entry.baseDexNumber] ?? [];
@@ -92,15 +104,53 @@ async function loadEntries<E extends SyntheticFormEntry>(
     const generation = reserveWriteGeneration(language, entry.number);
     if (isLatestWriteGeneration(language, entry.number, generation)) {
       setCachedCards(language, entry.number, withPreserved);
+      // Stamped in the SAME isLatestWriteGeneration-guarded branch as the
+      // cache write itself, right alongside it -- a losing racer's stamp
+      // must never land after its cache write was skipped, or a later
+      // caller would wrongly read "already up to date" for data that was
+      // actually never written by this call.
+      setSyntheticFilterVersion(language, entry.number, SYNTHETIC_FILTER_VERSION);
+      wroteAny = true;
     }
     onEntryLoaded?.(entry.number);
   }
+  return wroteAny;
+}
+
+// An entry needs (re)computing when it has no cache slot at all yet, or
+// when its cache slot's stamped filter version (see setSyntheticFilterVersion
+// above) doesn't match the CURRENT SYNTHETIC_FILTER_VERSION -- the latter is
+// what catches a matcher/filter fix retroactively, without waiting for a
+// manual Refresh Data (see generations.ts's own doc comment on that
+// constant for the full contract).
+function needsRecompute(language: string, entry: SyntheticFormEntry): boolean {
+  if (getCachedCards(language, entry.number) === undefined) return true;
+  return getSyntheticFilterVersion(language, entry.number) !== SYNTHETIC_FILTER_VERSION;
 }
 
 // Cold-load path: reuses the per-session-memoized static loaders, so a form
 // entry never re-fetches its base species' static file if a normal tile (or
 // another form entry sharing the same base species) already fetched it this
 // session.
+//
+// Unlike refreshSyntheticFormCardData below (an explicit user action that
+// must always produce fresh results for everything in scope), this path
+// first narrows `entries` down to only the ones needsRecompute actually
+// flags -- an entry whose cache slot is already stamped with the current
+// SYNTHETIC_FILTER_VERSION is left completely untouched: no static fetch
+// contribution, no refilter, no localStorage write, no onEntryLoaded. This
+// is what keeps a tab switch across hundreds of Mega/VMAX/regional entries
+// fast on every visit after the first: before this existed, EVERY entry in
+// scope was unconditionally refiltered and rewritten to localStorage on
+// EVERY call (an intentional trade-off at the time -- see
+// isSyntheticDexNumber's own doc comment -- but one that turned out to cost
+// far more than "a redundant filter pass", since a naive per-entry
+// localStorage write re-serializes the ENTIRE shared cache blob every
+// single time; reported live as the Mega/VMAX/regional tabs turning
+// sluggish). The staleness guarantee itself is unchanged: a stamp mismatch
+// (including "never stamped at all", true for every entry cached before this
+// mechanism existed) still forces a full recompute, exactly as unconditional
+// recomputation always did.
 export function loadSyntheticFormCardData<E extends SyntheticFormEntry>(
   language: string,
   entries: E[],
@@ -108,8 +158,9 @@ export function loadSyntheticFormCardData<E extends SyntheticFormEntry>(
   loadGen: StaticLoaderForGen,
   matchCards: (baseCards: CardRecord[], entry: E) => CardRecord[],
   options: LoadSyntheticFormOptions = {}
-): Promise<void> {
-  return loadEntries(language, entries, loadGen1, loadGen, matchCards, options);
+): Promise<boolean> {
+  const stale = entries.filter((entry) => needsRecompute(language, entry));
+  return loadEntries(language, stale, loadGen1, loadGen, matchCards, options);
 }
 
 // Refresh path: bypasses the per-session memo exactly like DexGrid's own
@@ -123,6 +174,6 @@ export function refreshSyntheticFormCardData<E extends SyntheticFormEntry>(
   refreshGen: StaticLoaderForGen,
   matchCards: (baseCards: CardRecord[], entry: E) => CardRecord[],
   options: LoadSyntheticFormOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return loadEntries(language, entries, refreshGen1, refreshGen, matchCards, options);
 }

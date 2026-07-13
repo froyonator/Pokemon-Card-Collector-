@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_COVER_COLOR } from '../data/binderCovers';
 import { useAppStore } from '../state/store';
-import { useBinderTilt } from '../state/useBinderTilt';
 import type { Binder } from '../types';
 import { TrashIcon } from './icons/TabIcons';
 import styles from './BinderShelf.module.css';
@@ -100,40 +99,33 @@ interface BinderVolumeProps {
   isOnlyBinder: boolean;
 }
 
-// One volume on the shelf. Split out from BinderShelf so useBinderTilt --
-// which tracks its own hover/rect state -- gets one hook instance per
-// binder rather than being called from inside a .map(), which would break
-// the rules of hooks as the binder list grows and shrinks.
+// One volume on the shelf. Split out from BinderShelf mainly for readability
+// -- each binder gets its own local delete-confirm state.
 function BinderVolume({ binder, onOpenBinder, isOnlyBinder }: BinderVolumeProps) {
   const color = binder.cover?.color ?? DEFAULT_COVER_COLOR;
   const coverImageUri = binder.cover?.coverImageUri;
-  const tilt = useBinderTilt();
   const deleteBinder = useAppStore((s) => s.deleteBinder);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   return (
     <li className={styles.slot}>
-      {/* Wraps the tilting book button and the delete affordance that sits
+      {/* Wraps the turning book button and the delete affordance that sits
           on top of it -- a sibling overlay, not a nested button, since a
-          <button> can't legally contain another <button>. */}
+          <button> can't legally contain another <button>. Also carries the
+          perspective for the book's 3D turn, so each volume gets its own
+          vanishing point rather than sharing one across the whole shelf. */}
       <div className={styles.bookWrap}>
-        {/* The stationary hit target the tilt math measures against (see
-            useBinderTilt) -- it never itself transforms, so the pointer can't
-            slide the tracked rect out from under itself mid-hover. The
-            .volume child below is what actually leans with the cursor. */}
+        {/* The stationary hit target: hover/focus on this button drives the
+            whole turn via CSS only (see .volume below), so the hit area
+            stays put and clickable through the animation instead of sliding
+            around with a transformed element. */}
         <button
           type="button"
           className={styles.book}
           aria-label={`Open ${binder.name}`}
           onClick={() => onOpenBinder(binder.id)}
-          onMouseMove={tilt.onMouseMove}
-          onMouseLeave={tilt.onMouseLeave}
-          ref={tilt.ref}
         >
-          <span
-            className={tilt.isActive ? `${styles.volume} ${styles.volumeTilting}` : styles.volume}
-            style={tilt.style}
-          >
+          <span className={styles.volume}>
             <span className={styles.pagesEdge} aria-hidden="true" />
             <span className={styles.cover} style={{ backgroundColor: color }} aria-hidden="true">
               {coverImageUri ? (

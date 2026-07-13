@@ -141,42 +141,59 @@ describe('BinderShelf', () => {
     });
   });
 
-  describe('cursor tilt', () => {
-    function setVolumeRect(button: HTMLElement, width = 158, height = 216) {
-      button.getBoundingClientRect = () => new DOMRect(0, 0, width, height);
-    }
+  describe('hover turn', () => {
+    // The turn is pure CSS (see BinderShelf.module.css's `.book:hover
+    // .volume` rule): hovering or focusing the stationary .book button
+    // turns the nested .volume span to rotate3d(0, 1, 0, 35deg) via a class
+    // selector, with no inline style and no mousemove tracking involved.
+    // jsdom doesn't compute matched CSS rules for us, so these tests assert
+    // on the DOM structure and classes the CSS hooks into rather than on
+    // resolved transform values.
 
-    it('leans the volume toward the cursor on mouse move, and springs back on mouse leave', () => {
+    it('renders the book button as the stationary hit target with no inline transform', () => {
       render(<BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />);
       const button = screen.getByRole('button', { name: 'Open My Binder' });
-      setVolumeRect(button);
       const volume = button.querySelector('.volume') as HTMLElement;
 
-      // At rest, before any hover: the resting rotateY is still applied
-      // inline (so JS and CSS agree on the starting pose), no tilt tracking
-      // active yet.
-      expect(volume).not.toHaveClass('volumeTilting');
-      expect(volume.style.transform).toContain('rotateY(-24deg)');
-
-      fireEvent.mouseMove(button, { clientX: 158, clientY: 0 });
-      expect(volume).toHaveClass('volumeTilting');
-      // Cursor at the far right, top edge: rotateY swings past the resting
-      // angle and rotateX tilts the top back.
-      expect(volume.style.transform).toContain('rotateY(-4deg)');
-      expect(volume.style.transform).toContain('rotateX(7deg)');
-
-      fireEvent.mouseLeave(button);
-      expect(volume).not.toHaveClass('volumeTilting');
-      expect(volume.style.transform).toContain('rotateY(-24deg)');
-      expect(volume.style.transform).toContain('rotateX(0deg)');
+      expect(volume).toBeInTheDocument();
+      // No JS-driven inline transform -- the rest pose and the hover turn
+      // both come entirely from the stylesheet.
+      expect(volume.style.transform).toBe('');
     });
 
-    it('does not crash when the mouse moves before the volume has a measurable rect', () => {
+    it('does not crash on hover, focus, or mouse leave, and the hit target stays put', () => {
       render(<BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />);
       const button = screen.getByRole('button', { name: 'Open My Binder' });
-      // jsdom's default getBoundingClientRect is all zeros -- computeCardTilt
-      // must handle the zero-area case without dividing by zero.
-      expect(() => fireEvent.mouseMove(button, { clientX: 10, clientY: 10 })).not.toThrow();
+
+      expect(() => fireEvent.mouseOver(button)).not.toThrow();
+      expect(() => fireEvent.focus(button)).not.toThrow();
+      expect(() => fireEvent.mouseLeave(button)).not.toThrow();
+      expect(() => fireEvent.blur(button)).not.toThrow();
+
+      // Still the same button, still clickable -- the rotation lives on the
+      // nested .volume, never on the hit target itself.
+      expect(button.style.transform).toBe('');
+    });
+
+    it('keeps the spine label readable text content through hover', async () => {
+      render(<BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />);
+      const button = screen.getByRole('button', { name: 'Open My Binder' });
+      const spineText = button.querySelector('.spineText') as HTMLElement;
+      expect(spineText).toHaveTextContent('My Binder');
+
+      await userEvent.hover(button);
+      expect(spineText).toHaveTextContent('My Binder');
+    });
+
+    it('clicking the volume mid-hover still opens the binder', async () => {
+      const onOpenBinder = vi.fn();
+      render(
+        <BinderShelf binders={[makeBinder()]} onOpenBinder={onOpenBinder} onCreateBinder={() => {}} />
+      );
+      const button = screen.getByRole('button', { name: 'Open My Binder' });
+      await userEvent.hover(button);
+      await userEvent.click(button);
+      expect(onOpenBinder).toHaveBeenCalledWith('a');
     });
   });
 
@@ -185,21 +202,29 @@ describe('BinderShelf', () => {
       vi.mocked(useReducedMotion).mockReturnValue(true);
     });
 
-    it('renders with no tilt tracking and does not crash on hover', () => {
+    it('renders with no inline transform and does not crash on hover', () => {
       render(<BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />);
       const button = screen.getByRole('button', { name: 'Open My Binder' });
-      button.getBoundingClientRect = () => new DOMRect(0, 0, 158, 216);
       const volume = button.querySelector('.volume') as HTMLElement;
 
-      // No inline transform at all -- the resting pose comes from the CSS
-      // class instead, and the hover fallback (a simple lift) is pure CSS.
+      // The reduced-motion fallback (no rotation, a plain shadow cue) is
+      // pure CSS via the `prefers-reduced-motion: reduce` media query --
+      // there was never any JS tilt tracking to disable here.
       expect(volume.style.transform).toBe('');
 
-      expect(() => fireEvent.mouseMove(button, { clientX: 158, clientY: 0 })).not.toThrow();
-      expect(volume).not.toHaveClass('volumeTilting');
+      expect(() => fireEvent.mouseOver(button)).not.toThrow();
       expect(volume.style.transform).toBe('');
 
       expect(() => fireEvent.mouseLeave(button)).not.toThrow();
+    });
+
+    it('clicking still opens the binder with reduced motion active', async () => {
+      const onOpenBinder = vi.fn();
+      render(
+        <BinderShelf binders={[makeBinder()]} onOpenBinder={onOpenBinder} onCreateBinder={() => {}} />
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Open My Binder' }));
+      expect(onOpenBinder).toHaveBeenCalledWith('a');
     });
   });
 

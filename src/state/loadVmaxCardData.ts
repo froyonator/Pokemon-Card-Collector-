@@ -21,7 +21,7 @@ export function loadVmaxCardData(
   language: string,
   entries: VmaxDexEntry[],
   options: LoadVmaxCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return loadSyntheticFormCardData(
     language,
     entries,
@@ -36,7 +36,7 @@ export function refreshVmaxCardData(
   language: string,
   entries: VmaxDexEntry[],
   options: LoadVmaxCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return refreshSyntheticFormCardData(
     language,
     entries,

@@ -1,7 +1,8 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
 import { excludeRegionalFormCards } from '../data/regionalDex';
-import { loadStaticCardData } from '../api/staticDatabase';
+import { generationForDexNumber } from '../data/generations';
+import { loadStaticCardData, loadStaticCardDataForGen } from '../api/staticDatabase';
 import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
 import { mapWithConcurrency } from './concurrency';
 import {
@@ -139,6 +140,40 @@ async function enrichFromStatic(language: string, cards: CardRecord[]): Promise<
           : staticCard.rarity,
     };
   });
+}
+
+// Looks up a dex number's COMPLETE print bucket in the static database --
+// dex 1-151 via the flat per-language file, dex 152+ via that dex number's
+// own generation file (see api/staticDatabase.ts) -- the same source
+// DexGrid's curated auto-load/Refresh Data preload reads from (see
+// DexGrid.tsx's staticDataByGeneration). The static database is built from
+// a full snapshot of every set, so a dex number's bucket already IS its
+// entire print history, unfiltered by rarity -- exactly what "Show all
+// cards" needs, with zero live requests. Returns `undefined` (not `[]`)
+// when the language/generation has no static file at all, which callers
+// must treat as "fall back to the live path" -- distinct from an empty
+// array, which means the static file DOES cover this generation and
+// genuinely has zero cards on record for this dex number (a real, valid
+// answer, not a gap to live-fetch around). Synthetic (Mega/VMAX/regional
+// form) dex numbers are out of scope here -- callers must never pass one in,
+// since they have their own dedicated loaders (loadMegaCardData.ts etc.)
+// and no per-generation static file of their own; generationForDexNumber
+// applied to one would return a non-numeric pseudo-generation id like
+// 'mega', silently misrouting into the `?? 1` fallback below instead of
+// throwing, so this is a caller contract, not something this function
+// itself can detect and guard.
+async function staticBucketForDex(
+  language: string,
+  dexNumber: number,
+  fetchImpl: typeof fetch
+): Promise<CardRecord[] | undefined> {
+  const gen = (generationForDexNumber(dexNumber) as number | undefined) ?? 1;
+  const staticData =
+    gen === 1
+      ? await loadStaticCardData(language, fetchImpl)
+      : await loadStaticCardDataForGen(language, gen, fetchImpl);
+  if (!staticData) return undefined;
+  return staticData[dexNumber] ?? [];
 }
 
 // If this dex number has an owned and/or wishlisted card that a curated
@@ -399,6 +434,32 @@ export async function loadAllPrintingsForDex(
   // so it doesn't clobber the fresher curated result.
   const generation = reserveWriteGeneration(language, dexNumber);
   try {
+    // Static-first: a language/generation the static database covers
+    // already holds this dex number's COMPLETE print bucket (see
+    // staticBucketForDex) -- exactly what "Show all cards" needs, with zero
+    // live requests and no per-print detail fan-out. This is what turns a
+    // several-minutes hang (100+ live detail fetches, one per print) into
+    // an effectively instant result for every static-covered dex number.
+    const staticBucket = await staticBucketForDex(language, dexNumber, fetchImpl);
+    if (staticBucket !== undefined) {
+      // Same base-tile regional exclusion as the live path below (see
+      // mergeReferencedCards) -- a base species' own bucket must never
+      // surface a regional-form print (e.g. "Hisuian Growlithe" on plain
+      // Growlithe's own dex-58 slot). A no-op for every dex number with no
+      // regional form at all.
+      const withoutRegionalForms = excludeRegionalFormCards(dexNumber, staticBucket);
+      if (isLatestWriteGeneration(language, dexNumber, generation)) {
+        setCachedCards(language, dexNumber, withoutRegionalForms);
+        markFullPrintHistoryFetched(language, dexNumber);
+      }
+      return withoutRegionalForms;
+    }
+
+    // No static coverage for this language/generation (e.g. nl/ru/pl, or a
+    // generation not yet deployed) -- fall back to the live top-up path,
+    // unchanged from before static-first except that every fetch it makes
+    // (via tcgdex.ts) now carries its own request timeout, so a stalled
+    // connection can no longer hang this indefinitely.
     const briefs = await fetchAllCardsForDex(dexNumber, pokemonName, language, fetchImpl, signal);
     // mapWithConcurrency preserves input order in its results array regardless
     // of which detail fetch resolves first, so `cards` still lines up with
@@ -445,6 +506,12 @@ export async function loadAllPrintingsForDex(
     // from any caller (Picker.tsx doesn't pass a signal today), but this
     // keeps the function safe to call with one, consistent with
     // loadAllCardData, without a separate follow-up pass.
+    //
+    // A GENUINE failure (a bad status, a network error, or -- new since
+    // every tcgdex.ts fetch now carries its own timeout -- a request that
+    // stalled past that timeout) is NOT swallowed here: it propagates to
+    // the caller (Picker.tsx), which surfaces a real error state with a
+    // retry instead of leaving its loading spinner spinning forever.
     if (isAbortError(err)) return [];
     throw err;
   }

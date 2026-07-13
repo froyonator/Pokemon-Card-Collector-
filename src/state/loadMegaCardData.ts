@@ -28,7 +28,7 @@ export function loadMegaCardData(
   language: string,
   entries: MegaDexEntry[],
   options: LoadMegaCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return loadSyntheticFormCardData(
     language,
     entries,
@@ -43,7 +43,7 @@ export function refreshMegaCardData(
   language: string,
   entries: MegaDexEntry[],
   options: LoadMegaCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return refreshSyntheticFormCardData(
     language,
     entries,

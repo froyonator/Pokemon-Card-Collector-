@@ -6,8 +6,9 @@ import {
   refreshStaticCardData,
   refreshStaticCardDataForGen,
 } from '../api/staticDatabase';
-import { GALARIAN_DEX, HISUIAN_DEX } from '../data/regionalDex';
-import { getCachedCards, setCachedCards } from '../storage/cardCache';
+import { SYNTHETIC_FILTER_VERSION } from '../data/generations';
+import { ALOLAN_DEX, GALARIAN_DEX, HISUIAN_DEX } from '../data/regionalDex';
+import { getCachedCards, getSyntheticFilterVersion, setCachedCards, setSyntheticFilterVersion } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
 vi.mock('../api/staticDatabase', () => ({
@@ -19,6 +20,7 @@ vi.mock('../api/staticDatabase', () => ({
 
 const growlithe = HISUIAN_DEX.find((e) => e.slug === 'growlithe-hisui')!; // dex 58, Gen 1
 const obstagoon = GALARIAN_DEX.find((e) => e.slug === 'obstagoon')!; // dex 862, Gen 8, exclusive evolution
+const vulpix = ALOLAN_DEX.find((e) => e.slug === 'vulpix-alola')!; // dex 37, Gen 1
 
 function card(overrides: Partial<CardRecord>): CardRecord {
   return {
@@ -93,6 +95,51 @@ describe('loadRegionalCardData', () => {
       owned: { [growlithe.number]: { dexNumber: growlithe.number, cardId: 'kept', condition: 'Near Mint', addedAt: '2024-01-01' } },
     });
     expect(getCachedCards('en', growlithe.number)?.map((c) => c.id)).toEqual(['kept']);
+  });
+
+  // Named regression case: Alolan Vulpix (dex 37, Gen 1) end to end through
+  // the shared synthetic-form loader core, same shape as growlithe above but
+  // covering the Alolan family specifically rather than Hisuian.
+  it('loads Alolan Vulpix (dex 37) end to end, filtered onto its own synthetic slot', async () => {
+    vi.mocked(loadStaticCardData).mockResolvedValue({
+      37: [
+        card({ id: 'v1', name: 'Alolan Vulpix', dexNumber: 37 }),
+        card({ id: 'v2', name: 'Vulpix', dexNumber: 37 }),
+      ],
+    });
+
+    await loadRegionalCardData('en', [vulpix]);
+
+    const cards = getCachedCards('en', vulpix.number);
+    expect(cards?.map((c) => c.id)).toEqual(['v1']);
+    expect(getCachedCards('en', 37)).toBeUndefined();
+  });
+
+  describe('SYNTHETIC_FILTER_VERSION skip-recompute (shared core also used by Mega/VMAX -- see loadVmaxCardData.test.ts for the fuller suite)', () => {
+    it('skips recomputing an entry already stamped with the current SYNTHETIC_FILTER_VERSION', async () => {
+      setCachedCards('en', growlithe.number, [card({ id: 'already-cached', name: 'Hisuian Growlithe' })]);
+      setSyntheticFilterVersion('en', growlithe.number, SYNTHETIC_FILTER_VERSION);
+
+      const wroteAny = await loadRegionalCardData('en', [growlithe]);
+
+      expect(wroteAny).toBe(false);
+      expect(loadStaticCardData).not.toHaveBeenCalled();
+      expect(getCachedCards('en', growlithe.number)?.map((c) => c.id)).toEqual(['already-cached']);
+    });
+
+    it('recomputes an entry stamped with a different filter version', async () => {
+      setCachedCards('en', growlithe.number, [card({ id: 'stale', name: 'Hisuian Growlithe' })]);
+      setSyntheticFilterVersion('en', growlithe.number, SYNTHETIC_FILTER_VERSION - 1);
+      vi.mocked(loadStaticCardData).mockResolvedValue({
+        58: [card({ id: 'fresh', name: 'Hisuian Growlithe' })],
+      });
+
+      const wroteAny = await loadRegionalCardData('en', [growlithe]);
+
+      expect(wroteAny).toBe(true);
+      expect(getCachedCards('en', growlithe.number)?.map((c) => c.id)).toEqual(['fresh']);
+      expect(getSyntheticFilterVersion('en', growlithe.number)).toBe(SYNTHETIC_FILTER_VERSION);
+    });
   });
 });
 

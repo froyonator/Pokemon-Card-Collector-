@@ -29,7 +29,7 @@ export function loadRegionalCardData(
   language: string,
   entries: RegionalDexEntry[],
   options: LoadRegionalCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return loadSyntheticFormCardData(
     language,
     entries,
@@ -44,7 +44,7 @@ export function refreshRegionalCardData(
   language: string,
   entries: RegionalDexEntry[],
   options: LoadRegionalCardDataOptions = {}
-): Promise<void> {
+): Promise<boolean> {
   return refreshSyntheticFormCardData(
     language,
     entries,

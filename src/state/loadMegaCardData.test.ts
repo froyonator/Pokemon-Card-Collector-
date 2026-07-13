@@ -6,8 +6,9 @@ import {
   refreshStaticCardData,
   refreshStaticCardDataForGen,
 } from '../api/staticDatabase';
+import { SYNTHETIC_FILTER_VERSION } from '../data/generations';
 import { MEGA_DEX_ENTRIES } from '../data/megaDex';
-import { getCachedCards, setCachedCards } from '../storage/cardCache';
+import { getCachedCards, setCachedCards, setSyntheticFilterVersion } from '../storage/cardCache';
 import type { CardRecord } from '../types';
 
 vi.mock('../api/staticDatabase', () => ({
@@ -141,6 +142,20 @@ describe('loadMegaCardData', () => {
       owned: { [charizardX.number]: { dexNumber: charizardX.number, cardId: 'kept', condition: 'Near Mint', addedAt: '2024-01-01' } },
     });
     expect(getCachedCards('en', charizardX.number)?.map((c) => c.id)).toEqual(['kept']);
+  });
+
+  // Shared core also used by VMAX/regional -- see loadVmaxCardData.test.ts
+  // for the fuller SYNTHETIC_FILTER_VERSION suite; this is just a per-family
+  // sanity check that Mega goes through the same skip-recompute path.
+  it('skips recomputing an entry already stamped with the current SYNTHETIC_FILTER_VERSION', async () => {
+    setCachedCards('en', charizardX.number, [card({ id: 'already-cached', name: 'M Charizard-EX' })]);
+    setSyntheticFilterVersion('en', charizardX.number, SYNTHETIC_FILTER_VERSION);
+
+    const wroteAny = await loadMegaCardData('en', [charizardX]);
+
+    expect(wroteAny).toBe(false);
+    expect(loadStaticCardData).not.toHaveBeenCalled();
+    expect(getCachedCards('en', charizardX.number)?.map((c) => c.id)).toEqual(['already-cached']);
   });
 });
 
