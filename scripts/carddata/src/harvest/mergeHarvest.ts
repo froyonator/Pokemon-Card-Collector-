@@ -22,6 +22,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { dedupKey, normalizeSetCode, type CardRecord } from '../augmentFromSupplemental';
 import { isDigitalOnlySetId } from '../data/digitalSeries';
+import { normalizeRarity } from '../normalizeRarities';
 import type { EnrichmentResult, HarvestedCard, ImageHarvestResult, SetHarvestResult } from './runHarvest';
 
 const DATA_DIR = 'data';
@@ -37,6 +38,14 @@ function harvestOutputDir(language: string): string {
  * follow-up image passes (the local same-print fill and the images job)
  * can usually supply one afterwards, and a trackable record with a real
  * name and rarity beats an absent card even while its image is pending.
+ *
+ * `rarity` is run through normalizeRarity (see normalizeRarities.ts) rather
+ * than stored raw: the wiki setlist template's rarity column hands back
+ * site-style codes ("C", "AR", "SR", ...) for several languages, and a raw
+ * code that matches none of this app's rarity groups makes a card
+ * invisible everywhere. Normalizing here means a fresh harvest never
+ * reintroduces that gap even after normalize-rarities has been run once
+ * over the existing static database.
  */
 export function harvestedCardToRecord(
   card: HarvestedCard,
@@ -51,7 +60,7 @@ export function harvestedCardToRecord(
     setId,
     setName,
     localId: card.localId,
-    rarity: card.rarity ?? 'Unknown',
+    rarity: normalizeRarity(card.rarity),
     imageBase: '',
     language,
     ...(card.imageUrl ? { hostedThumbUrl: card.imageUrl, hostedFullUrl: card.imageUrl } : {}),
@@ -190,7 +199,7 @@ export function applyEnrichment(
       continue;
     }
     if (fill.rarity && (!record.rarity || record.rarity === 'Unknown')) {
-      record.rarity = fill.rarity;
+      record.rarity = normalizeRarity(fill.rarity);
       rarityFilled++;
     }
     if (fill.setName) {

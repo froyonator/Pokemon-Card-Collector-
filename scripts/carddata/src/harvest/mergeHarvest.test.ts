@@ -311,4 +311,40 @@ describe('mergeImages', () => {
     expect(outcome.filled).toBe(0);
     expect(existing['1']).toHaveLength(0);
   });
+
+  it('accepts an images-deep chunk output unchanged -- same required shape as a plain images job plus ignored diagnostics fields', () => {
+    // Simulates exactly what runHarvest.ts's --job images-deep writes to
+    // data/harvest/<lang>/images-deep-<chunk>.json and what mergeHarvest.ts's
+    // main() reads back via JSON.parse -- a real round trip through
+    // JSON.stringify/JSON.parse, not just a same-process object literal, so
+    // a field this test forgot to serialize would actually be caught.
+    const deepChunkJson = JSON.stringify({
+      language: 'de',
+      setId: 'images-deep-chunk-0',
+      setName: 'Deep image resolution chunk 0',
+      harvestedAt: '2026-07-13T00:00:00.000Z',
+      totalCards: 1,
+      imagesResolved: 1,
+      cards: [
+        {
+          cardId: 'base1-44',
+          dexNumber: 1,
+          localId: '44',
+          imageFileTitle: 'File:BisasamGrundset44.jpg',
+          imageUrl: 'https://example.invalid/File:BisasamGrundset44.jpg',
+          imageMissing: false,
+          method: 'article-search',
+          skipReason: null,
+        },
+      ],
+      // Extra fields --job images-deep writes for diagnostics only; mergeImages must ignore them, not choke on them.
+      skipped: [],
+      chunkIndex: 0,
+    });
+
+    const existing = db();
+    const outcome = mergeImages(existing, JSON.parse(deepChunkJson) as ImageHarvestResult);
+    expect(outcome).toEqual({ setId: 'images-deep-chunk-0', requested: 1, filled: 1, alreadyHad: 0, notResolved: 0, notFound: 0 });
+    expect(existing['1'][0].hostedThumbUrl).toBe('https://example.invalid/File:BisasamGrundset44.jpg');
+  });
 });
