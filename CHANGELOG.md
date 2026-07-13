@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-14
+
 ### Added
 
 - All nine generations (Kanto through Paldea, dex #1 to #1025) are now selectable, not just Kanto. The generation filter is a true multi-select: pick any combination and the grid shows exactly those Pokemon. Existing collections are unaffected and keep showing Kanto only until you opt in to more.
