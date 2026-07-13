@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rangeForGeneration, type GenRange } from './data/genRanges';
+import { isDigitalOnlySetId } from './data/digitalSeries';
 import {
   loadFallbackAssetIndexes,
   resolveCardAssets,
@@ -81,12 +82,17 @@ const GEN1_RANGE: GenRange = { generation: 1, min: MIN_DEX_NUMBER, max: MAX_DEX_
  * `range` defaults to Gen1 (1-151) so every existing call site (and every
  * existing test) keeps its exact original behavior; the Gen2-9 build path
  * below passes an explicit range from src/data/genRanges.ts.
+ *
+ * Defense-in-depth: a digital-only set (see src/data/digitalSeries.ts)
+ * never produces a CardRecord here, even if one somehow made it into an
+ * upstream snapshot -- this app tracks physical cards only.
  */
 export function recordToCardRecords(
   record: PrimarySourceSnapshotRecord,
   range: GenRange = GEN1_RANGE
 ): CardRecord[] {
   if (!Array.isArray(record.dexId) || record.dexId.length === 0) return [];
+  if (isDigitalOnlySetId(record.set?.id)) return [];
 
   const cards: CardRecord[] = [];
   for (const dexNumber of record.dexId) {

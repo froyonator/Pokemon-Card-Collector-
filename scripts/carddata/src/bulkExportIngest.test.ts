@@ -459,4 +459,39 @@ describe('convertRoot (end to end against the fixture tree)', () => {
     expect(statsByLanguage.get('en')?.distinctDexNumbers).toBe(1);
     expect(statsByLanguage.get('en')?.cardsWritten).toBe(1);
   });
+
+  it('skips every card belonging to a digital-only set (this app tracks physical cards only)', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    // Add a digital-only Pokemon TCG Pocket set (setId "A1", a real entry
+    // in DIGITAL_ONLY_SET_IDS) alongside the ordinary physical fixture set.
+    const pocketDir = path.join(root, 'data', 'PocketSerie', 'PocketSet');
+    await mkdir(pocketDir, { recursive: true });
+    await writeFile(
+      path.join(root, 'data', 'PocketSerie.ts'),
+      `export default { id: 'tcgp', name: { en: 'Pokemon TCG Pocket' } };\n`,
+      'utf8'
+    );
+    await writeFile(
+      path.join(root, 'data', 'PocketSerie', 'PocketSet.ts'),
+      `import serie from '../PocketSerie';\nexport default { id: 'A1', name: { en: 'Genetic Apex' }, serie };\n`,
+      'utf8'
+    );
+    await writeFile(
+      path.join(pocketDir, '1.ts'),
+      `import set from '../PocketSet';\nexport default { name: { en: 'Chikorita' }, rarity: 'Common', category: 'Pokemon', set, dexId: [152] };\n`,
+      'utf8'
+    );
+
+    const outputRoot = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-output-'));
+    const ranges = rangesForGenerations([2]);
+    const statsByLanguage = new Map<string, LanguageIngestStats>([
+      ['en', { language: 'en', filesScanned: 0, cardsWritten: 0, distinctDexNumbers: 0 }],
+    ]);
+
+    await convertRoot(path.join(root, 'data'), ['en'], ranges, new Map(), undefined, undefined, statsByLanguage, outputRoot);
+
+    await expect(readFile(path.join(outputRoot, 'en', 'A1', 'A1-1', 'record.json'), 'utf8')).rejects.toThrow();
+  });
 });

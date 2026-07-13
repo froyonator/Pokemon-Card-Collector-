@@ -77,6 +77,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isSafePrimarySourceId, SUPPORTED_LANGUAGES } from './primarySource';
 import { inRangeDexIds, parseGenerationsArg, rangesForGenerations } from './snapshotAllGens';
 import type { GenRange } from './data/genRanges';
+import { isDigitalOnlySetId } from './data/digitalSeries';
 
 // --- minimal local types -----------------------------------------------
 //
@@ -503,6 +504,12 @@ export async function convertRoot(
 
     const card = await loadCardModule(file);
     if (!card || !Array.isArray(card.dexId) || card.dexId.length === 0) continue;
+
+    // This app tracks physical cards only -- see src/data/digitalSeries.ts.
+    // Skip the whole card (every requested language) rather than filtering
+    // it out downstream, so a digital-only set never even reaches
+    // record-building or the written snapshot tree.
+    if (isDigitalOnlySetId(card.set.id)) continue;
 
     const qualifying = inRangeDexIds(card.dexId, ranges);
     if (qualifying.length === 0) continue;

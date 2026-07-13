@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dexNumberInAnyRange,
   emptyProgress,
+  excludeDigitalOnlySets,
   inRangeDexIds,
   isSetDone,
   markSetDone,
@@ -109,6 +110,18 @@ describe('checkpoint/resume', () => {
     const sets = [{ id: 'base1' }, { id: 'base2' }];
     expect(selectPendingSets(sets, progress, 'en')).toEqual([{ id: 'base2' }]);
     expect(selectPendingSets(sets, progress, 'ja')).toEqual(sets);
+  });
+});
+
+describe('excludeDigitalOnlySets', () => {
+  it('drops digital-only sets from the catalog, keeping physical ones', () => {
+    const sets = [{ id: 'base1' }, { id: 'A1' }, { id: 'sv01' }, { id: 'B2a' }];
+    expect(excludeDigitalOnlySets(sets)).toEqual([{ id: 'base1' }, { id: 'sv01' }]);
+  });
+
+  it('is a no-op when the catalog has no digital-only sets', () => {
+    const sets = [{ id: 'base1' }, { id: 'sv01' }];
+    expect(excludeDigitalOnlySets(sets)).toEqual(sets);
   });
 });
 

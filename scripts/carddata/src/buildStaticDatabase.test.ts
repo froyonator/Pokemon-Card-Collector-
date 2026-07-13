@@ -85,6 +85,11 @@ describe('recordToCardRecords', () => {
     expect(cards.map((card) => card.dexNumber)).toEqual([151]);
   });
 
+  it('drops a record whose set belongs to a digital-only set (this app tracks physical cards only), defense-in-depth even given a valid dexId', () => {
+    const digitalRecord: PrimarySourceSnapshotRecord = { ...baseRecord, set: { id: 'A1', name: 'Genetic Apex' } };
+    expect(recordToCardRecords(digitalRecord)).toEqual([]);
+  });
+
   it('defaults to the Gen1 range (1-151) when no range is given', () => {
     const mixedRecord: PrimarySourceSnapshotRecord = { ...baseRecord, dexId: [1, 152] };
     expect(recordToCardRecords(mixedRecord).map((c) => c.dexNumber)).toEqual([1]);

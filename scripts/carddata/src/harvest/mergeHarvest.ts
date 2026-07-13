@@ -21,6 +21,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { dedupKey, normalizeSetCode, type CardRecord } from '../augmentFromSupplemental';
+import { isDigitalOnlySetId } from '../data/digitalSeries';
 import type { EnrichmentResult, HarvestedCard, ImageHarvestResult, SetHarvestResult } from './runHarvest';
 
 const DATA_DIR = 'data';
@@ -86,12 +87,30 @@ export function mergeMissingSet(
   existing: Record<string, CardRecord[]>,
   harvested: SetHarvestResult
 ): MissingSetMergeOutcome {
+  const setId = normalizeSetCode(harvested.setId);
+
+  // This app tracks physical cards only (see src/data/digitalSeries.ts) --
+  // refuse a digital-only setId outright, before any candidate cards are
+  // even built, so a harvest run can never smuggle one of these sets into
+  // the static database.
+  if (isDigitalOnlySetId(setId)) {
+    return {
+      setId,
+      candidateCount: 0,
+      added: 0,
+      skippedNoImage: 0,
+      skippedExisting: 0,
+      overlapRate: 0,
+      aborted: true,
+      abortReason: `refusing digital-only setId "${setId}" -- this app tracks physical cards only. Nothing written.`,
+    };
+  }
+
   const existingKeys = new Set<string>();
   for (const bucket of Object.values(existing)) {
     for (const card of bucket) existingKeys.add(dedupKey(card.setId, card.localId));
   }
 
-  const setId = normalizeSetCode(harvested.setId);
   const candidates = harvested.cards
     .map((card) => harvestedCardToRecord(card, harvested.language, setId, harvested.setName))
     .filter((record): record is CardRecord => record !== null);

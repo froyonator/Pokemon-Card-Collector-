@@ -133,6 +133,15 @@ describe('mergeMissingSet', () => {
     expect(outcome.abortReason).toMatch(/implausibly high/);
     expect(existing['25']).toHaveLength(before);
   });
+
+  it('refuses a digital-only setId outright (this app tracks physical cards only), writing nothing', () => {
+    const existing: Record<string, CardRecord[]> = {};
+    const outcome = mergeMissingSet(existing, harvestResult({ setId: 'A1', setName: 'Genetic Apex' }));
+    expect(outcome.aborted).toBe(true);
+    expect(outcome.abortReason).toMatch(/digital-only/);
+    expect(outcome.added).toBe(0);
+    expect(existing).toEqual({});
+  });
 });
 
 describe('applyEnrichment', () => {

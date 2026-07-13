@@ -44,6 +44,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { rangeForGeneration, type GenRange } from './data/genRanges';
+import { isDigitalOnlySetId } from './data/digitalSeries';
 import { downloadAndValidateImage } from './downloadImage';
 import { withPoliteDelay } from './politeFetch';
 import {
@@ -130,6 +131,18 @@ export function selectPendingSets<T extends { id: string }>(
   return sets.filter((set) => !isSetDone(progress, language, set.id));
 }
 
+/**
+ * Pure catalog filter: this app tracks physical cards only (see
+ * src/data/digitalSeries.ts), so a digital-only set is dropped from the
+ * catalog walk before anything else runs -- no card-detail requests are
+ * ever made for it, and it can never produce a record.json on disk.
+ * Applied unconditionally, even when `--set` explicitly names a
+ * digital-only setId, so this fence cannot be bypassed by a manual invocation.
+ */
+export function excludeDigitalOnlySets<T extends { id: string }>(sets: T[]): T[] {
+  return sets.filter((set) => !isDigitalOnlySetId(set.id));
+}
+
 // --- CLI ---------------------------------------------------------------------
 
 export interface CliArgs {
@@ -210,7 +223,8 @@ async function main(): Promise<void> {
   );
 
   const catalog = await politeJson<PrimarySourceSetBrief[]>(primarySourceUrl(cli.language, 'sets'));
-  const allSets = cli.setId ? catalog.filter((s) => s.id === cli.setId) : catalog;
+  const physicalCatalog = excludeDigitalOnlySets(catalog);
+  const allSets = cli.setId ? physicalCatalog.filter((s) => s.id === cli.setId) : physicalCatalog;
   if (allSets.length === 0) {
     throw new Error(`No sets found for ${cli.language}${cli.setId ? ` (set ${cli.setId})` : ''}.`);
   }

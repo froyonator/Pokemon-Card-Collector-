@@ -19,8 +19,10 @@
     "harvest:local-images": "tsx src/harvest/localImageFill.ts",
     "harvest:eu-backfill": "tsx src/harvest/bulkExportGen1Backfill.ts",
     "build-database": "tsx src/buildStaticDatabase.ts",
+    "purge-digital": "tsx src/purgeDigitalSets.ts",
     "download-sprites": "tsx src/downloadSprites.ts",
-    "download-mega-sprites": "tsx src/downloadMegaSprites.ts"
+    "download-mega-sprites": "tsx src/downloadMegaSprites.ts",
+    "download-gmax-sprites": "tsx src/downloadGmaxSprites.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
