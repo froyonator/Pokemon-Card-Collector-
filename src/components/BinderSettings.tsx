@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { COVER_COLORS, DEFAULT_COVER_COLOR } from '../data/binderCovers';
 import { GridSizePicker } from './GridSizePicker';
 import { resizeImageForUpload } from '../state/imageResize';
@@ -25,6 +26,12 @@ export function BinderSettings({
   const setBinderCover = useAppStore((s) => s.setBinderCover);
 
   const activeBinder = binders.find((b) => b.id === activeBinderId) ?? binders[0];
+
+  // The native file input's own "Choose file" chrome overflows the sidebar
+  // at its natural width, so it's visually hidden and driven by a styled
+  // button instead (see .hiddenInput below and CardImage.tsx / StartScreen
+  // for the same established pattern elsewhere in this app).
+  const coverPictureInputRef = useRef<HTMLInputElement>(null);
 
   return (
     // The whole panel folds behind one summary row, exactly like the
@@ -149,6 +156,7 @@ export function BinderSettings({
             type="button"
             className={styles.swatch}
             style={{ backgroundColor: swatch.value }}
+            title={swatch.name}
             aria-label={`${swatch.name} cover`}
             aria-pressed={(activeBinder.cover?.color ?? DEFAULT_COVER_COLOR) === swatch.value}
             onClick={() => setBinderCover(activeBinder.id, { color: swatch.value })}
@@ -165,33 +173,53 @@ export function BinderSettings({
           onChange={(event) => setBinderCover(activeBinder.id, { spineText: event.target.value })}
         />
       </label>
-      <label className={styles.row}>
-        Cover picture
-        <input
-          type="file"
-          accept="image/*"
-          aria-label="Upload cover picture"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // Allow re-picking the same file later (change events only fire
-            // when the value differs).
-            event.target.value = '';
-            if (!file) return;
-            resizeImageForUpload(file)
-              .then((dataUri) => setBinderCover(activeBinder.id, { coverImageUri: dataUri }))
-              .catch(() => {
-                /* an unreadable image file simply leaves the cover as-is */
-              });
-          }}
-        />
-      </label>
-      {activeBinder.cover?.coverImageUri && (
-        <button
-          type="button"
-          onClick={() => setBinderCover(activeBinder.id, { coverImageUri: undefined })}
-        >
-          Remove cover picture
+      {/* A plain span, not a wrapping <label> -- a <label> wrapping a
+          <button> gives the BUTTON that label's own text as its accessible
+          name (native HTML labelling wins over the button's own visible
+          text), which would announce it as "Cover picture" instead of
+          "Choose picture...". The other rows above get away with <label>
+          because they wrap a bare <input>/<select>, which has no name of
+          its own to clobber. */}
+      <div className={styles.row}>
+        <span className={styles.rowLabel}>Cover picture</span>
+        <button type="button" onClick={() => coverPictureInputRef.current?.click()}>
+          Choose picture...
         </button>
+      </div>
+      <input
+        ref={coverPictureInputRef}
+        type="file"
+        accept="image/*"
+        aria-label="Upload cover picture"
+        className={styles.hiddenInput}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          // Allow re-picking the same file later (change events only fire
+          // when the value differs).
+          event.target.value = '';
+          if (!file) return;
+          resizeImageForUpload(file)
+            .then((dataUri) => setBinderCover(activeBinder.id, { coverImageUri: dataUri }))
+            .catch(() => {
+              /* an unreadable image file simply leaves the cover as-is */
+            });
+        }}
+      />
+      {activeBinder.cover?.coverImageUri && (
+        <div className={styles.coverPreview}>
+          <img
+            src={activeBinder.cover.coverImageUri}
+            alt=""
+            className={styles.coverThumb}
+          />
+          <span className={styles.coverPreviewText}>Picture set</span>
+          <button
+            type="button"
+            onClick={() => setBinderCover(activeBinder.id, { coverImageUri: undefined })}
+          >
+            Remove cover picture
+          </button>
+        </div>
       )}
         </div>
       </details>

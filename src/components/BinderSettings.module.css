@@ -57,6 +57,15 @@
   gap: var(--space-2);
 }
 
+/* Same look as the <label> text in every other .row above -- used instead
+   of a <label> for rows whose control already carries its own accessible
+   name (like the Cover picture button), where wrapping in <label> would
+   clobber that name with the label's own text. */
+.rowLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
 .directionToggle {
   display: flex;
   gap: var(--space-1);
@@ -119,22 +128,65 @@
   flex-wrap: wrap;
 }
 
-/* One leather swatch: a small round chip of the actual cover color. The
-   pressed (currently-chosen) one wears a brass ring. */
+/* One leather swatch: a small round chip of the actual cover color. Every
+   color in the palette is a dark leather tone, so on the dark panel a dark
+   border reads as no border at all -- the ring here is deliberately LIGHT
+   (warm cream, low opacity) so each chip stays legible as its own distinct
+   circle rather than blending into the sunken background. The pressed
+   (currently-chosen) one wears a brass ring instead, clearly distinct from
+   the plain resting ring every swatch gets. */
 .swatch {
   width: 26px;
   height: 26px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.55);
+  border: 1.5px solid rgba(240, 231, 211, 0.4);
   box-shadow:
-    inset 0 1px 0 rgba(255, 230, 190, 0.18),
+    inset 0 1px 0 rgba(255, 230, 190, 0.25),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35),
     0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: pointer;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.swatch:hover {
+  border-color: rgba(240, 231, 211, 0.7);
+  transform: translateY(-1px);
 }
 
 .swatch[aria-pressed='true'] {
+  border-color: var(--color-gold);
   box-shadow:
     0 0 0 2px var(--color-bg),
     0 0 0 4px var(--color-gold);
+}
+
+/* The real <input type="file"> renders at whatever width the browser's
+   native "Choose file" chrome wants, which overflows this sidebar --
+   visually hidden and driven instead by the styled button below (same
+   pattern as CardImage.tsx / StartScreen.tsx's own upload controls), so the
+   panel never has to accommodate the native control's width. */
+.hiddenInput {
+  display: none;
+}
+
+.coverPreview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.coverThumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  flex-shrink: 0;
+}
+
+.coverPreviewText {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  flex: 1;
 }

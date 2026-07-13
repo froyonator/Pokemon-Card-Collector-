@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- "Show all cards" in a Pokemon's picker could hang for several minutes with no result, especially for Pokemon with many prints, because it always fetched every single print live one at a time instead of using the built-in card database. It now reads the complete print list straight from the built-in database for any language it covers, so it opens almost instantly with no live lookups at all. Languages without database coverage still fetch live, but every one of those requests now gives up after 15 seconds instead of hanging forever, and if a fetch does fail or time out, the picker shows a plain "Couldn't load the full card list. Try again." message with a retry button instead of spinning forever.
+- The Mega, VMAX, and regional-form tabs had gotten noticeably slower to switch between, because every tile in those tabs was being fully recomputed and rewritten to storage on every single visit, even when nothing about it had changed. Each tile now remembers that it's already up to date and skips redoing that work, while still catching up automatically the moment a tile's underlying data or matching rules actually change.
+- In Binder settings, the six cover color swatches were nearly impossible to tell apart on the dark panel, since every leather tone in the palette is itself dark; each swatch now has a visible ring and a tooltip naming its color, and the "Choose picture..." control for a cover picture no longer spills past the edge of the sidebar.
+- Simplified Chinese showed no Pokemon at all, and Traditional Chinese, Thai, Indonesian, and Japanese were each missing a large slice of their cards. The underlying data recorded rarity as a short code (like "C" or "AR") instead of the full name the app's rarity filters actually look for, so thousands of cards matched no filter and simply never appeared anywhere, including several Chinese-exclusive full art prints. Those rarities are now translated to the names the app recognizes, so the missing cards show up again.
+
 ## [0.3.0] - 2026-07-14
 
 ### Added
