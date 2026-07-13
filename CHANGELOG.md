@@ -12,8 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All nine generations (Kanto through Paldea, dex #1 to #1025) are now selectable, not just Kanto. The generation filter is a true multi-select: pick any combination and the grid shows exactly those Pokemon. Existing collections are unaffected and keep showing Kanto only until you opt in to more.
 - Built-in card databases for generations 2 through 9 in eleven languages (Japanese, French, German, Spanish, Italian, Portuguese, Traditional and Simplified Chinese, Thai, Indonesian, and Korean), nearly 63,000 cards, so the newly selectable generations load instantly with no live lookups in covered languages. English coverage for the new generations follows in this release too.
 
+- Big Gen 1 database growth in the languages that needed it most: Simplified Chinese grew from 86 to 733 cards, Indonesian from 244 to 827, Thai from 299 to 685, plus new English and Japanese promo sets. All new cards come with card images.
+
 ### Fixed
 
+- Hundreds of Japanese cards that displayed a bare set code (like "SVM") instead of a real set name now show the proper Japanese set name, and about 760 Japanese and 820 Traditional Chinese cards gained their missing rarity, so rarity filters catch them correctly.
 - Around 2,500 French, German, Spanish, Italian, and Portuguese cards that showed a "no image available" placeholder now display their card art. The artwork of a given print is identical across languages, so these cards now borrow the already-hosted English scan of the exact same card.
 - "Refresh Data" was extremely slow for languages already covered by the built-in card database: it always re-fetched every Pokemon from the live source instead of reusing the fast local path the app already uses on startup. Refresh now re-checks the local database first and only falls back to the live source for languages it doesn't cover, matching the speed of the initial load.
 - The binder bookshelf had lost its 3D feel: each binder just sat flat instead of leaning toward you as you moved the cursor over it. Volumes now tilt in real 3D following your cursor, easing back to their resting angle when you look away, and still keep their original cover-flip effect on hover. Anyone with reduced motion turned on still gets a simple hover highlight instead of the tilt.
