@@ -396,6 +396,55 @@ describe('binders', () => {
     expect(state.binders[1].name).toBe('Second Binder');
   });
 
+  it('deleteBinder removes exactly the target binder and leaves the others untouched', () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    useAppStore.getState().createBinder('Third Binder', 'fr');
+    const [first, second, third] = useAppStore.getState().binders;
+    useAppStore.getState().deleteBinder(second.id);
+    const state = useAppStore.getState();
+    expect(state.binders).toHaveLength(2);
+    expect(state.binders.map((b) => b.id)).toEqual([first.id, third.id]);
+    expect(state.hasUnsavedChanges).toBe(true);
+  });
+
+  it('deleteBinder falls back activeBinderId to a surviving binder when the active one is deleted', () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const [first, second] = useAppStore.getState().binders;
+    useAppStore.getState().setActiveBinder(second.id);
+    useAppStore.getState().deleteBinder(second.id);
+    const state = useAppStore.getState();
+    expect(state.binders.map((b) => b.id)).toEqual([first.id]);
+    expect(state.activeBinderId).toBe(first.id);
+  });
+
+  it('deleteBinder leaves activeBinderId untouched when a non-active binder is deleted', () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    const [first, second] = useAppStore.getState().binders;
+    useAppStore.getState().setActiveBinder(first.id);
+    useAppStore.getState().deleteBinder(second.id);
+    const state = useAppStore.getState();
+    expect(state.activeBinderId).toBe(first.id);
+  });
+
+  it('deleteBinder refuses to delete the last remaining binder', () => {
+    const only = firstBinderId();
+    useAppStore.getState().deleteBinder(only);
+    const state = useAppStore.getState();
+    expect(state.binders).toHaveLength(1);
+    expect(state.binders[0].id).toBe(only);
+    expect(state.hasUnsavedChanges).toBe(false);
+  });
+
+  it('deleteBinder is a no-op for an unknown id', () => {
+    useAppStore.getState().createBinder('Second Binder', 'ja');
+    useAppStore.getState().markChangesSaved();
+    const before = useAppStore.getState().binders;
+    useAppStore.getState().deleteBinder('does-not-exist');
+    const state = useAppStore.getState();
+    expect(state.binders).toEqual(before);
+    expect(state.hasUnsavedChanges).toBe(false);
+  });
+
   it("setBinderLanguage updates only the target binder's language", () => {
     const id = firstBinderId();
     useAppStore.getState().setBinderLanguage(id, 'fr');

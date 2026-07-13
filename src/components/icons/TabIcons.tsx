@@ -115,6 +115,31 @@ export function ImportIcon() {
   );
 }
 
+// Trash-can icon for the shelf's per-binder delete affordance -- same line
+// family/stroke weight as the rest of this file.
+export function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true">
+      <path d="M4 6h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.5 6l.6 9.4a1.5 1.5 0 001.5 1.4h4.8a1.5 1.5 0 001.5-1.4L14.5 6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M8.3 8.8l.3 5M11.7 8.8l-.3 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // Hand-drawn magnifying-glass icon shared by every "Enlarge" control that
 // opens CardZoomOverlay for a closer look at a card -- Picker's per-card
 // button and Card-view Tile's owned-card button both reuse this exact

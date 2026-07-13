@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useReducedMotion } from 'framer-motion';
 import { BinderShelf } from './BinderShelf';
+import { useAppStore } from '../state/store';
 import type { Binder } from '../types';
 
 // Defaults to motion enabled (matches this file's previous behavior, back
@@ -199,6 +200,105 @@ describe('BinderShelf', () => {
       expect(volume.style.transform).toBe('');
 
       expect(() => fireEvent.mouseLeave(button)).not.toThrow();
+    });
+  });
+
+  describe('delete binder', () => {
+    // The delete button calls the real store's deleteBinder action directly
+    // (see BinderShelf.tsx) rather than going through a prop, so the store's
+    // binders need to match what's passed as the `binders` prop for the
+    // assertions below to reflect what the click actually did.
+    beforeEach(() => {
+      useAppStore.setState({
+        binders: [makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })],
+        activeBinderId: 'a',
+      });
+    });
+
+    it('renders a delete button for every binder, labeled with the binder name', () => {
+      render(
+        <BinderShelf
+          binders={[makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      expect(screen.getByRole('button', { name: 'Delete binder My Binder' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete binder Shinies' })).toBeInTheDocument();
+    });
+
+    it('disables delete when it is the only binder, with an explanatory title', () => {
+      useAppStore.setState({ binders: [makeBinder()], activeBinderId: 'a' });
+      render(
+        <BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />
+      );
+      const deleteButton = screen.getByRole('button', { name: 'Delete binder My Binder' });
+      expect(deleteButton).toBeDisabled();
+      expect(deleteButton).toHaveAttribute('title', 'At least one binder must remain');
+    });
+
+    it('does not disable delete when more than one binder exists', () => {
+      render(
+        <BinderShelf
+          binders={[makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      expect(screen.getByRole('button', { name: 'Delete binder My Binder' })).not.toBeDisabled();
+    });
+
+    it('asks for confirmation before deleting, and deletes nothing on cancel', async () => {
+      render(
+        <BinderShelf
+          binders={[makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Delete binder Shinies' }));
+      const dialog = screen.getByRole('dialog', { name: 'Delete binder Shinies' });
+      expect(dialog).toBeInTheDocument();
+      expect(dialog).toHaveTextContent('Shinies');
+      expect(dialog).toHaveTextContent(/card collection and wishlist are not affected/i);
+
+      await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(useAppStore.getState().binders.map((b) => b.id)).toEqual(['a', 'b']);
+    });
+
+    it('deletes only the confirmed binder from the store on confirm', async () => {
+      render(
+        <BinderShelf
+          binders={[makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Delete binder Shinies' }));
+      await userEvent.click(screen.getByRole('button', { name: /^delete binder$/i }));
+
+      // Only the confirmed binder ('b') is gone; the other survives.
+      expect(useAppStore.getState().binders.map((b) => b.id)).toEqual(['a']);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('is reachable by keyboard and exposes the "Delete binder <name>" label', () => {
+      // Two binders so the delete button isn't disabled -- a disabled
+      // button is unfocusable by definition, which would make this a test
+      // of the wrong thing.
+      render(
+        <BinderShelf
+          binders={[makeBinder(), makeBinder({ id: 'b', name: 'Shinies' })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      const deleteButton = screen.getByRole('button', { name: 'Delete binder My Binder' });
+      expect(deleteButton.tagName).toBe('BUTTON');
+      expect(deleteButton).toHaveAttribute('aria-label', 'Delete binder My Binder');
+      deleteButton.focus();
+      expect(deleteButton).toHaveFocus();
     });
   });
 });

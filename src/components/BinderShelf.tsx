@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { DEFAULT_COVER_COLOR } from '../data/binderCovers';
+import { useAppStore } from '../state/store';
 import { useBinderTilt } from '../state/useBinderTilt';
 import type { Binder } from '../types';
+import { TrashIcon } from './icons/TabIcons';
 import styles from './BinderShelf.module.css';
 
 export interface BinderShelfProps {
@@ -36,7 +38,12 @@ export function BinderShelf({ binders, onOpenBinder, onCreateBinder }: BinderShe
       </header>
       <ul className={styles.row}>
         {binders.map((binder) => (
-          <BinderVolume key={binder.id} binder={binder} onOpenBinder={onOpenBinder} />
+          <BinderVolume
+            key={binder.id}
+            binder={binder}
+            onOpenBinder={onOpenBinder}
+            isOnlyBinder={binders.length <= 1}
+          />
         ))}
         <li className={styles.slot}>
           {isNaming ? (
@@ -85,63 +92,115 @@ export function BinderShelf({ binders, onOpenBinder, onCreateBinder }: BinderShe
 interface BinderVolumeProps {
   binder: Binder;
   onOpenBinder: (id: string) => void;
+  // The app requires at least one binder to always exist (BinderView derives
+  // the open binder as `binders.find(...) ?? binders[0]` with no empty-shelf
+  // guard of its own), so the last surviving binder can't be deleted -- the
+  // delete button is shown but disabled, with a title explaining why, rather
+  // than hidden outright.
+  isOnlyBinder: boolean;
 }
 
 // One volume on the shelf. Split out from BinderShelf so useBinderTilt --
 // which tracks its own hover/rect state -- gets one hook instance per
 // binder rather than being called from inside a .map(), which would break
 // the rules of hooks as the binder list grows and shrinks.
-function BinderVolume({ binder, onOpenBinder }: BinderVolumeProps) {
+function BinderVolume({ binder, onOpenBinder, isOnlyBinder }: BinderVolumeProps) {
   const color = binder.cover?.color ?? DEFAULT_COVER_COLOR;
   const coverImageUri = binder.cover?.coverImageUri;
   const tilt = useBinderTilt();
+  const deleteBinder = useAppStore((s) => s.deleteBinder);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   return (
     <li className={styles.slot}>
-      {/* The stationary hit target the tilt math measures against (see
-          useBinderTilt) -- it never itself transforms, so the pointer can't
-          slide the tracked rect out from under itself mid-hover. The
-          .volume child below is what actually leans with the cursor. */}
-      <button
-        type="button"
-        className={styles.book}
-        aria-label={`Open ${binder.name}`}
-        onClick={() => onOpenBinder(binder.id)}
-        onMouseMove={tilt.onMouseMove}
-        onMouseLeave={tilt.onMouseLeave}
-        ref={tilt.ref}
-      >
-        <span
-          className={tilt.isActive ? `${styles.volume} ${styles.volumeTilting}` : styles.volume}
-          style={tilt.style}
+      {/* Wraps the tilting book button and the delete affordance that sits
+          on top of it -- a sibling overlay, not a nested button, since a
+          <button> can't legally contain another <button>. */}
+      <div className={styles.bookWrap}>
+        {/* The stationary hit target the tilt math measures against (see
+            useBinderTilt) -- it never itself transforms, so the pointer can't
+            slide the tracked rect out from under itself mid-hover. The
+            .volume child below is what actually leans with the cursor. */}
+        <button
+          type="button"
+          className={styles.book}
+          aria-label={`Open ${binder.name}`}
+          onClick={() => onOpenBinder(binder.id)}
+          onMouseMove={tilt.onMouseMove}
+          onMouseLeave={tilt.onMouseLeave}
+          ref={tilt.ref}
         >
-          <span className={styles.pagesEdge} aria-hidden="true" />
-          <span className={styles.cover} style={{ backgroundColor: color }} aria-hidden="true">
-            {coverImageUri ? (
-              <>
-                <img className={styles.coverPlate} src={coverImageUri} alt="" />
-                {/* Scrim so the title stays legible over a bright or busy
-                    picture; the empty-state emblem needs no such thing. */}
-                <span className={styles.coverScrim} aria-hidden="true" />
-              </>
-            ) : (
-              <span className={styles.coverEmblem} />
-            )}
-            <span className={styles.coverStitch} />
+          <span
+            className={tilt.isActive ? `${styles.volume} ${styles.volumeTilting}` : styles.volume}
+            style={tilt.style}
+          >
+            <span className={styles.pagesEdge} aria-hidden="true" />
+            <span className={styles.cover} style={{ backgroundColor: color }} aria-hidden="true">
+              {coverImageUri ? (
+                <>
+                  <img className={styles.coverPlate} src={coverImageUri} alt="" />
+                  {/* Scrim so the title stays legible over a bright or busy
+                      picture; the empty-state emblem needs no such thing. */}
+                  <span className={styles.coverScrim} aria-hidden="true" />
+                </>
+              ) : (
+                <span className={styles.coverEmblem} />
+              )}
+              <span className={styles.coverStitch} />
+              <span
+                className={
+                  coverImageUri
+                    ? `${styles.coverTitle} ${styles.coverTitleOnImage}`
+                    : styles.coverTitle
+                }
+              >
+                {binder.name}
+              </span>
+            </span>
             <span
-              className={
-                coverImageUri ? `${styles.coverTitle} ${styles.coverTitleOnImage}` : styles.coverTitle
-              }
+              className={styles.spineStrip}
+              style={{ backgroundColor: color }}
+              aria-hidden="true"
             >
-              {binder.name}
+              <span className={styles.spineText}>{binder.cover?.spineText || binder.name}</span>
             </span>
           </span>
-          <span className={styles.spineStrip} style={{ backgroundColor: color }} aria-hidden="true">
-            <span className={styles.spineText}>{binder.cover?.spineText || binder.name}</span>
-          </span>
-        </span>
-      </button>
+        </button>
+        <button
+          type="button"
+          className={styles.deleteButton}
+          aria-label={`Delete binder ${binder.name}`}
+          title={isOnlyBinder ? 'At least one binder must remain' : `Delete binder ${binder.name}`}
+          disabled={isOnlyBinder}
+          onClick={() => setIsConfirmingDelete(true)}
+        >
+          <TrashIcon />
+        </button>
+      </div>
       <span className={styles.plaque}>{binder.name}</span>
+      {isConfirmingDelete && (
+        <div role="dialog" aria-label={`Delete binder ${binder.name}`} className={styles.deleteConfirm}>
+          <p>
+            Delete &ldquo;{binder.name}&rdquo;? This removes the binder and its page layout,
+            including any custom slot pictures inside it. Your card collection and wishlist are
+            not affected.
+          </p>
+          <div className={styles.deleteConfirmActions}>
+            <button
+              type="button"
+              onClick={() => {
+                deleteBinder(binder.id);
+                setIsConfirmingDelete(false);
+              }}
+            >
+              Delete binder
+            </button>
+            <button type="button" onClick={() => setIsConfirmingDelete(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

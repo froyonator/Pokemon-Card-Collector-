@@ -107,6 +107,17 @@ export interface AppState {
   setUploadedImage: (cardId: string, dataUri: string | null) => void;
   createBinder: (name: string, language: string) => void;
   setActiveBinder: (id: string) => void;
+  // Removes exactly the binder with this id (never more than one), and its
+  // page layout/cover/custom slot pictures along with it -- the rest of the
+  // app's collection data (owned/wishlist/uploadedImages/cardOverrides)
+  // lives outside the binders array entirely and is untouched. Refuses to
+  // drop the very last binder: BinderView derives its open binder as
+  // `binders.find(...) ?? binders[0]` with no empty-shelf guard of its own,
+  // so an empty binders[] would leave it dereferencing undefined. If the
+  // deleted binder was the active one, activeBinderId is reassigned to a
+  // surviving binder so the store's own state stays internally consistent
+  // even before BinderShelf/BinderView re-render.
+  deleteBinder: (id: string) => void;
   renameBinder: (id: string, name: string) => void;
   setBinderLanguage: (id: string, language: string) => void;
   setBinderConfig: (id: string, config: Partial<BinderConfig>) => void;
@@ -230,6 +241,18 @@ export const useAppStore = create<AppState>()(
             };
           }),
         setActiveBinder: (id) => set({ activeBinderId: id }),
+        deleteBinder: (id) =>
+          set((state) => {
+            // Refuse to delete the last remaining binder -- see the
+            // deleteBinder doc comment on AppState for why.
+            if (state.binders.length <= 1) return {};
+            const binders = state.binders.filter((b) => b.id !== id);
+            // Unknown id: no-op rather than silently mutating activeBinderId.
+            if (binders.length === state.binders.length) return {};
+            const activeBinderId =
+              state.activeBinderId === id ? binders[0].id : state.activeBinderId;
+            return { binders, activeBinderId, hasUnsavedChanges: true };
+          }),
         renameBinder: (id, name) =>
           set((state) => ({
             binders: state.binders.map((b) => (b.id === id ? { ...b, name } : b)),

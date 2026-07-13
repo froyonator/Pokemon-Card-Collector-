@@ -44,6 +44,16 @@
   gap: var(--space-3);
 }
 
+/* Wraps the tilting .book button and the .deleteButton overlay that sits on
+   top of it. Sized to match .book exactly so the delete button's absolute
+   positioning has a stable, correctly-sized box to anchor against -- a
+   sibling overlay rather than a button nested inside a button. */
+.bookWrap {
+  position: relative;
+  width: 158px;
+  height: 216px;
+}
+
 /* One volume. The button is the stationary hit target and the tilt math's
    measured rect (see useBinderTilt) -- it never transforms itself. The
    .volume span inside it is the actual 3D scene root that leans with the
@@ -253,6 +263,95 @@
   font-size: var(--text-xs);
   letter-spacing: 0.08em;
   color: var(--color-text-faint);
+}
+
+/* The per-volume delete affordance: a small round icon button pinned to the
+   top-right corner of the book, matching the corner dock's circular icon
+   buttons (see ExportImportControls.module.css's .dockButton). Sits flat
+   above the tilting .volume as a plain sibling, so it never itself leans
+   with the cursor. Hidden until the volume (or the button itself, for
+   keyboard users) is hovered/focused, so it doesn't compete visually with
+   the cover art at rest. */
+.deleteButton {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.bookWrap:hover .deleteButton,
+.deleteButton:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.deleteButton:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.deleteButton:disabled {
+  cursor: not-allowed;
+}
+
+/* Inline confirm, reusing ImportConfirmDialog's established look (see
+   ImportConfirmDialog.module.css): a centered card over a dimmed backdrop,
+   with a danger-bordered message and a two-button choice. */
+.deleteConfirm {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.76);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: var(--space-4);
+}
+
+.deleteConfirm p {
+  max-width: 420px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin: 0 0 var(--space-4);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.deleteConfirmActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.deleteConfirmActions button:first-of-type {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-accent-contrast);
+}
+
+.deleteConfirmActions button:first-of-type:hover {
+  filter: brightness(1.08);
 }
 
 /* The "start a new binder" ghost volume. */

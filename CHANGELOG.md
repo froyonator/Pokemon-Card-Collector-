@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Big Gen 1 database growth in the languages that needed it most: Simplified Chinese grew from 86 to 2,511 cards (a full sweep of the mainland-exclusive sets), Indonesian from 244 to 827, Thai from 299 to 685, plus new English and Japanese promo sets. Nearly all new cards come with card images.
 - A new "Mega" option in the generation filter, alongside the regular generations. Turning it on adds one tile per Mega Evolution form (all 48, including both Mega Charizard X and Y, and both Mega Mewtwo X and Y), each with its own animated Mega sprite, shown in the order they were first released. Clicking a Mega tile opens a picker showing only that Pokemon's Mega card prints, so a Mega Charizard X tile shows Mega Charizard X cards, not plain Charizard or Mega Charizard Y cards. Owning a Mega card is tracked separately from owning the regular Pokemon.
+- You can now delete a binder. Hover a binder on the bookshelf to reveal a trash icon, which asks you to confirm before deleting; this removes only that binder and its page layout, never your card collection or wishlist. You always need to keep at least one binder, so the delete option is disabled while only one remains.
 
 ### Changed
 
