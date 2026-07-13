@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_RARITY_GROUPS, MEGA_GROUP_ID } from '../data/defaultRarityGroups';
+import { DEFAULT_RARITY_GROUPS, MEGA_GROUP_ID, VMAX_GROUP_ID } from '../data/defaultRarityGroups';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 import type { GenerationId } from '../data/generations';
 import type {
@@ -180,6 +180,32 @@ function partializeUserData(state: AppState) {
   };
 }
 
+// Which pseudo-generation ids auto-switch the active rarity-group selection
+// when they become the SOLE selected generation -- see toggleGeneration's
+// own doc comment below for the full behavior. Mega and VMAX both have a
+// dedicated cross-cutting group whose membership check is purely additive
+// (see selectors.ts's availableCardsForDex), so switching to it when that
+// family is the only thing selected can only ever surface more cards, never
+// hide ones already visible. The four regional families deliberately have
+// NO entry here: they have no dedicated rarity group at all (a regional
+// print's own rarity already governs its visibility, same as any normal
+// card), so selecting e.g. Alolan-only never touches activeGroupIds.
+//
+// preMegaActiveGroupIds/megaAutoSwitchOverridden below keep their Mega-era
+// names (this mechanism used to be Mega-only, hardcoded) rather than being
+// renamed to something family-neutral -- renaming would touch every call
+// site and test for a purely cosmetic gain, and the behavior they describe
+// (a snapshot-and-restore around whichever single auto-switch family is
+// currently sole-selected) is unchanged by this generalization.
+const FAMILY_AUTO_SWITCH_GROUPS = new Map<GenerationId, string>([
+  ['mega', MEGA_GROUP_ID],
+  ['vmax', VMAX_GROUP_ID],
+]);
+
+function soleAutoSwitchGroupId(selected: GenerationId[]): string | undefined {
+  return selected.length === 1 ? FAMILY_AUTO_SWITCH_GROUPS.get(selected[0]) : undefined;
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => {
@@ -196,15 +222,15 @@ export const useAppStore = create<AppState>()(
         // flood the default special-art views -- see its own comment in
         // defaultRarityGroups.ts.
         //
-        // 'mega' (see defaultRarityGroups.ts) is deliberately left IN,
-        // unlike those two: its membership check in selectors.ts's
-        // availableCardsForDex is purely additive -- a Mega-tagged card only
-        // ever gains visibility from the group being active, on top of
-        // whatever its own rarity already grants, and never causes a card
-        // that would otherwise show to disappear. Toggling it on for a
-        // brand-new user can't hide or reprioritize anything, so unlike
-        // 'standard-prints' there's no flood-the-default-view risk to guard
-        // against by starting it off.
+        // 'mega' and 'vmax' (see defaultRarityGroups.ts) are deliberately
+        // left IN, unlike those two: their membership checks in
+        // selectors.ts's availableCardsForDex are purely additive -- a
+        // Mega-/VMAX-tagged card only ever gains visibility from its group
+        // being active, on top of whatever its own rarity already grants,
+        // and never causes a card that would otherwise show to disappear.
+        // Toggling either on for a brand-new user can't hide or reprioritize
+        // anything, so unlike 'standard-prints' there's no
+        // flood-the-default-view risk to guard against by starting it off.
         activeGroupIds: DEFAULT_RARITY_GROUPS.filter(
           (g) => g.id !== 'not-usable' && g.id !== 'standard-prints'
         ).map((g) => g.id),
@@ -254,58 +280,63 @@ export const useAppStore = create<AppState>()(
           })),
         setGroups: (groups) => set({ groups, hasUnsavedChanges: true }),
         // Wraps the plain add/remove-from-selectedGenerations toggle with
-        // the Mega <-> rarity-group auto-switch: "when Mega is selected
-        // then rarity auto switches to Mega unless we specifically select"
-        // (user spec). Two transitions matter, both edge-triggered off
-        // whether Mega is the SOLE selected generation before vs. after
-        // this toggle (not just whether Mega itself is in the list):
+        // the auto-switch family's rarity-group auto-switch: "when Mega is
+        // selected then rarity auto switches to Mega unless we specifically
+        // select" (user spec; VMAX joined the same mechanism when it
+        // shipped -- see FAMILY_AUTO_SWITCH_GROUPS above). Two transitions
+        // matter, both edge-triggered off whether an auto-switch family is
+        // the SOLE selected generation before vs. after this toggle (not
+        // just whether that family itself is in the list):
         //
-        //  - Entering Mega-only (any other selection -> exactly ['mega']):
-        //    snapshot the current activeGroupIds into
-        //    preMegaActiveGroupIds and switch activeGroupIds to just the
-        //    Mega group, so the grid immediately shows Mega's own cards
-        //    without the user having to separately open Filters and tick
-        //    it -- see selectors.ts's availableCardsForDex, whose
-        //    megaGroupActive check is what actually makes a Mega-tagged
-        //    card visible regardless of its raw rarity. A card whose only
-        //    prints carry a rarity outside every other default-active
-        //    group (several Mega species' sole cards use a rarity, e.g.
+        //  - Entering an auto-switch family's own-only selection (any other
+        //    selection -> exactly [family]): snapshot the current
+        //    activeGroupIds into preMegaActiveGroupIds and switch
+        //    activeGroupIds to just that family's own group, so the grid
+        //    immediately shows the family's own cards without the user
+        //    having to separately open Filters and tick it -- see
+        //    selectors.ts's availableCardsForDex, whose megaGroupActive/
+        //    vmaxGroupActive checks are what actually make a tagged card
+        //    visible regardless of its raw rarity. A card whose only prints
+        //    carry a rarity outside every other default-active group
+        //    (several Mega/VMAX species' sole cards use a rarity, e.g.
         //    Pocket-exclusive tiers, that isn't in ANY curated group) would
         //    otherwise render with an empty picker despite real cards
         //    existing -- reported live as "Mega Blastoise shows no cards".
-        //  - Leaving Mega-only (exactly ['mega'] -> anything else, whether
-        //    Mega was deselected outright or another generation was added
-        //    alongside it): restore whatever was active before the
-        //    auto-switch, UNLESS the user explicitly changed the
-        //    rarity-group selection while auto-switched
+        //  - Leaving that own-only selection (exactly [family] -> anything
+        //    else, whether the family was deselected outright or another
+        //    generation was added alongside it): restore whatever was
+        //    active before the auto-switch, UNLESS the user explicitly
+        //    changed the rarity-group selection while auto-switched
         //    (megaAutoSwitchOverridden) -- their explicit choice wins and
         //    is left exactly as they set it, not clobbered back to the
-        //    pre-Mega snapshot.
+        //    pre-auto-switch snapshot.
         //
-        // Deliberately does NOT trigger when Mega is selected ALONGSIDE one
-        // or more normal generations (a mixed grid needs its normal-
-        // generation rarity groups too, not just Mega's) -- a considered
-        // product judgment call, not an oversight: see the mixed-selection
-        // test coverage in store.test.ts.
+        // Deliberately does NOT trigger when an auto-switch family is
+        // selected ALONGSIDE one or more other generations (a mixed grid
+        // needs its other generations' rarity groups too, not just the
+        // family's own) -- a considered product judgment call, not an
+        // oversight: see the mixed-selection test coverage in
+        // store.test.ts. The four regional families are never in
+        // FAMILY_AUTO_SWITCH_GROUPS at all, so selecting e.g. Alolan-only
+        // never triggers any of this -- see that map's own comment.
         toggleGeneration: (id) =>
           set((state) => {
             const nextSelected = state.selectedGenerations.includes(id)
               ? state.selectedGenerations.filter((gid) => gid !== id)
               : [...state.selectedGenerations, id];
-            const wasMegaOnly =
-              state.selectedGenerations.length === 1 && state.selectedGenerations[0] === 'mega';
-            const isMegaOnly = nextSelected.length === 1 && nextSelected[0] === 'mega';
+            const wasAutoSwitchGroupId = soleAutoSwitchGroupId(state.selectedGenerations);
+            const isAutoSwitchGroupId = soleAutoSwitchGroupId(nextSelected);
 
-            if (!wasMegaOnly && isMegaOnly) {
+            if (wasAutoSwitchGroupId === undefined && isAutoSwitchGroupId !== undefined) {
               return {
                 selectedGenerations: nextSelected,
                 preMegaActiveGroupIds: state.activeGroupIds,
                 megaAutoSwitchOverridden: false,
-                activeGroupIds: [MEGA_GROUP_ID],
+                activeGroupIds: [isAutoSwitchGroupId],
               };
             }
 
-            if (wasMegaOnly && !isMegaOnly) {
+            if (wasAutoSwitchGroupId !== undefined && isAutoSwitchGroupId === undefined) {
               const restoredGroupIds =
                 state.preMegaActiveGroupIds !== null && !state.megaAutoSwitchOverridden
                   ? state.preMegaActiveGroupIds
@@ -525,7 +556,13 @@ export const useAppStore = create<AppState>()(
       // (see its own comment above), a MIGRATION never silently changes
       // what an existing user currently sees -- it arrives present but
       // inactive, and the user opts in via the Filters checkbox.
-      version: 3,
+      //
+      // v3 -> v4: identical shape of gap again, this time for the new
+      // 'vmax' built-in group (see defaultRarityGroups.ts's VMAX_GROUP_ID).
+      // Same migrate() loop, same "arrives present but inactive" contract as
+      // v2 -> v3 -- bumping the version number is again the only change
+      // needed.
+      version: 4,
       migrate: (persistedState): ReturnType<typeof partializeUserData> => {
         const state = persistedState as ReturnType<typeof partializeUserData>;
         if (Array.isArray(state?.groups)) {

@@ -1,9 +1,19 @@
 import { useState } from 'react';
-import { GENERATIONS } from '../data/generations';
+import { FORM_GENERATION_IDS, GENERATIONS } from '../data/generations';
 import { SUPPORTED_LANGUAGES } from '../types';
 import { useAppStore } from '../state/store';
 import { ManageGroupsPanel } from './ManageGroupsPanel';
 import styles from './FilterBar.module.css';
+
+// Split once, outside the component (GENERATIONS is a static module-level
+// constant), rather than filtering on every render: the nine real,
+// numbered generations render directly in the Generations list; the
+// synthetic form families (Mega, VMAX, the four regional families) fold
+// behind their own nested "Forms" disclosure -- see FilterBar.module.css's
+// .formFilters comment for why (15 chips at once risked an internal
+// sidebar scrollbar, explicitly unacceptable).
+const NUMBERED_GENERATIONS = GENERATIONS.filter((g) => typeof g.id === 'number');
+const FORM_GENERATIONS = GENERATIONS.filter((g) => FORM_GENERATION_IDS.includes(g.id));
 
 export function FilterBar() {
   const groups = useAppStore((s) => s.groups);
@@ -30,7 +40,7 @@ export function FilterBar() {
         <details className={styles.generationFilters}>
           <summary>Generations</summary>
           <div>
-            {GENERATIONS.map((generation) => (
+            {NUMBERED_GENERATIONS.map((generation) => (
               <label key={generation.id}>
                 <input
                   type="checkbox"
@@ -40,6 +50,27 @@ export function FilterBar() {
                 {generation.label}
               </label>
             ))}
+            {/* Collapsed by default, same reasoning as the outer Filters/
+                Generations disclosures: Mega/VMAX/the four regional
+                families add up to 6 more chips, and having every one of
+                them expanded alongside all nine numbered generations was
+                tall enough to risk pushing the sidebar into an internal
+                scrollbar. */}
+            <details className={styles.formFilters}>
+              <summary>Forms</summary>
+              <div>
+                {FORM_GENERATIONS.map((generation) => (
+                  <label key={generation.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedGenerations.includes(generation.id)}
+                      onChange={() => toggleGeneration(generation.id)}
+                    />
+                    {generation.label}
+                  </label>
+                ))}
+              </div>
+            </details>
           </div>
         </details>
 

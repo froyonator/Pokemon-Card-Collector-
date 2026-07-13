@@ -11,13 +11,20 @@ import {
   GEN9_DEX,
 } from './fullDex';
 import { MEGA_DEX_BASE, MEGA_DEX_ENTRIES } from './megaDex';
+import { VMAX_DEX_ENTRIES } from './vmaxDex';
+import { ALOLAN_DEX, GALARIAN_DEX, HISUIAN_DEX, PALDEAN_DEX } from './regionalDex';
 
-// A real national-dex generation is numbered 1-9; 'mega' is a special,
-// non-numeric grouping id for the synthetic-numbered Mega Evolution entries
-// (see megaDex.ts) -- a pseudo-generation today, kept cleanly separable
-// because the product plan is to move it to a different grouping concept
+// A real national-dex generation is numbered 1-9; 'mega'/'vmax'/'alolan'/
+// 'galarian'/'hisuian'/'paldean' are special, non-numeric grouping ids for
+// the synthetic-numbered form entries (see megaDex.ts/vmaxDex.ts/
+// regionalDex.ts) -- pseudo-generations today, kept cleanly separable
+// because the product plan is to move them to a different grouping concept
 // later without disturbing how real generations work.
-export type GenerationId = number | 'mega';
+export type GenerationId = number | 'mega' | 'vmax' | 'alolan' | 'galarian' | 'hisuian' | 'paldean';
+
+// Every pseudo-generation id, in the order they should render in the
+// selector's "Forms" sub-group -- see FilterBar.tsx.
+export const FORM_GENERATION_IDS: GenerationId[] = ['mega', 'vmax', 'alolan', 'galarian', 'hisuian', 'paldean'];
 
 export interface Generation {
   id: GenerationId;
@@ -38,6 +45,17 @@ const MEGA_DEX: DexEntry[] = MEGA_DEX_ENTRIES.map((entry) => ({
   name: entry.name,
 }));
 
+// VMAX_DEX_ENTRIES/ALOLAN_DEX/etc carry baseDex/slug/family metadata this
+// registry doesn't need -- entries here are just the plain {number, name}
+// pairs every other generation already uses, mirroring MEGA_DEX above, so
+// every form tile flows through entriesForGenerations/allDexEntries/the
+// DexGrid tile map exactly like any other generation's entries.
+const VMAX_DEX: DexEntry[] = VMAX_DEX_ENTRIES.map((entry) => ({ number: entry.number, name: entry.name }));
+const ALOLAN_GEN_DEX: DexEntry[] = ALOLAN_DEX.map((entry) => ({ number: entry.number, name: entry.name }));
+const GALARIAN_GEN_DEX: DexEntry[] = GALARIAN_DEX.map((entry) => ({ number: entry.number, name: entry.name }));
+const HISUIAN_GEN_DEX: DexEntry[] = HISUIAN_DEX.map((entry) => ({ number: entry.number, name: entry.name }));
+const PALDEAN_GEN_DEX: DexEntry[] = PALDEAN_DEX.map((entry) => ({ number: entry.number, name: entry.name }));
+
 // When adding a new generation here, also update README.md's "Gen 1 (Kanto,
 // #001-151)" / "All 151 Gen 1 Pokemon" language (that file was written when
 // this app only ever covered Gen 1). Nothing in src/App.tsx needs touching
@@ -54,6 +72,11 @@ export const GENERATIONS: Generation[] = [
   { id: 8, label: 'Generation 8 (Galar & Hisui)', entries: GEN8_DEX },
   { id: 9, label: 'Generation 9 (Paldea)', entries: GEN9_DEX },
   { id: 'mega', label: 'Mega', entries: MEGA_DEX },
+  { id: 'vmax', label: 'VMAX', entries: VMAX_DEX },
+  { id: 'alolan', label: 'Alolan', entries: ALOLAN_GEN_DEX },
+  { id: 'galarian', label: 'Galarian', entries: GALARIAN_GEN_DEX },
+  { id: 'hisuian', label: 'Hisuian', entries: HISUIAN_GEN_DEX },
+  { id: 'paldean', label: 'Paldean', entries: PALDEAN_GEN_DEX },
 ];
 
 export function entriesForGenerations(generationIds: GenerationId[]): DexEntry[] {
@@ -77,13 +100,14 @@ export function allDexEntries(): DexEntry[] {
 // (e.g. skip the static preload and defer straight to the live-API path)
 // instead of crashing on a future/unmapped dex number.
 //
-// Can return 'mega' for a synthetic Mega dex number -- callers that route
-// through the normal per-generation static file loader (DexGrid's
-// staticDataByGeneration) must never feed it a synthetic number in the
-// first place (Mega entries use their own dedicated loadMegaCardData
-// pipeline instead, see state/loadMegaCardData.ts), so in practice this
-// only ever surfaces 'mega' to a caller that's specifically asking about a
-// Mega entry's own (synthetic) number.
+// Can return 'mega'/'vmax'/'alolan'/'galarian'/'hisuian'/'paldean' for a
+// synthetic form dex number -- callers that route through the normal
+// per-generation static file loader (DexGrid's staticDataByGeneration) must
+// never feed it a synthetic number in the first place (form entries use
+// their own dedicated loaders instead, see state/loadMegaCardData.ts/
+// loadVmaxCardData.ts/loadRegionalCardData.ts), so in practice this only
+// ever surfaces one of these ids to a caller that's specifically asking
+// about a form entry's own (synthetic) number.
 export function generationForDexNumber(dexNumber: number): GenerationId | undefined {
   const generation = GENERATIONS.find((g) => {
     if (g.entries.length === 0) return false;
@@ -96,12 +120,13 @@ export function generationForDexNumber(dexNumber: number): GenerationId | undefi
 
 // Any dex number at or above MEGA_DEX_BASE (20000) is a SYNTHETIC one: not a
 // real national dex entry with its own fetched data, but a computed VIEW
-// over some other dex number's already-cached cards (Mega entries today --
-// see loadMegaCardData.ts -- and the planned VMAX/regional families next,
-// which are expected to keep reusing this same numbering convention so this
-// helper covers them automatically; if a future family ever needs a
-// non-contiguous range instead, widen this check to a small array of
-// [start, end) ranges rather than adding a second ad hoc helper).
+// over some other dex number's already-cached cards -- Mega (see
+// loadMegaCardData.ts), VMAX (loadVmaxCardData.ts, base 21000), and the four
+// regional families (loadRegionalCardData.ts, bases 22000/23000/24000/25000)
+// all reuse this same numbering convention, so this one helper covers every
+// one of them automatically; if a future family ever needs a non-contiguous
+// range instead, widen this check to a small array of [start, end) ranges
+// rather than adding a second ad hoc helper).
 //
 // This is the load-freshness contract every synthetic family must honor: a
 // synthetic entry's cache slot being PRESENT says nothing about whether it

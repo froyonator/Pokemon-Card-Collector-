@@ -1,5 +1,6 @@
 import { DEFAULT_RARITY_GROUPS, fetchRarityList } from '../data/defaultRarityGroups';
 import { GEN1_DEX, type DexEntry } from '../data/gen1Dex';
+import { excludeRegionalFormCards } from '../data/regionalDex';
 import { loadStaticCardData } from '../api/staticDatabase';
 import { deriveSetId, fetchAllCardsForDex, fetchCardDetail, fetchCardsForDexAndRarity, fetchSets } from '../api/tcgdex';
 import { mapWithConcurrency } from './concurrency';
@@ -189,7 +190,16 @@ function mergeReferencedCards(
   wishlist: Record<number, WishlistRecord>,
   language: string
 ): CardRecord[] {
-  return preserveReferencedCards(accumulator.cards, accumulator.entry.number, owned, wishlist, language);
+  // A base species' own cache slot must never carry a regional-form print
+  // (e.g. "Hisuian Growlithe" on plain Growlithe's dex-58 slot) -- that card
+  // belongs only on its own regional family tile, see regionalDex.ts's
+  // excludeRegionalFormCards. A no-op for every dex number with no regional
+  // form at all. Applied BEFORE preserveReferencedCards below so an owned/
+  // wishlisted regional card recorded under this base dex number (e.g. from
+  // before this exclusion existed) is preserved right back in, instead of
+  // being silently orphaned.
+  const withoutRegionalForms = excludeRegionalFormCards(accumulator.entry.number, accumulator.cards);
+  return preserveReferencedCards(withoutRegionalForms, accumulator.entry.number, owned, wishlist, language);
 }
 
 export async function loadAllCardData(
@@ -414,11 +424,16 @@ export async function loadAllPrintingsForDex(
       };
       return card;
     });
+    // Same base-tile regional exclusion as the curated loadAllCardData path
+    // above (see mergeReferencedCards) -- "Show all cards" must not surface
+    // a regional-form print on its base species' own tile either. A no-op
+    // for every dex number with no regional form at all.
+    const withoutRegionalForms = excludeRegionalFormCards(dexNumber, cards);
     // Hosted image URLs (and rarities for cards the live API left
     // rarity-less) ride in from the static database -- see enrichFromStatic.
     // Applied to the RETURN value too, not just the cache write, since the
     // Picker renders this function's result directly.
-    const enriched = await enrichFromStatic(language, cards);
+    const enriched = await enrichFromStatic(language, withoutRegionalForms);
     if (isLatestWriteGeneration(language, dexNumber, generation)) {
       setCachedCards(language, dexNumber, enriched);
       markFullPrintHistoryFetched(language, dexNumber);

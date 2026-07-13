@@ -25,12 +25,25 @@
 }
 
 .groupFilters,
-.generationFilters {
+.generationFilters,
+.formFilters {
   border: none;
 }
 
+/* The "Forms" sub-group nests one level inside .generationFilters, folding
+   the Mega/VMAX/regional chips behind their own disclosure -- opening
+   Generations alone (9 chips) never needed this, but 9 + 6 form chips at
+   once was tall enough to risk pushing the sidebar into an internal
+   scrollbar (explicitly unacceptable, see BinderSettings' own identical
+   fold). Collapsed by default, same as its two siblings. */
+.formFilters {
+  margin-top: var(--space-2);
+  width: 100%;
+}
+
 .groupFilters summary,
-.generationFilters summary {
+.generationFilters summary,
+.formFilters summary {
   cursor: pointer;
   font-size: var(--text-xs);
   font-weight: 700;
@@ -49,13 +62,15 @@
 }
 
 .groupFilters summary::-webkit-details-marker,
-.generationFilters summary::-webkit-details-marker {
+.generationFilters summary::-webkit-details-marker,
+.formFilters summary::-webkit-details-marker {
   display: none;
 }
 
 /* Custom disclosure chevron in place of the native triangle marker. */
 .groupFilters summary::before,
-.generationFilters summary::before {
+.generationFilters summary::before,
+.formFilters summary::before {
   content: '';
   width: 6px;
   height: 6px;
@@ -67,22 +82,26 @@
 }
 
 .groupFilters[open] summary::before,
-.generationFilters[open] summary::before {
+.generationFilters[open] summary::before,
+.formFilters[open] summary::before {
   transform: rotate(45deg);
 }
 
 .groupFilters summary:hover,
-.generationFilters summary:hover {
+.generationFilters summary:hover,
+.formFilters summary:hover {
   color: var(--color-text-muted);
 }
 
 .groupFilters[open] summary,
-.generationFilters[open] summary {
+.generationFilters[open] summary,
+.formFilters[open] summary {
   margin-bottom: var(--space-3);
 }
 
 .groupFilters > div,
-.generationFilters > div {
+.generationFilters > div,
+.formFilters > div {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -92,7 +111,8 @@
 /* The chip: pill-shaped label wrapping its (hidden) checkbox. Checked chips
    fill warm gold; unchecked ones sit as quiet outlines. */
 .groupFilters label,
-.generationFilters label {
+.generationFilters label,
+.formFilters label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -111,20 +131,23 @@
 }
 
 .groupFilters label:hover,
-.generationFilters label:hover {
+.generationFilters label:hover,
+.formFilters label:hover {
   border-color: var(--color-border-strong);
   color: var(--color-text);
 }
 
 .groupFilters label:has(input:checked),
-.generationFilters label:has(input:checked) {
+.generationFilters label:has(input:checked),
+.formFilters label:has(input:checked) {
   background: var(--color-gold-soft);
   border-color: rgba(217, 164, 65, 0.45);
   color: var(--color-gold-strong);
 }
 
 .groupFilters label:has(input:focus-visible),
-.generationFilters label:has(input:focus-visible) {
+.generationFilters label:has(input:focus-visible),
+.formFilters label:has(input:focus-visible) {
   box-shadow: var(--shadow-focus);
 }
 
@@ -134,7 +157,8 @@
    (labels forward clicks to it, and test tooling refuses to click an
    element that has pointer-events disabled). */
 .groupFilters label input[type='checkbox'],
-.generationFilters label input[type='checkbox'] {
+.generationFilters label input[type='checkbox'],
+.formFilters label input[type='checkbox'] {
   position: absolute;
   width: 1px;
   height: 1px;

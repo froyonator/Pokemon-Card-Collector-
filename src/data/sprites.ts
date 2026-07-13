@@ -19,11 +19,42 @@ interface MegaManifestEntry {
   animatedExt?: 'webp';
 }
 
+// public/sprites/manifest.json's "gmax" section -- one entry per VMAX/
+// Gigantamax form that has its own sprite (see
+// scripts/carddata/src/downloadGmaxSprites.ts), keyed by the same `slug`
+// vmaxDex.ts's VmaxDexEntry.spriteSlug carries. A plain-Dynamax entry has NO
+// entry here at all (by design -- see vmaxSpriteUrls below), not merely an
+// `animated: false` one.
+interface GmaxManifestEntry {
+  slug: string;
+  baseDex: number;
+  name: string;
+  animated: boolean;
+  animatedExt?: 'webp';
+}
+
+// public/sprites/manifest.json's "regional" section -- one entry per
+// regional form that has its own sprite (see
+// scripts/carddata/src/downloadRegionalSprites.ts), keyed by the same
+// `slug` regionalDex.ts's RegionalDexEntry.slug carries. An
+// hasOwnVariety:false entry (an exclusive-evolution species) has NO entry
+// here at all -- see regionalSpriteUrls below.
+interface RegionalManifestEntry {
+  slug: string;
+  baseDex: number;
+  name: string;
+  family: string;
+  animated: boolean;
+  animatedExt?: 'webp';
+}
+
 // public/sprites/manifest.json's own shape -- see downloadSprites.ts.
 interface SpriteManifest {
   animated: number[];
   animatedFormat?: Record<string, string>;
   mega?: MegaManifestEntry[];
+  gmax?: GmaxManifestEntry[];
+  regional?: RegionalManifestEntry[];
 }
 
 interface SpriteManifestCache {
@@ -42,6 +73,14 @@ interface SpriteManifestCache {
   // 404 that used to fall the WHOLE tile all the way back to the base
   // species' live sprite, wiping out perfectly good mega static art too.
   megaAnimatedFormats: Record<string, string>;
+  // Same three-field shape as the mega ones above, but for gmax/regional
+  // slugs -- see vmaxSpriteUrls/regionalSpriteUrls.
+  gmaxStaticSlugs: Set<string>;
+  gmaxAnimatedSlugs: Set<string>;
+  gmaxAnimatedFormats: Record<string, string>;
+  regionalStaticSlugs: Set<string>;
+  regionalAnimatedSlugs: Set<string>;
+  regionalAnimatedFormats: Record<string, string>;
 }
 
 // Empty coverage -- every dex number resolves to "no animated sprite" (pure
@@ -55,6 +94,12 @@ const EMPTY_MANIFEST: SpriteManifestCache = {
   megaStaticSlugs: new Set(),
   megaAnimatedSlugs: new Set(),
   megaAnimatedFormats: {},
+  gmaxStaticSlugs: new Set(),
+  gmaxAnimatedSlugs: new Set(),
+  gmaxAnimatedFormats: {},
+  regionalStaticSlugs: new Set(),
+  regionalAnimatedSlugs: new Set(),
+  regionalAnimatedFormats: {},
 };
 
 // Set once loadSpriteManifest's fetch resolves (successfully or not --
@@ -84,12 +129,28 @@ async function fetchSpriteManifest(fetchImpl: typeof fetch): Promise<SpriteManif
     for (const m of mega) {
       if (m.animated && m.animatedExt) megaAnimatedFormats[m.slug] = m.animatedExt;
     }
+    const gmax = data.gmax ?? [];
+    const gmaxAnimatedFormats: Record<string, string> = {};
+    for (const g of gmax) {
+      if (g.animated && g.animatedExt) gmaxAnimatedFormats[g.slug] = g.animatedExt;
+    }
+    const regional = data.regional ?? [];
+    const regionalAnimatedFormats: Record<string, string> = {};
+    for (const r of regional) {
+      if (r.animated && r.animatedExt) regionalAnimatedFormats[r.slug] = r.animatedExt;
+    }
     return {
       animatedDexNumbers: new Set(data.animated ?? []),
       animatedFormats: data.animatedFormat ?? {},
       megaStaticSlugs: new Set(mega.map((m) => m.slug)),
       megaAnimatedSlugs: new Set(mega.filter((m) => m.animated).map((m) => m.slug)),
       megaAnimatedFormats,
+      gmaxStaticSlugs: new Set(gmax.map((g) => g.slug)),
+      gmaxAnimatedSlugs: new Set(gmax.filter((g) => g.animated).map((g) => g.slug)),
+      gmaxAnimatedFormats,
+      regionalStaticSlugs: new Set(regional.map((r) => r.slug)),
+      regionalAnimatedSlugs: new Set(regional.filter((r) => r.animated).map((r) => r.slug)),
+      regionalAnimatedFormats,
     };
   } catch {
     return EMPTY_MANIFEST;
@@ -154,6 +215,45 @@ export function megaSpriteUrls(entry: { spriteSlug: string; baseDexNumber: numbe
   const ext = manifestCache.megaAnimatedFormats[entry.spriteSlug] ?? 'gif';
   const animatedUrl = manifestCache.megaAnimatedSlugs.has(entry.spriteSlug)
     ? `${import.meta.env.BASE_URL}sprites/mega/animated/${entry.spriteSlug}.${ext}`
+    : null;
+  return { staticUrl, animatedUrl };
+}
+
+// Same synchronous, stateless-lookup contract as megaSpriteUrls above, but
+// for a VMAX/Gigantamax form (public/sprites/gmax/{static,animated}/
+// <spriteSlug>.{png,gif|webp}). A plain-Dynamax entry (hasGigantamax: false)
+// has NO manifest entry at all by design -- the sprite pipeline never
+// downloads gmax art for a species with no official Gigantamax look, so
+// gmaxStaticSlugs.has() is false for it and this falls straight back to the
+// BASE species' own sprite, exactly like a future-roster-addition Mega slug
+// the manifest doesn't list yet.
+export function vmaxSpriteUrls(entry: { spriteSlug: string; baseDexNumber: number }): SpriteUrls {
+  if (!manifestCache.gmaxStaticSlugs.has(entry.spriteSlug)) {
+    return spriteUrls(entry.baseDexNumber);
+  }
+  const staticUrl = `${import.meta.env.BASE_URL}sprites/gmax/static/${entry.spriteSlug}.png`;
+  const ext = manifestCache.gmaxAnimatedFormats[entry.spriteSlug] ?? 'gif';
+  const animatedUrl = manifestCache.gmaxAnimatedSlugs.has(entry.spriteSlug)
+    ? `${import.meta.env.BASE_URL}sprites/gmax/animated/${entry.spriteSlug}.${ext}`
+    : null;
+  return { staticUrl, animatedUrl };
+}
+
+// Same synchronous, stateless-lookup contract as megaSpriteUrls above, but
+// for a regional form (public/sprites/regional/{static,animated}/<slug>.
+// {png,gif|webp}). An hasOwnVariety:false entry (an exclusive-evolution
+// species, e.g. Obstagoon) has NO manifest entry at all by design -- it
+// reuses its base species' own sprite, which is exactly what falling
+// through to spriteUrls(entry.baseDexNumber) below already does, so no
+// separate hasOwnVariety check is needed here on top of the manifest lookup.
+export function regionalSpriteUrls(entry: { slug: string; baseDexNumber: number }): SpriteUrls {
+  if (!manifestCache.regionalStaticSlugs.has(entry.slug)) {
+    return spriteUrls(entry.baseDexNumber);
+  }
+  const staticUrl = `${import.meta.env.BASE_URL}sprites/regional/static/${entry.slug}.png`;
+  const ext = manifestCache.regionalAnimatedFormats[entry.slug] ?? 'gif';
+  const animatedUrl = manifestCache.regionalAnimatedSlugs.has(entry.slug)
+    ? `${import.meta.env.BASE_URL}sprites/regional/animated/${entry.slug}.${ext}`
     : null;
   return { staticUrl, animatedUrl };
 }

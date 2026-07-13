@@ -9,13 +9,32 @@ import {
 import { GEN1_DEX } from './gen1Dex';
 import { GEN2_DEX, GEN9_DEX } from './fullDex';
 import { MEGA_DEX_BASE, MEGA_DEX_ENTRIES } from './megaDex';
+import { VMAX_DEX_BASE, VMAX_DEX_ENTRIES } from './vmaxDex';
+import {
+  ALOLAN_DEX,
+  ALOLAN_DEX_BASE,
+  GALARIAN_DEX,
+  HISUIAN_DEX,
+  PALDEAN_DEX,
+  PALDEAN_DEX_BASE,
+} from './regionalDex';
 
-// The nine real, numbered generations -- excludes the 'mega' pseudo-
-// generation, which uses synthetic dex numbers far outside the real
-// national dex range and so breaks the "contiguous 1..N" assumptions these
-// pre-existing tests check. See the "Mega generation" describe block below
-// for its own dedicated coverage.
+// The nine real, numbered generations -- excludes the six synthetic-numbered
+// pseudo-generations (Mega, VMAX, the four regional families), which use
+// dex numbers far outside the real national dex range and so break the
+// "contiguous 1..N" assumptions these pre-existing tests check. See the
+// dedicated describe blocks below for their own coverage.
 const NUMBERED_GENERATIONS = GENERATIONS.filter((g) => typeof g.id === 'number');
+
+// Total synthetic form entries across every family: 96 Mega + 81 VMAX + 19
+// Alolan + 26 Galarian + 19 Hisuian + 5 Paldean = 246.
+const TOTAL_FORM_ENTRIES =
+  MEGA_DEX_ENTRIES.length +
+  VMAX_DEX_ENTRIES.length +
+  ALOLAN_DEX.length +
+  GALARIAN_DEX.length +
+  HISUIAN_DEX.length +
+  PALDEAN_DEX.length;
 
 describe('GENERATIONS', () => {
   it('includes Generation 1 backed by GEN1_DEX, unmodified', () => {
@@ -29,8 +48,10 @@ describe('GENERATIONS', () => {
     expect(GEN1_DEX).toEqual(before);
   });
 
-  it('covers generations 1 through 9, one entry each, in order, plus a trailing Mega entry', () => {
-    expect(GENERATIONS.map((g) => g.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 'mega']);
+  it('covers generations 1 through 9, one entry each, in order, plus the six trailing form pseudo-generations', () => {
+    expect(GENERATIONS.map((g) => g.id)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 'mega', 'vmax', 'alolan', 'galarian', 'hisuian', 'paldean',
+    ]);
   });
 
   it('has a contiguous dex range across all nine numbered generations with no gaps or overlaps', () => {
@@ -52,6 +73,30 @@ describe('GENERATIONS', () => {
     expect(mega?.label).toBe('Mega');
     expect(mega?.entries).toHaveLength(96);
     expect(mega?.entries.every((e) => e.number > MEGA_DEX_BASE)).toBe(true);
+  });
+
+  it('has a "vmax" entry with exactly 81 synthetic-numbered entries, all above VMAX_DEX_BASE', () => {
+    const vmax = GENERATIONS.find((g) => g.id === 'vmax');
+    expect(vmax?.label).toBe('VMAX');
+    expect(vmax?.entries).toHaveLength(81);
+    expect(vmax?.entries.every((e) => e.number > VMAX_DEX_BASE)).toBe(true);
+  });
+
+  it('has one entry per regional family, each with the pipeline roster\'s own count and synthetic numbering', () => {
+    const alolan = GENERATIONS.find((g) => g.id === 'alolan');
+    const galarian = GENERATIONS.find((g) => g.id === 'galarian');
+    const hisuian = GENERATIONS.find((g) => g.id === 'hisuian');
+    const paldean = GENERATIONS.find((g) => g.id === 'paldean');
+    expect(alolan?.label).toBe('Alolan');
+    expect(alolan?.entries).toHaveLength(19);
+    expect(alolan?.entries.every((e) => e.number > ALOLAN_DEX_BASE)).toBe(true);
+    expect(galarian?.label).toBe('Galarian');
+    expect(galarian?.entries).toHaveLength(26);
+    expect(hisuian?.label).toBe('Hisuian');
+    expect(hisuian?.entries).toHaveLength(19);
+    expect(paldean?.label).toBe('Paldean');
+    expect(paldean?.entries).toHaveLength(5);
+    expect(paldean?.entries.every((e) => e.number > PALDEAN_DEX_BASE)).toBe(true);
   });
 });
 
@@ -94,6 +139,20 @@ describe('entriesForGenerations', () => {
     );
   });
 
+  it('returns the VMAX entries, in release order, when "vmax" is requested', () => {
+    const entries = entriesForGenerations(['vmax']);
+    expect(entries).toHaveLength(81);
+    expect(entries.map((e) => e.number)).toEqual(
+      VMAX_DEX_ENTRIES.map((e) => e.number).sort((a, b) => a - b)
+    );
+  });
+
+  it('returns just one regional family\'s entries when only that family id is requested', () => {
+    const entries = entriesForGenerations(['galarian']);
+    expect(entries).toHaveLength(26);
+    expect(entries.every((e) => e.number > 23000 && e.number < 24000)).toBe(true);
+  });
+
   it('merges a numbered generation with "mega", sorted so Mega entries trail every real dex number', () => {
     const entries = entriesForGenerations([1, 'mega']);
     expect(entries).toHaveLength(151 + 96);
@@ -104,12 +163,14 @@ describe('entriesForGenerations', () => {
 });
 
 describe('allDexEntries', () => {
-  it('returns every entry across every known generation, including Mega, sorted by dex number', () => {
+  it('returns every entry across every known generation, including every form family, sorted by dex number', () => {
     const entries = allDexEntries();
-    expect(entries).toHaveLength(1025 + 96);
+    expect(entries).toHaveLength(1025 + TOTAL_FORM_ENTRIES);
     expect(entries[0].name).toBe('Bulbasaur');
     expect(entries[1024].name).toBe('Pecharunt');
-    expect(entries[entries.length - 1].number).toBe(MEGA_DEX_BASE + 96);
+    // Paldean is the last-numbered family (base 25000), so the very last
+    // entry overall is its own highest synthetic number.
+    expect(entries[entries.length - 1].number).toBe(PALDEAN_DEX_BASE + 5);
   });
 
   it('is numbered sequentially from 1 to 1025 for the real dex range, with no gaps or duplicates', () => {

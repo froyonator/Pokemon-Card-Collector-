@@ -16,6 +16,8 @@ import { GEN1_DEX } from '../data/gen1Dex';
 import { GEN2_DEX } from '../data/fullDex';
 import { GENERATIONS } from '../data/generations';
 import { MEGA_DEX_ENTRIES } from '../data/megaDex';
+import { VMAX_DEX_ENTRIES } from '../data/vmaxDex';
+import { HISUIAN_DEX } from '../data/regionalDex';
 import type { CardRecord } from '../types';
 
 // Wraps the real loadAllCardData in a vi.fn so most tests below get its
@@ -1375,5 +1377,170 @@ describe('Mega grouping', () => {
       expect(within(dialog).getByRole('img', { name: /mega lucario z ex from/i })).toBeInTheDocument();
     });
     expect(within(dialog).queryByRole('img', { name: /^m lucario ex from/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('VMAX grouping', () => {
+  function vmaxCard(overrides: Partial<CardRecord>): CardRecord {
+    return {
+      id: 'id',
+      name: 'Charizard VMAX',
+      dexNumber: 6,
+      setId: 'set',
+      setName: 'Test Set',
+      localId: '1',
+      rarity: 'Ultra Rare',
+      imageBase: '',
+      language: 'en',
+      ...overrides,
+    };
+  }
+
+  it('renders one tile per VMAX form, in release order, when VMAX is selected', async () => {
+    useAppStore.setState({ selectedGenerations: ['vmax'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue({});
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /gigantamax venusaur/i })).toBeInTheDocument();
+    });
+    const tiles = screen.getAllByRole('button');
+    expect(tiles).toHaveLength(81);
+    expect(tiles.map((t) => t.getAttribute('title'))).toEqual(
+      tiles.map((_t, i) => expect.stringContaining(VMAX_DEX_ENTRIES[i].name))
+    );
+  });
+
+  it("opens a picker showing ONLY that species' VMAX prints when a VMAX tile is clicked", async () => {
+    useAppStore.setState({ selectedGenerations: ['vmax'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue({
+      6: [
+        vmaxCard({ id: 'vmax', name: 'Charizard VMAX' }),
+        vmaxCard({ id: 'v', name: 'Charizard V' }),
+        vmaxCard({ id: 'vstar', name: 'Charizard VSTAR' }),
+      ],
+    });
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /gigantamax charizard/i });
+    await userEvent.click(tile);
+    const dialog = await screen.findByRole('dialog');
+
+    await waitFor(() => {
+      expect(within(dialog).getByRole('img', { name: /^charizard vmax from/i })).toBeInTheDocument();
+    });
+    expect(within(dialog).queryByRole('img', { name: /^charizard v from/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('img', { name: /^charizard vstar from/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Regional grouping', () => {
+  const growlithe = HISUIAN_DEX.find((e) => e.slug === 'growlithe-hisui')!;
+
+  function growlitheCard(overrides: Partial<CardRecord>): CardRecord {
+    return {
+      id: 'id',
+      name: 'Growlithe',
+      dexNumber: 58,
+      setId: 'set',
+      setName: 'Test Set',
+      localId: '1',
+      rarity: 'Ultra Rare',
+      imageBase: '',
+      language: 'en',
+      ...overrides,
+    };
+  }
+
+  function growlitheCoverage(): Record<number, CardRecord[]> {
+    return {
+      58: [
+        growlitheCard({ id: 'plain', name: 'Growlithe' }),
+        growlitheCard({ id: 'hisuian', name: 'Hisuian Growlithe' }),
+      ],
+    };
+  }
+
+  it("excludes a regional-tagged print from its base species' own tile picker, while the regional family's own tile shows only that print", async () => {
+    useAppStore.setState({ selectedGenerations: [1, 'hisuian'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue(growlitheCoverage());
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    // Tile accessible names concatenate the "#058" dex-number span with the
+    // name span, and a plain "growlithe" substring would ambiguously match
+    // BOTH this tile and the "Hisuian Growlithe" one -- the tile's `title`
+    // attribute ("...for Growlithe.") is the reliable, unambiguous handle:
+    // "for Growlithe." only appears verbatim on the base species' own tile,
+    // never as a substring of "for Hisuian Growlithe.".
+    const baseTile = await screen.findByTitle(/for Growlithe\.$/);
+    await userEvent.click(baseTile);
+    const baseDialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(baseDialog).getByRole('img', { name: /^growlithe from/i })).toBeInTheDocument();
+    });
+    expect(within(baseDialog).queryByRole('img', { name: /hisuian growlithe from/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    // AnimatePresence's mode="wait" keeps the outgoing dialog mounted (mid
+    // exit-animation) until it's fully gone -- wait for that before opening
+    // the next one, or a subsequent findByRole('dialog') can resolve to the
+    // still-exiting FIRST dialog instead of the new one.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    const regionalTile = await screen.findByTitle(/for Hisuian Growlithe\.$/);
+    await userEvent.click(regionalTile);
+    const regionalDialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(regionalDialog).getByRole('img', { name: /hisuian growlithe from/i })).toBeInTheDocument();
+    });
+    expect(within(regionalDialog).queryByRole('img', { name: /^growlithe from/i })).not.toBeInTheDocument();
+  });
+
+  it('preserves an owned regional card recorded under the base dex number instead of orphaning it, across a refresh', async () => {
+    // Simulates a card owned from BEFORE this exclusion feature existed:
+    // the base dex-58 cache already carries both the plain and the
+    // Hisuian-tagged print, and `owned` points at the Hisuian one.
+    setCachedCards('en', growlithe.baseDexNumber, growlitheCoverage()[growlithe.baseDexNumber]);
+    useAppStore.setState({
+      selectedGenerations: [1],
+      owned: {
+        [growlithe.baseDexNumber]: {
+          dexNumber: growlithe.baseDexNumber,
+          cardId: 'hisuian',
+          condition: 'Near Mint',
+          addedAt: '2024-01-01',
+        },
+      },
+    });
+
+    const { rerender } = render(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
+    );
+    // Already cached, so the initial mount doesn't refetch dex 58 at all --
+    // wait for the rest of Gen 1 to settle before triggering a refresh.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--(available|unavailable)/);
+    });
+
+    // The static database itself still legitimately carries BOTH prints for
+    // dex 58 (the exclusion is an app-layer concern, not a pipeline one) --
+    // a refresh re-fetches this same mixed bucket.
+    vi.mocked(refreshStaticCardData).mockResolvedValue(growlitheCoverage());
+    rerender(
+      <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={1} />
+    );
+
+    // The fresh write excludes "hisuian" (a regional-tagged print) from
+    // dex 58's own bucket, same as any other base tile -- but
+    // preserveReferencedCards must add it straight back in because `owned`
+    // still references it, so the tile isn't left pointing at a card id
+    // that no longer resolves to anything. The plain print stays too.
+    await waitFor(() => {
+      const cached = getCachedCards('en', growlithe.baseDexNumber);
+      expect(cached?.some((c) => c.id === 'hisuian')).toBe(true);
+      expect(cached?.some((c) => c.id === 'plain')).toBe(true);
+    });
   });
 });

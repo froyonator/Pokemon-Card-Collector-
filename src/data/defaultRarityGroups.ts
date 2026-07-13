@@ -10,6 +10,11 @@ import type { RarityGroup } from '../types';
 // has to live in code, keyed off this id, not on the group object itself.
 export const MEGA_GROUP_ID = 'mega';
 
+// Same cross-cutting, name-based membership contract as MEGA_GROUP_ID above,
+// but for VMAX-tagged cards (see selectors.ts's availableCardsForDex, keyed
+// off this id, and vmaxDex.ts's isVmaxCardName for the actual match check).
+export const VMAX_GROUP_ID = 'vmax';
+
 export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
   {
     id: 'full-art',
@@ -43,6 +48,15 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     // only ever surface more cards, never hide ones already visible).
     id: MEGA_GROUP_ID,
     name: 'Mega',
+    rarities: [],
+  },
+  {
+    // Cross-cutting, NAME-based membership, exactly like 'mega' above but for
+    // VMAX-tagged cards (isVmaxCardName, see vmaxDex.ts) -- seeded ACTIVE by
+    // default for the same reason: purely additive, so a brand-new user can
+    // never have visibility taken away by it being on.
+    id: VMAX_GROUP_ID,
+    name: 'VMAX',
     rarities: [],
   },
   {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Sidebar } from './Sidebar';
@@ -172,6 +172,40 @@ describe('Sidebar', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'My Collection' }));
     expect(onTabChange).toHaveBeenCalledWith('collection');
+  });
+
+  // Hard project rule: the sidebar must never grow an internal scrollbar --
+  // new content has to fold behind a collapsed disclosure instead. jsdom has
+  // no real layout engine (no computed heights/scrollHeight to assert
+  // against), so this is a structural proxy for that rule: opening
+  // Generations alone must not also reveal the six form-family chips
+  // (Mega/VMAX/the four regional families) -- they stay behind their own
+  // nested "Forms" disclosure, collapsed by default, exactly like Binder
+  // Settings' Layout/Cover sections fold. Only 9 checkboxes (the numbered
+  // generations) are visible with just Generations open; the sidebar's
+  // rendered height with everything else collapsed is what actually keeps
+  // it under a typical viewport in the real browser.
+  it('folds the Mega/VMAX/regional form chips behind a nested, collapsed "Forms" disclosure inside Generations', async () => {
+    renderSidebar();
+    await userEvent.click(screen.getByText('Generations'));
+
+    const generationsSection = screen.getByText('Generations').closest('details')!;
+    expect(within(generationsSection).getByText('Forms').closest('details')).not.toHaveAttribute('open');
+    // Only the nine numbered generations' checkboxes are visible/queryable
+    // as already-open chips -- the six form chips are nested one level
+    // deeper, behind the still-closed "Forms" disclosure.
+    const numberedCheckboxes = within(generationsSection)
+      .getAllByRole('checkbox')
+      .filter((el) => el.closest('details') === generationsSection);
+    expect(numberedCheckboxes).toHaveLength(9);
+
+    await userEvent.click(within(generationsSection).getByText('Forms'));
+    expect(within(generationsSection).getByLabelText('Mega')).toBeInTheDocument();
+    expect(within(generationsSection).getByLabelText('VMAX')).toBeInTheDocument();
+    expect(within(generationsSection).getByLabelText('Alolan')).toBeInTheDocument();
+    expect(within(generationsSection).getByLabelText('Galarian')).toBeInTheDocument();
+    expect(within(generationsSection).getByLabelText('Hisuian')).toBeInTheDocument();
+    expect(within(generationsSection).getByLabelText('Paldean')).toBeInTheDocument();
   });
 
   it('hides the filter/view/binder-settings sections when showDexGridControls is false', () => {

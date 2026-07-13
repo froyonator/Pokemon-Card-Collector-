@@ -53,6 +53,19 @@ describe('FilterBar', () => {
     expect(useAppStore.getState().activeGroupIds).toContain('mega');
   });
 
+  it('shows the VMAX rarity group checkbox in Card rarity groups, active by default, and toggles it', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
+    await userEvent.click(screen.getByText('Card rarity groups'));
+    const raritySection = screen.getByText('Card rarity groups').closest('details')!;
+    const vmaxGroupCheckbox = within(raritySection).getByLabelText('VMAX');
+    expect(vmaxGroupCheckbox).toBeChecked();
+    await userEvent.click(vmaxGroupCheckbox);
+    expect(useAppStore.getState().activeGroupIds).not.toContain('vmax');
+    await userEvent.click(vmaxGroupCheckbox);
+    expect(useAppStore.getState().activeGroupIds).toContain('vmax');
+  });
+
   it('changes the language', async () => {
     render(<FilterBar />);
     await userEvent.click(screen.getByText('Filters'));
@@ -80,7 +93,7 @@ describe('FilterBar', () => {
     expect(useAppStore.getState().selectedGenerations).toContain(1);
   });
 
-  it('shows a Mega checkbox in the Generations list and toggles it independently of the numbered generations', async () => {
+  it('shows a Mega checkbox nested in the Generations list\'s "Forms" sub-group and toggles it independently of the numbered generations', async () => {
     render(<FilterBar />);
     await userEvent.click(screen.getByText('Filters'));
     await userEvent.click(screen.getByText('Generations'));
@@ -89,6 +102,10 @@ describe('FilterBar', () => {
     // the built-in name-based rarity group -- so an unscoped getByLabelText
     // would now match two elements.
     const generationsSection = screen.getByText('Generations').closest('details')!;
+    // The Mega/VMAX/regional chips fold behind their own nested "Forms"
+    // disclosure (see FilterBar.module.css's .formFilters comment) -- has
+    // to be opened before its checkboxes are interactable.
+    await userEvent.click(within(generationsSection).getByText('Forms'));
     const megaCheckbox = within(generationsSection).getByLabelText('Mega');
     expect(megaCheckbox).not.toBeChecked();
 
@@ -99,5 +116,36 @@ describe('FilterBar', () => {
 
     await userEvent.click(megaCheckbox);
     expect(useAppStore.getState().selectedGenerations).not.toContain('mega');
+  });
+
+  it('shows VMAX and the four regional families in the same "Forms" sub-group, each toggling independently', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
+    await userEvent.click(screen.getByText('Generations'));
+    const generationsSection = screen.getByText('Generations').closest('details')!;
+    await userEvent.click(within(generationsSection).getByText('Forms'));
+
+    for (const label of ['VMAX', 'Alolan', 'Galarian', 'Hisuian', 'Paldean']) {
+      const checkbox = within(generationsSection).getByLabelText(label);
+      expect(checkbox).not.toBeChecked();
+    }
+
+    const vmaxCheckbox = within(generationsSection).getByLabelText('VMAX');
+    await userEvent.click(vmaxCheckbox);
+    expect(useAppStore.getState().selectedGenerations).toContain('vmax');
+
+    const alolanCheckbox = within(generationsSection).getByLabelText('Alolan');
+    await userEvent.click(alolanCheckbox);
+    expect(useAppStore.getState().selectedGenerations).toContain('alolan');
+    // Independent: toggling Alolan didn't disturb VMAX.
+    expect(useAppStore.getState().selectedGenerations).toContain('vmax');
+  });
+
+  it('collapses the nested "Forms" sub-group by default, even with Generations itself open', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
+    await userEvent.click(screen.getByText('Generations'));
+    const generationsSection = screen.getByText('Generations').closest('details')!;
+    expect(within(generationsSection).getByText('Forms').closest('details')).not.toHaveAttribute('open');
   });
 });

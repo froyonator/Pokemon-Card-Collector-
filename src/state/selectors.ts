@@ -1,5 +1,6 @@
 import { isMegaCardName } from '../data/megaDex';
-import { MEGA_GROUP_ID } from '../data/defaultRarityGroups';
+import { isVmaxCardName } from '../data/vmaxDex';
+import { MEGA_GROUP_ID, VMAX_GROUP_ID } from '../data/defaultRarityGroups';
 import type { CardRecord, RarityGroup } from '../types';
 
 export function activeRarities(groups: RarityGroup[], activeGroupIds: string[]): Set<string> {
@@ -35,6 +36,7 @@ export function availableCardsForDex(
   activeGroupIds: string[] = []
 ): CardRecord[] {
   const megaGroupActive = activeGroupIds.includes(MEGA_GROUP_ID);
+  const vmaxGroupActive = activeGroupIds.includes(VMAX_GROUP_ID);
   return allCards.filter((card) => {
     // Precedence: an explicit per-card override (user-assigned or seeded via
     // DEFAULT_CARD_OVERRIDES) always wins. Failing that, automatic Trainer
@@ -47,13 +49,14 @@ export function availableCardsForDex(
         ? activeGroupIds.includes(overrideGroupId)
         : activeSet.has(card.rarity);
     if (normallyAvailable) return true;
-    // Cross-cutting Mega lens (see defaultRarityGroups.ts's 'mega' built-in
-    // group): a Mega-tagged card is ADDITIONALLY available whenever the
-    // Mega group is active, on top of whatever its own rarity/override-based
-    // group membership already grants -- this only runs after the normal
-    // check above already said "no", so it can only ever add visibility,
-    // never take it away.
-    return megaGroupActive && isMegaCardName(card.name);
+    // Cross-cutting Mega/VMAX lenses (see defaultRarityGroups.ts's 'mega'/
+    // 'vmax' built-in groups): a Mega- or VMAX-tagged card is ADDITIONALLY
+    // available whenever its group is active, on top of whatever its own
+    // rarity/override-based group membership already grants -- this only
+    // runs after the normal check above already said "no", so it can only
+    // ever add visibility, never take it away.
+    if (megaGroupActive && isMegaCardName(card.name)) return true;
+    return vmaxGroupActive && isVmaxCardName(card.name);
   });
 }
 

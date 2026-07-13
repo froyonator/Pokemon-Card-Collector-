@@ -280,6 +280,75 @@ describe('toggleGeneration: Mega <-> rarity-group auto-switch', () => {
   });
 });
 
+describe('toggleGeneration: VMAX <-> rarity-group auto-switch', () => {
+  const allGroupIds = DEFAULT_RARITY_GROUPS.map((g) => g.id);
+
+  it('auto-activates only the VMAX group when VMAX becomes the sole selected generation, remembering the prior groups', () => {
+    useAppStore.getState().toggleGeneration(1); // deselect gen 1 -> []
+    useAppStore.getState().toggleGeneration('vmax'); // -> ['vmax'], the sole selection
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual(['vmax']);
+    expect(state.activeGroupIds).toEqual(['vmax']);
+    expect(state.preMegaActiveGroupIds).toEqual(allGroupIds);
+  });
+
+  it('restores the previously active rarity groups when VMAX is deselected', () => {
+    useAppStore.getState().toggleGeneration(1); // -> []
+    useAppStore.getState().toggleGeneration('vmax'); // -> ['vmax'], auto-switched
+
+    useAppStore.getState().toggleGeneration('vmax'); // deselect VMAX -> []
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual([]);
+    expect(state.activeGroupIds).toEqual(allGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+    expect(state.megaAutoSwitchOverridden).toBe(false);
+  });
+
+  it('does not clobber an explicit rarity-group change made while VMAX is auto-switched', () => {
+    useAppStore.getState().toggleGeneration(1); // -> []
+    useAppStore.getState().toggleGeneration('vmax'); // -> ['vmax'], activeGroupIds -> ['vmax']
+
+    useAppStore.getState().toggleActiveGroup('full-art');
+    expect(useAppStore.getState().megaAutoSwitchOverridden).toBe(true);
+    const explicitGroupIds = useAppStore.getState().activeGroupIds;
+    expect(explicitGroupIds).toEqual(['vmax', 'full-art']);
+
+    useAppStore.getState().toggleGeneration('vmax'); // deselect VMAX
+
+    const state = useAppStore.getState();
+    expect(state.activeGroupIds).toEqual(explicitGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+  });
+
+  it('leaves rarity groups alone when VMAX is selected alongside a normal generation (mixed selection)', () => {
+    useAppStore.getState().toggleGeneration('vmax'); // resetStore seeds [1] -> [1, 'vmax']
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual([1, 'vmax']);
+    expect(state.activeGroupIds).toEqual(allGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+  });
+});
+
+describe('toggleGeneration: regional families never auto-switch', () => {
+  const allGroupIds = DEFAULT_RARITY_GROUPS.map((g) => g.id);
+
+  it.each(['alolan', 'galarian', 'hisuian', 'paldean'] as const)(
+    'selecting only %s leaves activeGroupIds and preMegaActiveGroupIds untouched',
+    (family) => {
+      useAppStore.getState().toggleGeneration(1); // deselect gen 1 -> []
+      useAppStore.getState().toggleGeneration(family); // -> [family], the sole selection
+
+      const state = useAppStore.getState();
+      expect(state.selectedGenerations).toEqual([family]);
+      expect(state.activeGroupIds).toEqual(allGroupIds);
+      expect(state.preMegaActiveGroupIds).toBeNull();
+    }
+  );
+});
+
 describe('setCardOverride', () => {
   it('assigns a card to a group, overriding its raw rarity', () => {
     useAppStore.getState().setCardOverride('svp-044', 'full-art');
@@ -696,7 +765,7 @@ describe('replaceUserData with binders', () => {
 describe('persist config resilience', () => {
   it('sets a version and a migrate function, so a future breaking schema change has a real hook instead of relying on shallow-merge alone', () => {
     const options = useAppStore.persist.getOptions();
-    expect(options.version).toBe(3);
+    expect(options.version).toBe(4);
     expect(typeof options.migrate).toBe('function');
   });
 
@@ -736,7 +805,26 @@ describe('persist config resilience', () => {
     expect(migrated.activeGroupIds).toEqual(['full-art']);
   });
 
-  it('the v1->v3 migration (an old user who skipped straight to the latest version) ends up with both new groups appended', async () => {
+  it('the v3->v4 migration appends the new VMAX group to persisted groups, leaving activeGroupIds untouched', async () => {
+    const options = useAppStore.persist.getOptions();
+    // A v3 user's persisted groups already have 'mega' but predate 'vmax'.
+    const v3State = {
+      groups: [
+        { id: 'full-art', name: 'Full Art', rarities: ['Ultra Rare'] },
+        { id: 'standard-prints', name: 'Standard prints', rarities: ['Common'] },
+        { id: 'mega', name: 'Mega', rarities: [] },
+      ],
+      activeGroupIds: ['full-art'],
+    };
+    const migrated = (await options.migrate!(v3State, 3)) as typeof v3State;
+    expect(migrated.groups.some((g) => g.id === 'vmax')).toBe(true);
+    const vmaxGroup = migrated.groups.find((g) => g.id === 'vmax');
+    expect(vmaxGroup?.name).toBe('VMAX');
+    expect(vmaxGroup?.rarities).toEqual([]);
+    expect(migrated.activeGroupIds).toEqual(['full-art']);
+  });
+
+  it('the v1->v4 migration (an old user who skipped straight to the latest version) ends up with every new group appended', async () => {
     const options = useAppStore.persist.getOptions();
     const v1State = {
       groups: [{ id: 'full-art', name: 'Full Art', rarities: ['Ultra Rare'] }],
@@ -745,6 +833,7 @@ describe('persist config resilience', () => {
     const migrated = (await options.migrate!(v1State, 1)) as typeof v1State;
     expect(migrated.groups.some((g) => g.id === 'standard-prints')).toBe(true);
     expect(migrated.groups.some((g) => g.id === 'mega')).toBe(true);
+    expect(migrated.groups.some((g) => g.id === 'vmax')).toBe(true);
     expect(migrated.activeGroupIds).toEqual(['full-art']);
   });
 

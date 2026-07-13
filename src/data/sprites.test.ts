@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { __resetSpriteManifestForTests, loadSpriteManifest, megaSpriteUrls, spriteUrls } from './sprites';
+import {
+  __resetSpriteManifestForTests,
+  loadSpriteManifest,
+  megaSpriteUrls,
+  regionalSpriteUrls,
+  spriteUrls,
+  vmaxSpriteUrls,
+} from './sprites';
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as Response;
@@ -141,6 +148,134 @@ describe('megaSpriteUrls', () => {
     const urls = megaSpriteUrls(entry);
     expect(urls).toEqual(spriteUrls(6));
     expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/animated/6.gif`);
+  });
+});
+
+describe('vmaxSpriteUrls', () => {
+  const gmaxEntry = { spriteSlug: 'charizard-gmax', baseDexNumber: 6 };
+  // A plain-Dynamax entry (no official Gigantamax look) -- the sprite
+  // pipeline never downloads gmax art for it at all, so it has NO manifest
+  // entry, not merely an animated:false one.
+  const dynamaxOnlyEntry = { spriteSlug: 'vaporeon-dynamax', baseDexNumber: 134 };
+
+  it('falls back entirely to the base species sprite before the manifest has ever loaded', () => {
+    expect(vmaxSpriteUrls(gmaxEntry)).toEqual(spriteUrls(6));
+  });
+
+  it('builds the gmax static/animated URLs once the manifest lists this slug as animated', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        gmax: [{ slug: 'charizard-gmax', baseDex: 6, name: 'Gigantamax Charizard', animated: true }],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = vmaxSpriteUrls(gmaxEntry);
+    expect(urls.staticUrl).toBe(`${import.meta.env.BASE_URL}sprites/gmax/static/charizard-gmax.png`);
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/gmax/animated/charizard-gmax.gif`);
+  });
+
+  it('uses the manifest-specified extension (e.g. .webp) instead of the .gif default for a gmax slug', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        gmax: [
+          {
+            slug: 'charizard-gmax',
+            baseDex: 6,
+            name: 'Gigantamax Charizard',
+            animated: true,
+            animatedExt: 'webp',
+          },
+        ],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    expect(vmaxSpriteUrls(gmaxEntry).animatedUrl).toBe(
+      `${import.meta.env.BASE_URL}sprites/gmax/animated/charizard-gmax.webp`
+    );
+  });
+
+  it('falls back to the base species sprite for a plain-Dynamax entry with no gmax manifest coverage at all', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [134],
+        animatedFormat: {},
+        gmax: [{ slug: 'charizard-gmax', baseDex: 6, name: 'Gigantamax Charizard', animated: true }],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = vmaxSpriteUrls(dynamaxOnlyEntry);
+    expect(urls).toEqual(spriteUrls(134));
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/animated/134.gif`);
+  });
+});
+
+describe('regionalSpriteUrls', () => {
+  const ownVarietyEntry = { slug: 'growlithe-hisui', baseDexNumber: 58 };
+  // An exclusive-evolution entry (Obstagoon) -- no manifest coverage at all
+  // by design, reuses the base species' own sprite.
+  const exclusiveEvolutionEntry = { slug: 'obstagoon', baseDexNumber: 862 };
+
+  it('falls back entirely to the base species sprite before the manifest has ever loaded', () => {
+    expect(regionalSpriteUrls(ownVarietyEntry)).toEqual(spriteUrls(58));
+  });
+
+  it('builds the regional static/animated URLs once the manifest lists this slug as animated', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        regional: [
+          { slug: 'growlithe-hisui', baseDex: 58, name: 'Hisuian Growlithe', family: 'hisuian', animated: true },
+        ],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = regionalSpriteUrls(ownVarietyEntry);
+    expect(urls.staticUrl).toBe(`${import.meta.env.BASE_URL}sprites/regional/static/growlithe-hisui.png`);
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/regional/animated/growlithe-hisui.gif`);
+  });
+
+  it('uses the manifest-specified extension (e.g. .webp) instead of the .gif default for a regional slug', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        regional: [
+          {
+            slug: 'growlithe-hisui',
+            baseDex: 58,
+            name: 'Hisuian Growlithe',
+            family: 'hisuian',
+            animated: true,
+            animatedExt: 'webp',
+          },
+        ],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    expect(regionalSpriteUrls(ownVarietyEntry).animatedUrl).toBe(
+      `${import.meta.env.BASE_URL}sprites/regional/animated/growlithe-hisui.webp`
+    );
+  });
+
+  it('falls back to the base species sprite for an exclusive-evolution entry with no regional manifest coverage at all', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [862],
+        animatedFormat: {},
+        regional: [
+          { slug: 'growlithe-hisui', baseDex: 58, name: 'Hisuian Growlithe', family: 'hisuian', animated: true },
+        ],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = regionalSpriteUrls(exclusiveEvolutionEntry);
+    expect(urls).toEqual(spriteUrls(862));
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/animated/862.gif`);
   });
 });
 

@@ -2,20 +2,27 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_RARITY_GROUPS,
   MEGA_GROUP_ID,
+  VMAX_GROUP_ID,
   fetchRarityList,
   isKnownPocketRarity,
 } from './defaultRarityGroups';
 
 describe('DEFAULT_RARITY_GROUPS', () => {
-  it('has 7 groups with unique ids', () => {
-    expect(DEFAULT_RARITY_GROUPS).toHaveLength(7);
+  it('has 8 groups with unique ids', () => {
+    expect(DEFAULT_RARITY_GROUPS).toHaveLength(8);
     const ids = new Set(DEFAULT_RARITY_GROUPS.map((g) => g.id));
-    expect(ids.size).toBe(7);
+    expect(ids.size).toBe(8);
   });
 
   it('seeds the Mega group with an empty rarities list (name-based membership, not rarity-based)', () => {
     const group = DEFAULT_RARITY_GROUPS.find((g) => g.id === MEGA_GROUP_ID);
     expect(group?.name).toBe('Mega');
+    expect(group?.rarities).toEqual([]);
+  });
+
+  it('seeds the VMAX group with an empty rarities list (name-based membership, not rarity-based)', () => {
+    const group = DEFAULT_RARITY_GROUPS.find((g) => g.id === VMAX_GROUP_ID);
+    expect(group?.name).toBe('VMAX');
     expect(group?.rarities).toEqual([]);
   });
 

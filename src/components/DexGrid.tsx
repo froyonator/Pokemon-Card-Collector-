@@ -10,9 +10,13 @@ import {
 import type { DexEntry } from '../data/gen1Dex';
 import { entriesForGenerations, generationForDexNumber, isSyntheticDexNumber } from '../data/generations';
 import { megaDexEntryByNumber, type MegaDexEntry } from '../data/megaDex';
-import { loadSpriteManifest, megaSpriteUrls, spriteUrls } from '../data/sprites';
+import { vmaxDexEntryByNumber, type VmaxDexEntry } from '../data/vmaxDex';
+import { excludeRegionalFormCards, regionalDexEntryByNumber, type RegionalDexEntry } from '../data/regionalDex';
+import { loadSpriteManifest, megaSpriteUrls, regionalSpriteUrls, spriteUrls, vmaxSpriteUrls } from '../data/sprites';
 import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
 import { loadMegaCardData, refreshMegaCardData } from '../state/loadMegaCardData';
+import { loadVmaxCardData, refreshVmaxCardData } from '../state/loadVmaxCardData';
+import { loadRegionalCardData, refreshRegionalCardData } from '../state/loadRegionalCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
 import {
@@ -146,14 +150,19 @@ export function DexGrid({
     [selectedGenerations]
   );
 
-  // Mega entries need an entirely different loading pipeline (their cards
-  // are a filtered VIEW over their base species' cards, not their own
-  // fetch -- see state/loadMegaCardData.ts), so every place below that
-  // drives fetching/refreshing splits `dexEntries` into these two groups.
-  // Rendering itself (the .map() further down) doesn't need this split: it
-  // reads spriteUrls vs megaSpriteUrls per-entry directly off dexEntries.
+  // Every synthetic form family (Mega, VMAX, the four regional families)
+  // needs an entirely different loading pipeline (their cards are a
+  // filtered VIEW over their base species' cards, not their own fetch --
+  // see state/loadMegaCardData.ts/loadVmaxCardData.ts/
+  // loadRegionalCardData.ts), so every place below that drives
+  // fetching/refreshing splits `dexEntries` into normal entries plus one
+  // group per family. Rendering itself (the .map() further down) doesn't
+  // need this split: it reads spriteUrls vs mega/vmax/regionalSpriteUrls
+  // per-entry directly off dexEntries. isSyntheticDexNumber (>= 20000)
+  // covers every family at once, so normalDexEntries doesn't need to check
+  // each family's own lookup individually.
   const normalDexEntries = useMemo(
-    () => dexEntries.filter((entry) => megaDexEntryByNumber(entry.number) === undefined),
+    () => dexEntries.filter((entry) => !isSyntheticDexNumber(entry.number)),
     [dexEntries]
   );
   const megaDexEntriesInScope = useMemo(
@@ -161,6 +170,20 @@ export function DexGrid({
       dexEntries
         .map((entry) => megaDexEntryByNumber(entry.number))
         .filter((entry): entry is MegaDexEntry => entry !== undefined),
+    [dexEntries]
+  );
+  const vmaxDexEntriesInScope = useMemo(
+    () =>
+      dexEntries
+        .map((entry) => vmaxDexEntryByNumber(entry.number))
+        .filter((entry): entry is VmaxDexEntry => entry !== undefined),
+    [dexEntries]
+  );
+  const regionalDexEntriesInScope = useMemo(
+    () =>
+      dexEntries
+        .map((entry) => regionalDexEntryByNumber(entry.number))
+        .filter((entry): entry is RegionalDexEntry => entry !== undefined),
     [dexEntries]
   );
 
@@ -252,19 +275,23 @@ export function DexGrid({
     const missingEntries = normalDexEntries.filter(
       (entry) => getCachedCards(language, entry.number) === undefined
     );
-    // Every Mega entry currently in scope, NOT just the ones with no cache
+    // Every form entry currently in scope, NOT just the ones with no cache
     // entry yet -- unlike missingEntries above, a synthetic entry's cache
     // slot being present doesn't mean it's fresh: it's a computed VIEW over
-    // its base species' cards (see loadMegaCardData.ts), so a stale slot
-    // from before a matcher/filter fix shipped would otherwise sit there
-    // forever, never recomputed, until a manual Refresh Data (reported live:
-    // a dirty cache from an old session kept serving pre-fix results after
-    // reload). See isSyntheticDexNumber's own doc comment for the general
-    // contract this follows -- recomputation itself is cheap (zero network
-    // calls), so always redoing it here costs nothing but a redundant
-    // filter pass.
+    // its base species' cards (see loadMegaCardData.ts and friends), so a
+    // stale slot from before a matcher/filter fix shipped would otherwise
+    // sit there forever, never recomputed, until a manual Refresh Data
+    // (reported live: a dirty cache from an old session kept serving pre-fix
+    // results after reload). See isSyntheticDexNumber's own doc comment for
+    // the general contract this follows -- recomputation itself is cheap
+    // (zero network calls), so always redoing it here costs nothing but a
+    // redundant filter pass.
     const missingMegaEntries = megaDexEntriesInScope.filter((entry) => isSyntheticDexNumber(entry.number));
-    if (missingEntries.length === 0 && missingMegaEntries.length === 0) return;
+    const missingVmaxEntries = vmaxDexEntriesInScope.filter((entry) => isSyntheticDexNumber(entry.number));
+    const missingRegionalEntries = regionalDexEntriesInScope.filter((entry) => isSyntheticDexNumber(entry.number));
+    const hasMissingFormEntries =
+      missingMegaEntries.length > 0 || missingVmaxEntries.length > 0 || missingRegionalEntries.length > 0;
+    if (missingEntries.length === 0 && !hasMissingFormEntries) return;
 
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -320,20 +347,26 @@ export function DexGrid({
       // exactly one fetch (loadStaticCardData(language)), identical to
       // before per-generation loading existed.
       //
-      // Mega entries load in parallel with the normal preload above, via
-      // their own dedicated static-only pipeline (see loadMegaCardData.ts)
-      // -- awaited together with the static preload so isLoading/
+      // Mega/VMAX/regional entries load in parallel with the normal preload
+      // above, each via its own dedicated static-only pipeline (see
+      // loadMegaCardData.ts/loadVmaxCardData.ts/loadRegionalCardData.ts) --
+      // awaited together with the static preload so isLoading/
       // onLoadingChange (and the "stillMissing.length === 0" early return
-      // right below) don't flip false while a Mega fetch is still in
-      // flight.
+      // right below) don't flip false while any of them is still in flight.
       const [staticByGeneration] = await Promise.all([
         staticDataByGeneration(language, missingEntries, loadStaticCardData, loadStaticCardDataForGen),
         missingMegaEntries.length > 0
           ? loadMegaCardData(language, missingMegaEntries, { owned, wishlist })
           : Promise.resolve(),
+        missingVmaxEntries.length > 0
+          ? loadVmaxCardData(language, missingVmaxEntries, { owned, wishlist })
+          : Promise.resolve(),
+        missingRegionalEntries.length > 0
+          ? loadRegionalCardData(language, missingRegionalEntries, { owned, wishlist })
+          : Promise.resolve(),
       ]);
       if (cancelled || loadGeneration.current !== thisGeneration) return;
-      if (missingMegaEntries.length > 0) setDataVersion((v) => v + 1);
+      if (hasMissingFormEntries) setDataVersion((v) => v + 1);
 
       // The static file is the COMPLETE truth for its language and
       // generation -- it was built from a full crawl of every set, so a dex
@@ -363,8 +396,11 @@ export function DexGrid({
         // static-first Refresh Data path below share one implementation
         // instead of two, rather than assuming that invariant holds
         // forever as this effect's own "missing" computation evolves.
+        // excludeRegionalFormCards keeps a regional-tagged print (e.g.
+        // "Hisuian Growlithe") off its base species' own tile -- a no-op for
+        // every dex number with no regional form at all.
         const cards = preserveReferencedCards(
-          staticData[entry.number] ?? [],
+          excludeRegionalFormCards(entry.number, staticData[entry.number] ?? []),
           entry.number,
           owned,
           wishlist,
@@ -484,15 +520,30 @@ export function DexGrid({
       // before this, it unconditionally ran the full live dex x rarity
       // fan-out -- 151 dex numbers x every active rarity -- even for a
       // language the static database already covers completely.
-      // Mega entries refresh in parallel via their own dedicated pipeline
-      // (see loadMegaCardData.ts) -- same "always static-only, no live
+      // Mega/VMAX/regional entries refresh in parallel via their own
+      // dedicated pipelines (see loadMegaCardData.ts/loadVmaxCardData.ts/
+      // loadRegionalCardData.ts) -- same "always static-only, no live
       // fallback" contract as the auto-load effect above. onRefreshDexLoaded
-      // drains a Mega entry's dex number out of pendingRefreshDex exactly
+      // drains a form entry's dex number out of pendingRefreshDex exactly
       // like any normal entry's.
       const [staticByGeneration] = await Promise.all([
         staticDataByGeneration(language, normalDexEntries, refreshStaticCardData, refreshStaticCardDataForGen),
         megaDexEntriesInScope.length > 0
           ? refreshMegaCardData(language, megaDexEntriesInScope, {
+              owned,
+              wishlist,
+              onEntryLoaded: onRefreshDexLoaded,
+            })
+          : Promise.resolve(),
+        vmaxDexEntriesInScope.length > 0
+          ? refreshVmaxCardData(language, vmaxDexEntriesInScope, {
+              owned,
+              wishlist,
+              onEntryLoaded: onRefreshDexLoaded,
+            })
+          : Promise.resolve(),
+        regionalDexEntriesInScope.length > 0
+          ? refreshRegionalCardData(language, regionalDexEntriesInScope, {
               owned,
               wishlist,
               onEntryLoaded: onRefreshDexLoaded,
@@ -517,7 +568,7 @@ export function DexGrid({
           continue;
         }
         const cards = preserveReferencedCards(
-          staticData[entry.number] ?? [],
+          excludeRegionalFormCards(entry.number, staticData[entry.number] ?? []),
           entry.number,
           owned,
           wishlist,
@@ -683,18 +734,26 @@ export function DexGrid({
             const allCards = cardsByDexNumber.get(entry.number) ?? [];
             const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
             const ownedRecord = owned[entry.number];
-            // A Mega tile reads its own sprite files (public/sprites/mega/
-            // ...), falling back to the base species' sprite when the
-            // manifest has no mega coverage for it -- see megaSpriteUrls.
-            // Every other tile keeps the plain per-dex-number lookup
-            // unchanged.
+            // A form tile (Mega/VMAX/regional) reads its own sprite files,
+            // falling back to the base species' sprite when the manifest has
+            // no coverage for it -- see mega/vmax/regionalSpriteUrls. Every
+            // other tile keeps the plain per-dex-number lookup unchanged.
             const megaEntry = megaDexEntryByNumber(entry.number);
-            const entrySpriteUrls = megaEntry ? megaSpriteUrls(megaEntry) : spriteUrls(entry.number);
-            // The old live third-party fallback has no per-form Mega
-            // artwork to build a URL from, so a Mega tile's onError
-            // fallback degrades to its base species' own live sprite
-            // instead -- still infinitely better than a broken image icon.
-            const fallbackSpriteUrl = spriteUrl(megaEntry ? megaEntry.baseDexNumber : entry.number);
+            const vmaxEntry = megaEntry ? undefined : vmaxDexEntryByNumber(entry.number);
+            const regionalEntry = megaEntry || vmaxEntry ? undefined : regionalDexEntryByNumber(entry.number);
+            const entrySpriteUrls = megaEntry
+              ? megaSpriteUrls(megaEntry)
+              : vmaxEntry
+                ? vmaxSpriteUrls(vmaxEntry)
+                : regionalEntry
+                  ? regionalSpriteUrls(regionalEntry)
+                  : spriteUrls(entry.number);
+            // The old live third-party fallback has no per-form artwork to
+            // build a URL from, so a form tile's onError fallback degrades
+            // to its base species' own live sprite instead -- still
+            // infinitely better than a broken image icon.
+            const formBaseDexNumber = megaEntry?.baseDexNumber ?? vmaxEntry?.baseDexNumber ?? regionalEntry?.baseDexNumber;
+            const fallbackSpriteUrl = spriteUrl(formBaseDexNumber ?? entry.number);
             // Self-heals if a fetch fails outright for some dex number: once
             // isLoading flips back to false in loadAllCardData's .finally(),
             // any dex number that never got a cache entry (its request
