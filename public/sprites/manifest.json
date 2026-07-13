@@ -1024,5 +1024,295 @@
     "837": "webp",
     "838": "webp",
     "839": "webp"
-  }
+  },
+  "mega": [
+    {
+      "slug": "venusaur-mega",
+      "baseDex": 3,
+      "name": "Mega Venusaur",
+      "animated": true
+    },
+    {
+      "slug": "charizard-mega-x",
+      "baseDex": 6,
+      "name": "Mega Charizard X",
+      "animated": true
+    },
+    {
+      "slug": "charizard-mega-y",
+      "baseDex": 6,
+      "name": "Mega Charizard Y",
+      "animated": true
+    },
+    {
+      "slug": "blastoise-mega",
+      "baseDex": 9,
+      "name": "Mega Blastoise",
+      "animated": true
+    },
+    {
+      "slug": "alakazam-mega",
+      "baseDex": 65,
+      "name": "Mega Alakazam",
+      "animated": true
+    },
+    {
+      "slug": "gengar-mega",
+      "baseDex": 94,
+      "name": "Mega Gengar",
+      "animated": true
+    },
+    {
+      "slug": "kangaskhan-mega",
+      "baseDex": 115,
+      "name": "Mega Kangaskhan",
+      "animated": true
+    },
+    {
+      "slug": "pinsir-mega",
+      "baseDex": 127,
+      "name": "Mega Pinsir",
+      "animated": true
+    },
+    {
+      "slug": "gyarados-mega",
+      "baseDex": 130,
+      "name": "Mega Gyarados",
+      "animated": true
+    },
+    {
+      "slug": "aerodactyl-mega",
+      "baseDex": 142,
+      "name": "Mega Aerodactyl",
+      "animated": true
+    },
+    {
+      "slug": "mewtwo-mega-x",
+      "baseDex": 150,
+      "name": "Mega Mewtwo X",
+      "animated": true
+    },
+    {
+      "slug": "mewtwo-mega-y",
+      "baseDex": 150,
+      "name": "Mega Mewtwo Y",
+      "animated": true
+    },
+    {
+      "slug": "ampharos-mega",
+      "baseDex": 181,
+      "name": "Mega Ampharos",
+      "animated": true
+    },
+    {
+      "slug": "steelix-mega",
+      "baseDex": 208,
+      "name": "Mega Steelix",
+      "animated": true
+    },
+    {
+      "slug": "scizor-mega",
+      "baseDex": 212,
+      "name": "Mega Scizor",
+      "animated": true
+    },
+    {
+      "slug": "heracross-mega",
+      "baseDex": 214,
+      "name": "Mega Heracross",
+      "animated": true
+    },
+    {
+      "slug": "houndoom-mega",
+      "baseDex": 229,
+      "name": "Mega Houndoom",
+      "animated": true
+    },
+    {
+      "slug": "tyranitar-mega",
+      "baseDex": 248,
+      "name": "Mega Tyranitar",
+      "animated": true
+    },
+    {
+      "slug": "blaziken-mega",
+      "baseDex": 257,
+      "name": "Mega Blaziken",
+      "animated": true
+    },
+    {
+      "slug": "gardevoir-mega",
+      "baseDex": 282,
+      "name": "Mega Gardevoir",
+      "animated": true
+    },
+    {
+      "slug": "mawile-mega",
+      "baseDex": 303,
+      "name": "Mega Mawile",
+      "animated": true
+    },
+    {
+      "slug": "aggron-mega",
+      "baseDex": 306,
+      "name": "Mega Aggron",
+      "animated": true
+    },
+    {
+      "slug": "medicham-mega",
+      "baseDex": 308,
+      "name": "Mega Medicham",
+      "animated": true
+    },
+    {
+      "slug": "manectric-mega",
+      "baseDex": 310,
+      "name": "Mega Manectric",
+      "animated": true
+    },
+    {
+      "slug": "banette-mega",
+      "baseDex": 354,
+      "name": "Mega Banette",
+      "animated": true
+    },
+    {
+      "slug": "absol-mega",
+      "baseDex": 359,
+      "name": "Mega Absol",
+      "animated": true
+    },
+    {
+      "slug": "latias-mega",
+      "baseDex": 380,
+      "name": "Mega Latias",
+      "animated": true
+    },
+    {
+      "slug": "latios-mega",
+      "baseDex": 381,
+      "name": "Mega Latios",
+      "animated": true
+    },
+    {
+      "slug": "garchomp-mega",
+      "baseDex": 445,
+      "name": "Mega Garchomp",
+      "animated": true
+    },
+    {
+      "slug": "lucario-mega",
+      "baseDex": 448,
+      "name": "Mega Lucario",
+      "animated": true
+    },
+    {
+      "slug": "abomasnow-mega",
+      "baseDex": 460,
+      "name": "Mega Abomasnow",
+      "animated": true
+    },
+    {
+      "slug": "diancie-mega",
+      "baseDex": 719,
+      "name": "Mega Diancie",
+      "animated": true
+    },
+    {
+      "slug": "beedrill-mega",
+      "baseDex": 15,
+      "name": "Mega Beedrill",
+      "animated": true
+    },
+    {
+      "slug": "pidgeot-mega",
+      "baseDex": 18,
+      "name": "Mega Pidgeot",
+      "animated": true
+    },
+    {
+      "slug": "slowbro-mega",
+      "baseDex": 80,
+      "name": "Mega Slowbro",
+      "animated": true
+    },
+    {
+      "slug": "sceptile-mega",
+      "baseDex": 254,
+      "name": "Mega Sceptile",
+      "animated": true
+    },
+    {
+      "slug": "swampert-mega",
+      "baseDex": 260,
+      "name": "Mega Swampert",
+      "animated": true
+    },
+    {
+      "slug": "sableye-mega",
+      "baseDex": 302,
+      "name": "Mega Sableye",
+      "animated": true
+    },
+    {
+      "slug": "sharpedo-mega",
+      "baseDex": 319,
+      "name": "Mega Sharpedo",
+      "animated": true
+    },
+    {
+      "slug": "camerupt-mega",
+      "baseDex": 323,
+      "name": "Mega Camerupt",
+      "animated": true
+    },
+    {
+      "slug": "altaria-mega",
+      "baseDex": 334,
+      "name": "Mega Altaria",
+      "animated": true
+    },
+    {
+      "slug": "glalie-mega",
+      "baseDex": 362,
+      "name": "Mega Glalie",
+      "animated": true
+    },
+    {
+      "slug": "salamence-mega",
+      "baseDex": 373,
+      "name": "Mega Salamence",
+      "animated": true
+    },
+    {
+      "slug": "metagross-mega",
+      "baseDex": 376,
+      "name": "Mega Metagross",
+      "animated": true
+    },
+    {
+      "slug": "rayquaza-mega",
+      "baseDex": 384,
+      "name": "Mega Rayquaza",
+      "animated": true
+    },
+    {
+      "slug": "lopunny-mega",
+      "baseDex": 428,
+      "name": "Mega Lopunny",
+      "animated": true
+    },
+    {
+      "slug": "gallade-mega",
+      "baseDex": 475,
+      "name": "Mega Gallade",
+      "animated": true
+    },
+    {
+      "slug": "audino-mega",
+      "baseDex": 531,
+      "name": "Mega Audino",
+      "animated": true
+    }
+  ]
 }

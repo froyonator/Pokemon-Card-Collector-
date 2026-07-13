@@ -19,7 +19,8 @@
     "harvest:local-images": "tsx src/harvest/localImageFill.ts",
     "harvest:eu-backfill": "tsx src/harvest/bulkExportGen1Backfill.ts",
     "build-database": "tsx src/buildStaticDatabase.ts",
-    "download-sprites": "tsx src/downloadSprites.ts"
+    "download-sprites": "tsx src/downloadSprites.ts",
+    "download-mega-sprites": "tsx src/downloadMegaSprites.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
