@@ -42,6 +42,35 @@
 // "Unknown" (itself canonical, matched by the 'standard-prints' group) and
 // is reported by the CLI below so a human can extend the mapping.
 //
+// A SECOND, separate bug of the same shape affects the five European
+// languages: fr/de/es/it/pt store `rarity` as the primary source's own
+// LOCALIZED word for it ("Häufig", "Comune", "Peu Commune", ...) on 53-93%
+// of records in each language, none of which match any canonical spelling
+// or rarity-group member either. EUROPEAN_RARITY_DICTIONARIES /
+// deriveLocalizedRarityAliases() below fix this the same way, but sourced
+// from the primary source's OWN translation dictionaries
+// (data/bulk-export/meta/translations/<lang>.json's `rarity` object --
+// gitignored scratch data, not committed, see this package's .gitignore)
+// rather than hand-translated, so the mapping is authoritative instead of
+// guessed. See that section's own comment for the derivation and for a few
+// upstream-dictionary inconsistencies it has to route around.
+//
+// DESIGN CHOICE -- canonical STORAGE, not localized display: `rarity` is
+// shown to users verbatim in two places (Picker.tsx's card-row caption,
+// CardZoomOverlay.tsx's zoom caption), so converting fr/de/es/it/pt records
+// to the English canonical spelling does change what a French/German/etc.
+// user reads there -- "Häufig" becomes "Common". The alternative, leaving
+// the localized word in `rarity`, keeps that label correct but leaves the
+// SAME cards invisible to every rarity-group view, exactly like the
+// Asian-language bug above (a card whose rarity matches no group is
+// invisible everywhere, not just mislabeled). Invisible is strictly worse
+// than a foreign-language label reading in English, so canonical storage
+// wins for now. The right long-term end state is canonical storage PLUS a
+// separate localized-DISPLAY lookup (rarity key -> localized word, rendered
+// instead of the raw stored string) so both correctness and localization
+// hold at once -- that display layer doesn't exist yet and is out of scope
+// here; this pass only fixes storage, same as the Asian-language pass did.
+//
 // Run via: npm run normalize-rarities -- [--write] [--lang <code>]
 // Dry-run by default (reports only); pass --write to persist changes.
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -180,6 +209,265 @@ export const RARITY_ALIASES: Record<string, string> = {
   // and get reported so a human can investigate and extend this table.
 };
 
+// --- European localized-rarity dictionaries (fr/de/es/it/pt) ---------------
+//
+// Verbatim excerpts of the primary source's own per-language translation
+// dictionaries (data/bulk-export/meta/translations/<lang>.json's `rarity`
+// object -- confirmed to exist at that path for exactly these five
+// languages; gitignored scratch data, not committed, per this package's own
+// .gitignore). Each language's object is keyed canonical-English rarity ->
+// that language's word for it, the SAME direction the upstream dictionary
+// itself uses. Copied by hand from those files at the time this table was
+// added; if the primary source's translations change, re-copy from that
+// same path rather than hand-translating a fix here.
+//
+// A handful of keys the upstream dictionary carries are Pokemon TCG
+// POCKET-only vocabulary this app has no canonical rarity for at all ("One
+// Star", "Two Diamond", "Crown", ...) -- omitted here entirely. (They also
+// look like a translation bug in the upstream dictionary itself: fr/de/it/pt
+// all give literal French text for these keys, e.g. "Une Étoile" -- another
+// reason to leave them out rather than trust them.)
+export const EUROPEAN_RARITY_DICTIONARIES: Record<string, Record<string, string>> = {
+  fr: {
+    'ACE SPEC Rare': 'HIGH-TECG rare',
+    'Amazing Rare': 'Magnifique',
+    'Classic Collection': 'Collection Classique',
+    Common: 'Commune',
+    'Double rare': 'Double rare',
+    'Full Art Trainer': 'Dresseur Full Art',
+    'Holo Rare': 'Holo Rare',
+    'Holo Rare V': 'Holo Rare V',
+    'Holo Rare VMAX': 'Holo Rare VMAX',
+    'Holo Rare VSTAR': 'Holo Rare VSTAR',
+    'Hyper rare': 'Hyper rare',
+    'Illustration rare': 'Illustration rare',
+    LEGEND: 'LÉGENDE',
+    None: 'Sans Rareté',
+    'Radiant Rare': 'Radieux Rare',
+    Rare: 'Rare',
+    'Rare Holo': 'Rare Holo',
+    'Rare Holo LV.X': 'Rare Holo LV.X',
+    'Rare PRIME': 'Rare Prime',
+    'Secret Rare': 'Magnifique rare',
+    'Shiny rare': 'Shiny rare',
+    'Shiny rare V': 'Shiny rare V',
+    'Shiny rare VMAX': 'Shiny rare VMAX',
+    'Shiny Ultra Rare': 'Chromatique ultra rare',
+    'Special illustration rare': 'Illustration spéciale rare',
+    'Ultra Rare': 'Ultra Rare',
+    Uncommon: 'Peu Commune',
+    'Black White Rare': 'Rare Noir Blanc',
+    'Mega Hyper Rare': 'Méga Hyper Rare',
+    Promo: 'Promo',
+  },
+  de: {
+    'ACE SPEC Rare': 'ASS-KLASSE',
+    'Amazing Rare': 'Atemberaubend',
+    'Classic Collection': 'Klassische Kollektion',
+    Common: 'Häufig',
+    'Double rare': 'Doppelselten',
+    'Full Art Trainer': 'Vollkunsttrainer',
+    'Holo Rare': 'Holografisch Selten',
+    'Holo Rare V': 'Holografisch Selten V',
+    'Holo Rare VMAX': 'Holografisch Selten VMAX',
+    'Holo Rare VSTAR': 'Holografisch Selten VSTAR',
+    'Hyper rare': 'Hyperselten',
+    'Illustration rare': 'Selten, Illustration',
+    LEGEND: 'LEGENDE',
+    None: 'Keine',
+    'Radiant Rare': 'Selten, Strahlend',
+    Rare: 'Selten',
+    'Rare Holo': 'Selten, Holografisch',
+    'Rare Holo LV.X': 'Selten, Holografisch LV.X',
+    'Rare PRIME': 'selten, Primus',
+    'Secret Rare': 'Versteckt Selten',
+    'Shiny rare': 'Shiny rare',
+    'Shiny rare V': 'Shiny rare V',
+    'Shiny rare VMAX': 'Shiny rare VMAX',
+    'Shiny Ultra Rare': 'ultraselten, Schillernd',
+    'Special illustration rare': 'Selten, besondere Illustration',
+    'Ultra Rare': 'Ultra Selten',
+    Uncommon: 'Ungewöhnlich',
+    'Black White Rare': 'Schwarz-Weiß Selten',
+    'Mega Hyper Rare': 'Mega Hyper Selten',
+    Promo: 'Promo',
+  },
+  es: {
+    'ACE SPEC Rare': 'Rara AS TÁCTICO',
+    'Amazing Rare': 'Increíbles',
+    'Classic Collection': 'Colección Clásica',
+    Common: 'Común',
+    'Double rare': 'Rara Doble',
+    'Full Art Trainer': 'Entrenador de arte completo',
+    'Holo Rare': 'Holo Rara',
+    'Holo Rare V': 'Holo Rara V',
+    'Holo Rare VMAX': 'Holo Rara VMAX',
+    'Holo Rare VSTAR': 'Holo Rara VSTAR',
+    'Hyper rare': 'Rara Híper',
+    'Illustration rare': 'Rara Ilustración',
+    LEGEND: 'LEYENDA',
+    None: 'Ninguno',
+    'Radiant Rare': 'Rara Radiante',
+    Rare: 'Rara',
+    'Rare Holo': 'Rara Holo',
+    'Rare Holo LV.X': 'Rara Holo LV.X',
+    'Rare PRIME': 'Rara Primigenia',
+    'Secret Rare': 'Rara Secreta',
+    'Shiny rare': 'Shiny rare',
+    'Shiny rare V': 'Shiny rare V',
+    'Shiny rare VMAX': 'Shiny rare VMAX',
+    'Shiny Ultra Rare': 'Rara Ultra Variocolor',
+    'Special illustration rare': 'Rara Ilustración Especial',
+    'Ultra Rare': 'Ultra Rara',
+    Uncommon: 'Uncommon',
+    'Black White Rare': 'Rara Blanca y Negra',
+    'Mega Hyper Rare': 'Mega Hiper Rara',
+    Promo: 'Promo',
+  },
+  it: {
+    'ACE SPEC Rare': 'rara ASSO TATTICO',
+    'Amazing Rare': 'Policrome',
+    'Classic Collection': 'Collezione Classica',
+    Common: 'Comune',
+    'Double rare': 'Rara doppia',
+    'Full Art Trainer': "Allenatore d'arte completa",
+    'Holo Rare': 'Olografica Rara',
+    'Holo Rare V': 'Olografica Rara V',
+    'Holo Rare VMAX': 'Olografica Rara VMAX',
+    'Holo Rare VSTAR': 'Olografica Rara VSTAR',
+    'Hyper rare': 'Rara iper',
+    'Illustration rare': 'Rara illustrazione',
+    LEGEND: 'LEGGENDA',
+    None: 'Nessuna',
+    'Radiant Rare': 'Rara Lucente',
+    Rare: 'Rara',
+    'Rare Holo': 'Rara Olografica',
+    'Rare Holo LV.X': 'Rara Olografica LV.X',
+    'Rare PRIME': 'Super rara',
+    'Secret Rare': 'Segreto rara',
+    'Shiny rare': 'Shiny rare',
+    'Shiny rare V': 'Shiny rare V',
+    'Shiny rare VMAX': 'Shiny rare VMAX',
+    'Shiny Ultra Rare': 'ultrarara cromatica',
+    'Special illustration rare': 'Rara illustrazione speciale',
+    'Ultra Rare': 'Ultrarara',
+    Uncommon: 'Non comune',
+    'Black White Rare': 'Rara Bianco e Nero',
+    'Mega Hyper Rare': 'Mega Iper Raro',
+    Promo: 'Promo',
+  },
+  pt: {
+    'ACE SPEC Rare': 'ACE SPEC Raro',
+    'Amazing Rare': 'Raras Incríveis',
+    'Classic Collection': 'Coleção Clásica',
+    Common: 'Comum',
+    'Double rare': 'Rara Dupla',
+    'Full Art Trainer': 'Arte Completa de Treinador',
+    'Holo Rare': 'Rara Holo',
+    'Holo Rare V': 'Rara Holo V',
+    'Holo Rare VMAX': 'Rara Holo VMAX',
+    'Holo Rare VSTAR': 'Rara Holo VSTAR',
+    'Hyper rare': 'Hiper rara',
+    'Illustration rare': 'Ilustração Rara',
+    LEGEND: 'LEGEND',
+    None: 'None',
+    'Radiant Rare': 'Rara Radiante',
+    Rare: 'Rara',
+    'Rare Holo': 'Rara Holo',
+    'Rare Holo LV.X': 'Rara Holo LV.X',
+    'Rare PRIME': 'Rara Prime',
+    'Secret Rare': 'Rare Secreta',
+    'Shiny rare': 'Shiny rara',
+    'Shiny rare V': 'Shiny rara V',
+    'Shiny rare VMAX': 'Shiny rara VMAX',
+    'Shiny Ultra Rare': 'Brilhante Ultra Rara',
+    'Special illustration rare': 'Ilustração Rara Especial',
+    'Ultra Rare': 'Ultra Rara',
+    Uncommon: 'Incomum',
+    'Black White Rare': 'Rara Preto e Branco',
+    'Mega Hyper Rare': 'Mega Hiper Raro',
+    Promo: 'Promo',
+  },
+};
+
+export interface LocalizedAliasConflict {
+  /** The raw localized word two languages disagree about. */
+  raw: string;
+  /** The canonical value it was actually mapped to (first language wins). */
+  keptCanonical: string;
+  keptLanguage: string;
+  /** The canonical value a LATER language wanted instead; dropped, not applied. */
+  droppedCanonical: string;
+  droppedLanguage: string;
+}
+
+export interface LocalizedAliasDerivation {
+  aliases: Record<string, string>;
+  conflicts: LocalizedAliasConflict[];
+}
+
+/**
+ * Inverts EUROPEAN_RARITY_DICTIONARIES (canonical -> localized, per
+ * language) into raw -> canonical, the direction normalizeRarity() needs.
+ * A dictionary entry is skipped when its canonical key isn't one this app
+ * actually tracks (CANONICAL_RARITIES -- e.g. the Pocket-only vocabulary
+ * already excluded from the tables above, plus any future dictionary key
+ * this app has no rarity for yet), or when its localized word is empty or
+ * already equal to a canonical spelling (self-consistent, needs no alias).
+ *
+ * Exactly one real collision exists across the five current dictionaries:
+ * pt's own dictionary maps BOTH "Rare Holo" and "Holo Rare" to the literal
+ * string "Rara Holo" (an upstream inconsistency, not introduced here) --
+ * es's unambiguous "Rare Holo" -> "Rara Holo" entry is processed first (see
+ * EUROPEAN_RARITY_DICTIONARIES's fr/de/es/it/pt key order) and wins;
+ * whichever entry loses a collision is reported in `conflicts` instead of
+ * silently overwriting the winner, so a human can revisit it if it matters.
+ */
+export function deriveLocalizedRarityAliases(
+  dictionaries: Record<string, Record<string, string>>
+): LocalizedAliasDerivation {
+  const aliases: Record<string, string> = {};
+  const wonBy: Record<string, string> = {};
+  const conflicts: LocalizedAliasConflict[] = [];
+
+  for (const [language, dict] of Object.entries(dictionaries)) {
+    for (const [canonical, localized] of Object.entries(dict)) {
+      if (!CANONICAL_SET.has(canonical)) continue;
+      const raw = (localized ?? '').trim();
+      if (raw === '' || CANONICAL_SET.has(raw)) continue;
+
+      const existing = aliases[raw];
+      if (existing === undefined) {
+        aliases[raw] = canonical;
+        wonBy[raw] = language;
+      } else if (existing !== canonical) {
+        conflicts.push({
+          raw,
+          keptCanonical: existing,
+          keptLanguage: wonBy[raw],
+          droppedCanonical: canonical,
+          droppedLanguage: language,
+        });
+      }
+    }
+  }
+
+  return { aliases, conflicts };
+}
+
+export const { aliases: LOCALIZED_RARITY_ALIASES, conflicts: LOCALIZED_RARITY_ALIAS_CONFLICTS } =
+  deriveLocalizedRarityAliases(EUROPEAN_RARITY_DICTIONARIES);
+
+// Single lookup table normalizeRarity() actually consults: the hand-curated
+// site-code table plus the dictionary-derived European table. The two are
+// disjoint by construction (site codes are short all-caps tokens harvested
+// from an unrelated wiki template column; European words come from a
+// completely different vocabulary) -- confirmed no key overlap when this
+// was added -- so merge order doesn't matter for any value that exists
+// today, but RARITY_ALIASES is spread last so a future hand-added entry
+// there would win over the generated table if the two ever did collide.
+const ALL_ALIASES: Record<string, string> = { ...LOCALIZED_RARITY_ALIASES, ...RARITY_ALIASES };
+
 /**
  * Maps one raw `rarity` value onto this app's canonical vocabulary.
  * Already-canonical values (including "" -> effectively absent) pass
@@ -190,7 +478,7 @@ export function normalizeRarity(raw: string | null | undefined): string {
   const trimmed = (raw ?? '').trim();
   if (trimmed === '') return 'Unknown';
   if (CANONICAL_SET.has(trimmed)) return trimmed;
-  return RARITY_ALIASES[trimmed] ?? 'Unknown';
+  return ALL_ALIASES[trimmed] ?? 'Unknown';
 }
 
 // --- Batch application over one database file ------------------------------
@@ -385,6 +673,15 @@ async function main(): Promise<void> {
 
   const grandTotal = Array.from(perLanguage.values()).reduce((n, a) => n + a.changed, 0);
   console.log(`\n${grandTotal} record(s) changed across ${results.length} file(s).${write ? '' : ' (dry-run -- nothing written; pass --write to persist)'}`);
+
+  if (LOCALIZED_RARITY_ALIAS_CONFLICTS.length > 0) {
+    console.log('\nEuropean dictionary conflicts (raw value ambiguous between languages; first-seen language kept, see deriveLocalizedRarityAliases):');
+    for (const conflict of LOCALIZED_RARITY_ALIAS_CONFLICTS) {
+      console.log(
+        `  "${conflict.raw}": kept "${conflict.keptCanonical}" (${conflict.keptLanguage}), dropped "${conflict.droppedCanonical}" (${conflict.droppedLanguage})`
+      );
+    }
+  }
 }
 
 const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);

@@ -36,6 +36,27 @@
 //                        data/harvest/zh-cn-articles.json, without ever
 //                        overwriting a curated entry. See zhCnDiscovery.ts.
 //
+//   --job images-deep    Per-card deep image resolution for already-held
+//                        cards with NO image at all, across every generation
+//                        file for a language (not just Gen1) -- the harder
+//                        follow-up to --job images for exactly the cards
+//                        that job's batched filename guess can't find,
+//                        because our stored setNames diverge from the wiki's
+//                        own article naming (promos and vintage reprints
+//                        especially). Resolves each card's own ARTICLE TITLE
+//                        first (direct guess, orthographic variants, then a
+//                        scored title search restricted to card-article-
+//                        shaped titles), then reads that article's infobox
+//                        image field -- never trusting a match whose own
+//                        "(Set Number)" disambiguator disagrees with the
+//                        held card beyond normalization. See
+//                        deepImageResolver.ts. Checkpoints per ~25-card
+//                        chunk (not per set, since a chunk spans many sets),
+//                        writing data/harvest/<lang>/images-deep-<chunk>.json
+//                        in the same shape --job images writes, so it's
+//                        picked up by the existing mergeImages path
+//                        unchanged.
+//
 // All job types checkpoint into data/harvest/progress.json after EVERY set,
 // so a killed run resumes exactly where it left off (already-done sets are
 // skipped on the next invocation, not re-fetched). Console output is
@@ -53,6 +74,15 @@ import {
   resolveCardImages,
   toFileTitle,
 } from './cardImageResolver';
+import {
+  cardCodesMatch,
+  normalizeCardCode,
+  resolveCardArticleLadder,
+  resolveFilenameGuessBatch,
+  type DeepImageJobCard,
+  type DeepResolvedCard,
+} from './deepImageResolver';
+import { generateTitleVariants } from './titleVariants';
 import { buildEnrichmentJobs, type EnrichmentJob, type LocalIncompleteManifest } from './enrichmentJobs';
 import {
   buildMissingSetJobs,
@@ -486,6 +516,76 @@ export async function resolveImageJobCards(
   }));
 }
 
+// --- Deep image resolution for already-held cards with NO image at all -----
+//
+// Unlike buildImageJobs (one job per setId, resolved by the cheap batched
+// filename guess only), this targets the same underlying population --
+// held cards with no image at all -- across EVERY generation file for a
+// language (not just Gen1), ordered most-browsed-first, and escalates to
+// per-card article-title resolution (deepImageResolver.ts) for whatever the
+// cheap guess still can't find. See --job images-deep's own doc comment
+// above for the full ladder.
+
+/** Every generation's card database for one language, keyed by generation number (1-9), as read from public/data/cards/<lang>.json + public/data/cards/<lang>/gen<N>.json. */
+export type LanguageGenerationFiles = Map<number, Record<string, CardRecord[]>>;
+
+/**
+ * Builds the ordered images-deep work queue: every held card across every
+ * loaded generation file with no image at all, most-browsed first -- Gen1
+ * ascending by dex number, then Gen2 ascending, ... Gen9 ascending (a
+ * language missing some generation files simply skips them; nothing is
+ * inferred). Pure and network-free -- the CLI reads every
+ * public/data/cards file from disk and hands the parsed objects in here.
+ */
+export function buildDeepImageQueue(generationFiles: LanguageGenerationFiles): DeepImageJobCard[] {
+  const queue: DeepImageJobCard[] = [];
+  const generations = [...generationFiles.keys()].sort((a, b) => a - b);
+  for (const generation of generations) {
+    const cardsByDex = generationFiles.get(generation)!;
+    const dexNumbers = Object.keys(cardsByDex)
+      .map(Number)
+      .sort((a, b) => a - b);
+    for (const dexNumber of dexNumbers) {
+      for (const card of cardsByDex[String(dexNumber)] ?? []) {
+        if (card.imageBase || card.hostedThumbUrl || card.hostedFullUrl) continue;
+        queue.push({
+          cardId: card.id,
+          dexNumber: card.dexNumber,
+          generation,
+          name: card.name,
+          localId: card.localId,
+          rarity: card.rarity,
+          setId: card.setId,
+          setName: card.setName,
+        });
+      }
+    }
+  }
+  return queue;
+}
+
+export const DEEP_IMAGE_CHUNK_SIZE = 25;
+
+/** Splits an already-ordered queue into fixed-size chunks, the last one possibly shorter. Pure, generic -- used for both dry-run reporting and the real per-chunk checkpoint loop. */
+export function chunkQueue<T>(items: T[], size: number = DEEP_IMAGE_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+/** One images-deep chunk's output -- same required fields as ImageHarvestResult (so mergeImages/mergeHarvest.ts's images-file loader accepts it unchanged, matched via the shared `images-` filename prefix), plus diagnostics mergeImages simply ignores. */
+export interface DeepImageHarvestResult {
+  language: string;
+  setId: string;
+  setName: string;
+  harvestedAt: string;
+  totalCards: number;
+  imagesResolved: number;
+  cards: DeepResolvedCard[];
+  skipped: Array<{ cardId: string; name: string; setName: string; localId: string; reason: string }>;
+  chunkIndex: number;
+}
+
 // --- Enrichment -------------------------------------------------------------
 
 export interface EnrichmentFill {
@@ -626,12 +726,22 @@ export interface ProgressFile {
   missingSets: Record<string, Record<string, { setName: string; gen1Count: number; totalRows: number; completedAt: string }>>;
   enrich: Record<string, Record<string, { needsRarity: boolean; needsSetName: boolean; appliedCount: number; completedAt: string }>>;
   images: Record<string, Record<string, { cardCount: number; imagesResolved: number; completedAt: string }>>;
+  /**
+   * Per-language images-deep checkpoint: every cardId already attempted
+   * (resolved OR conclusively skipped) via --job images-deep, keyed for
+   * O(1) resume-skip -- the work queue itself is recomputed fresh every run
+   * rather than addressed by a stable chunk index, since the held database
+   * can change between runs. `nextChunk` is a simple incrementing counter
+   * for output filenames only. Optional for backward compatibility with a
+   * progress.json written before this job type existed.
+   */
+  imagesDeep?: Record<string, { doneCardIds: Record<string, true>; nextChunk: number }>;
   /** Missing-set jobs that failed outright (never produced an output file) -- see runMissingSets' catch block and --job retry-failed. */
   failed: Record<string, Record<string, MissingSetFailureEntry>>;
 }
 
 export function emptyProgress(): ProgressFile {
-  return { missingSets: {}, enrich: {}, images: {}, failed: {} };
+  return { missingSets: {}, enrich: {}, images: {}, imagesDeep: {}, failed: {} };
 }
 
 export function isMissingSetDone(progress: ProgressFile, language: string, proposedSetId: string): boolean {
@@ -644,6 +754,11 @@ export function isEnrichDone(progress: ProgressFile, language: string, setId: st
 
 export function isImagesDone(progress: ProgressFile, language: string, setId: string): boolean {
   return Boolean(progress.images?.[language]?.[setId]);
+}
+
+/** True when a card has already been attempted (resolved or conclusively skipped) by a previous --job images-deep run. */
+export function isDeepImageCardDone(progress: ProgressFile, language: string, cardId: string): boolean {
+  return Boolean(progress.imagesDeep?.[language]?.doneCardIds[cardId]);
 }
 
 export function isMissingSetFailed(progress: ProgressFile, language: string, setId: string): boolean {
@@ -696,14 +811,14 @@ export function selectPendingJobs<T>(jobs: T[], isDone: (job: T) => boolean, lim
 
 interface CliArgs {
   language: string;
-  job: 'missing-sets' | 'enrich' | 'images' | 'retry-failed' | 'discover-zh-cn';
+  job: 'missing-sets' | 'enrich' | 'images' | 'images-deep' | 'retry-failed' | 'discover-zh-cn';
   limit?: number;
   dryRun: boolean;
   /** Dumps every fetched article's wikitext to data/harvest/debug/, not just zero-row ones (which always dump regardless of this flag). */
   dumpWikitext: boolean;
 }
 
-const JOB_VALUES = ['missing-sets', 'enrich', 'images', 'retry-failed', 'discover-zh-cn'] as const;
+const JOB_VALUES = ['missing-sets', 'enrich', 'images', 'images-deep', 'retry-failed', 'discover-zh-cn'] as const;
 
 export function parseArgs(argv: string[]): CliArgs {
   let language: string | undefined;
@@ -772,6 +887,7 @@ async function loadProgress(): Promise<ProgressFile> {
       missingSets: parsed.missingSets ?? {},
       enrich: parsed.enrich ?? {},
       images: parsed.images ?? {},
+      imagesDeep: parsed.imagesDeep ?? {},
       failed: parsed.failed ?? {},
     };
   } catch {
@@ -1101,6 +1217,166 @@ async function runImages(cli: CliArgs): Promise<void> {
   }
 }
 
+const GENERATION_COUNT = 9;
+
+/** Best-effort read of one generation's card database for a language -- generation 1 lives at public/data/cards/<lang>.json, generations 2-9 at public/data/cards/<lang>/gen<N>.json. A language missing a given generation file (not every language has all 9 yet) returns null rather than throwing. */
+async function loadGenerationCardsByDex(language: string, generation: number): Promise<Record<string, CardRecord[]> | null> {
+  const filePath =
+    generation === 1
+      ? path.join(APP_CARDS_DIR, `${language}.json`)
+      : path.join(APP_CARDS_DIR, language, `gen${generation}.json`);
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8')) as Record<string, CardRecord[]>;
+  } catch {
+    return null;
+  }
+}
+
+async function loadAllGenerationsForLanguage(language: string): Promise<LanguageGenerationFiles> {
+  const files: LanguageGenerationFiles = new Map();
+  for (let generation = 1; generation <= GENERATION_COUNT; generation++) {
+    const cardsByDex = await loadGenerationCardsByDex(language, generation);
+    if (cardsByDex) files.set(generation, cardsByDex);
+  }
+  return files;
+}
+
+function ensureImagesDeepState(
+  progress: ProgressFile,
+  language: string
+): { doneCardIds: Record<string, true>; nextChunk: number } {
+  progress.imagesDeep ??= {};
+  progress.imagesDeep[language] ??= { doneCardIds: {}, nextChunk: 0 };
+  return progress.imagesDeep[language];
+}
+
+async function runImagesDeep(cli: CliArgs): Promise<void> {
+  const generationFiles = await loadAllGenerationsForLanguage(cli.language);
+  const fullQueue = buildDeepImageQueue(generationFiles);
+  const progress = await loadProgress();
+  const state = ensureImagesDeepState(progress, cli.language);
+
+  const isDone = (card: DeepImageJobCard) => Boolean(state.doneCardIds[card.cardId]);
+  const pendingAll = fullQueue.filter((card) => !isDone(card));
+  const pending = selectPendingJobs(fullQueue, isDone, cli.limit);
+
+  console.log(
+    `Planned images-deep for ${cli.language}: ${fullQueue.length} imageless card(s) across ${generationFiles.size} generation file(s), ` +
+      `${pendingAll.length} pending after resume filter` +
+      (typeof cli.limit === 'number' ? `; processing ${pending.length} this run (--limit ${cli.limit})` : '') +
+      '.'
+  );
+  if (cli.dryRun) {
+    for (const chunk of chunkQueue(pending)) {
+      const preview = chunk
+        .slice(0, 3)
+        .map((c) => `${c.name}#${c.localId}(${c.setId})`)
+        .join(', ');
+      console.log(`  [dry-run] chunk of ${chunk.length}: ${preview}${chunk.length > 3 ? ', ...' : ''}`);
+    }
+    return;
+  }
+  if (pending.length === 0) return;
+
+  const client = createWikiApiClient();
+  const outputDir = harvestOutputDir(cli.language);
+  await mkdir(outputDir, { recursive: true });
+
+  const chunks = chunkQueue(pending);
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    const chunkNumber = state.nextChunk;
+    console.log(`images-deep chunk ${c + 1}/${chunks.length} for ${cli.language} (chunk #${chunkNumber}, ${chunk.length} card(s))`);
+
+    try {
+      const results: DeepResolvedCard[] = [];
+      const skipped: DeepImageHarvestResult['skipped'] = [];
+
+      // Step (a): the cheap batched filename guess, generalized to this
+      // chunk's per-card setNames -- see deepImageResolver.ts's own doc
+      // comment on why the plain-images-job's grouped version can't be
+      // reused verbatim here.
+      const guessed = await resolveFilenameGuessBatch(client, chunk);
+      const stillUnresolved: DeepImageJobCard[] = [];
+      for (const card of chunk) {
+        const hit = guessed.get(card.cardId);
+        if (hit) {
+          results.push({
+            cardId: card.cardId,
+            dexNumber: card.dexNumber,
+            localId: card.localId,
+            imageFileTitle: hit.fileTitle,
+            imageUrl: hit.url,
+            imageMissing: false,
+            method: 'filename-guess',
+            skipReason: null,
+          });
+        } else {
+          stillUnresolved.push(card);
+        }
+      }
+
+      // Steps (b)/(c)/(d): the per-card article-title ladder, one card at a
+      // time -- each parsePageWikitext/searchPageTitles/queryImageInfo call
+      // goes through the same client's shared politeScheduler, so the 5s
+      // host gap applies automatically without any extra pacing code here.
+      for (const card of stillUnresolved) {
+        try {
+          const resolved = await resolveCardArticleLadder(client, card);
+          results.push(resolved);
+          if (resolved.skipReason) {
+            skipped.push({ cardId: card.cardId, name: card.name, setName: card.setName, localId: card.localId, reason: resolved.skipReason });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          results.push({
+            cardId: card.cardId,
+            dexNumber: card.dexNumber,
+            localId: card.localId,
+            imageFileTitle: null,
+            imageUrl: null,
+            imageMissing: true,
+            method: null,
+            skipReason: `error: ${message}`,
+          });
+        }
+      }
+
+      const methodCounts: Record<string, number> = {};
+      for (const r of results) {
+        const key = r.method ?? 'unresolved';
+        methodCounts[key] = (methodCounts[key] ?? 0) + 1;
+      }
+      const imagesResolved = results.filter((r) => !r.imageMissing).length;
+
+      const chunkResult: DeepImageHarvestResult = {
+        language: cli.language,
+        setId: `images-deep-chunk-${chunkNumber}`,
+        setName: `Deep image resolution chunk ${chunkNumber}`,
+        harvestedAt: new Date().toISOString(),
+        totalCards: chunk.length,
+        imagesResolved,
+        cards: results,
+        skipped,
+        chunkIndex: chunkNumber,
+      };
+
+      await writeFile(path.join(outputDir, `images-deep-${chunkNumber}.json`), JSON.stringify(chunkResult, null, 2), 'utf8');
+
+      for (const card of chunk) state.doneCardIds[card.cardId] = true;
+      state.nextChunk += 1;
+      await saveProgress(progress);
+
+      console.log(
+        `  done: ${imagesResolved}/${chunk.length} resolved (${JSON.stringify(methodCounts)}), ${skipped.length} skipped.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  FAILED chunk #${chunkNumber}: ${message} -- chunk not marked done, will be retried in full next run.`);
+    }
+  }
+}
+
 // --- Retry-failed -------------------------------------------------------------
 
 function expectedSuffixFor(language: string): 'TCG' | 'ATCG' {
@@ -1265,6 +1541,7 @@ async function main(): Promise<void> {
   if (cli.job === 'missing-sets') await runMissingSets(cli);
   else if (cli.job === 'enrich') await runEnrich(cli);
   else if (cli.job === 'images') await runImages(cli);
+  else if (cli.job === 'images-deep') await runImagesDeep(cli);
   else if (cli.job === 'retry-failed') await runRetryFailed(cli);
   else await runDiscoverZhCn(cli);
 }

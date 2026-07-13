@@ -7,11 +7,14 @@ import { deriveSetNameFromArticleTitle, extractCsCode, parseSetPageWikitext } fr
 import type { SetlistRow, WikiImageInfo, WikiPageWikitext } from './types';
 import {
   buildCardIdIndex,
+  buildDeepImageQueue,
   buildImageJobs,
   buildRowImageCandidates,
+  chunkQueue,
   clearMissingSetFailure,
   computeEnrichmentFills,
   computeEnrichmentMatchRate,
+  DEEP_IMAGE_CHUNK_SIZE,
   deriveImageGuessCardName,
   emptyProgress,
   ENRICHMENT_MATCH_THRESHOLD,
@@ -19,6 +22,7 @@ import {
   filterGen1Rows,
   harvestFromResolvedArticles,
   imageJobCardToGen1Row,
+  isDeepImageCardDone,
   isEnrichDone,
   isImagesDone,
   isMissingSetDone,
@@ -33,6 +37,7 @@ import {
   resolveZhCnSetId,
   selectPendingJobs,
   selectRetryTargets,
+  type LanguageGenerationFiles,
   type ProgressFile,
 } from './runHarvest';
 import type { ResolvedArticle } from './retryResolution';
@@ -462,6 +467,146 @@ describe('imageJobCardToGen1Row', () => {
   });
 });
 
+describe('buildDeepImageQueue', () => {
+  function heldCard(overrides: Partial<CardRecord> = {}): CardRecord {
+    return {
+      id: 'base1-44',
+      name: 'Bisasam',
+      dexNumber: 1,
+      setId: 'base1',
+      setName: 'Grundset',
+      localId: '44',
+      rarity: 'Häufig',
+      imageBase: '',
+      language: 'de',
+      ...overrides,
+    };
+  }
+
+  it('orders Gen1 ascending by dex, then Gen2 ascending, ... across every loaded generation file', () => {
+    const files: LanguageGenerationFiles = new Map<number, Record<string, CardRecord[]>>([
+      [
+        1,
+        {
+          '25': [heldCard({ id: 'gen1-25', dexNumber: 25, name: 'Pikachu' })],
+          '1': [heldCard({ id: 'gen1-1', dexNumber: 1, name: 'Bisasam' })],
+        },
+      ],
+      [
+        2,
+        {
+          '155': [heldCard({ id: 'gen2-155', dexNumber: 155, name: 'Feurigel' })],
+          '152': [heldCard({ id: 'gen2-152', dexNumber: 152, name: 'Chikorita' })],
+        },
+      ],
+    ]);
+
+    const queue = buildDeepImageQueue(files);
+    expect(queue.map((c) => c.cardId)).toEqual(['gen1-1', 'gen1-25', 'gen2-152', 'gen2-155']);
+    expect(queue.map((c) => c.generation)).toEqual([1, 1, 2, 2]);
+  });
+
+  it('filters out any card that already has an image, by any of the three image fields', () => {
+    const files: LanguageGenerationFiles = new Map([
+      [
+        1,
+        {
+          '1': [
+            heldCard({ id: 'no-image' }),
+            heldCard({ id: 'has-imageBase', imageBase: 'https://example.invalid/1' }),
+            heldCard({ id: 'has-thumb', hostedThumbUrl: 'https://example.invalid/thumb.webp' }),
+            heldCard({ id: 'has-full', hostedFullUrl: 'https://example.invalid/full.webp' }),
+          ],
+        },
+      ],
+    ]);
+    const queue = buildDeepImageQueue(files);
+    expect(queue.map((c) => c.cardId)).toEqual(['no-image']);
+  });
+
+  it('skips a generation with no loaded file entirely, rather than erroring', () => {
+    const files: LanguageGenerationFiles = new Map([[1, { '1': [heldCard()] }]]);
+    expect(() => buildDeepImageQueue(files)).not.toThrow();
+    expect(buildDeepImageQueue(files)).toHaveLength(1);
+  });
+
+  it('carries setId/setName/rarity through onto each queued card', () => {
+    const files: LanguageGenerationFiles = new Map([[1, { '1': [heldCard({ setId: 'base1', setName: 'Grundset', rarity: 'Häufig' })] }]]);
+    const [queued] = buildDeepImageQueue(files);
+    expect(queued).toMatchObject({ setId: 'base1', setName: 'Grundset', rarity: 'Häufig', localId: '44', name: 'Bisasam' });
+  });
+});
+
+describe('chunkQueue', () => {
+  it('splits into fixed-size chunks with a shorter final chunk', () => {
+    const items = Array.from({ length: 7 }, (_, i) => i);
+    expect(chunkQueue(items, 3)).toEqual([[0, 1, 2], [3, 4, 5], [6]]);
+  });
+
+  it('defaults to DEEP_IMAGE_CHUNK_SIZE (25)', () => {
+    const items = Array.from({ length: 30 }, (_, i) => i);
+    const chunks = chunkQueue(items);
+    expect(chunks[0]).toHaveLength(DEEP_IMAGE_CHUNK_SIZE);
+    expect(chunks[1]).toHaveLength(5);
+  });
+
+  it('returns an empty array for an empty queue', () => {
+    expect(chunkQueue([])).toEqual([]);
+  });
+});
+
+describe('images-deep checkpointing', () => {
+  it('isDeepImageCardDone reflects a recorded cardId, independent of chunk boundaries', () => {
+    const progress: ProgressFile = {
+      missingSets: {},
+      enrich: {},
+      images: {},
+      imagesDeep: { en: { doneCardIds: { 'wk-en-a-1': true }, nextChunk: 3 } },
+      failed: {},
+    };
+    expect(isDeepImageCardDone(progress, 'en', 'wk-en-a-1')).toBe(true);
+    expect(isDeepImageCardDone(progress, 'en', 'wk-en-a-2')).toBe(false);
+    expect(isDeepImageCardDone(progress, 'ja', 'wk-en-a-1')).toBe(false);
+  });
+
+  it('isDeepImageCardDone on a progress.json written before this job type existed (no imagesDeep bucket) is false, not a throw', () => {
+    const legacyProgress = { missingSets: {}, enrich: {}, images: {}, failed: {} } as ProgressFile;
+    expect(() => isDeepImageCardDone(legacyProgress, 'en', 'anything')).not.toThrow();
+    expect(isDeepImageCardDone(legacyProgress, 'en', 'anything')).toBe(false);
+  });
+
+  it('selectPendingJobs composes with the queue + doneCardIds to resume mid-run regardless of chunk grouping', () => {
+    function heldCard(overrides: Partial<CardRecord> = {}): CardRecord {
+      return {
+        id: 'a-1',
+        name: 'X',
+        dexNumber: 1,
+        setId: 'a',
+        setName: 'A',
+        localId: '1',
+        rarity: 'Unknown',
+        imageBase: '',
+        language: 'en',
+        ...overrides,
+      };
+    }
+    const files: LanguageGenerationFiles = new Map<number, Record<string, CardRecord[]>>([
+      [
+        1,
+        {
+          '1': [heldCard({ id: 'a-1', localId: '1' }), heldCard({ id: 'a-2', localId: '2' }), heldCard({ id: 'a-3', localId: '3' })],
+        },
+      ],
+    ]);
+    const queue = buildDeepImageQueue(files);
+    const doneCardIds: Record<string, true> = { 'a-2': true };
+    const pending = selectPendingJobs(queue, (c) => Boolean(doneCardIds[c.cardId]));
+    // a-2 was "done" by a prior run even though it's in the MIDDLE of the
+    // queue -- resume must skip it by cardId, not by a stale chunk offset.
+    expect(pending.map((c) => c.cardId)).toEqual(['a-1', 'a-3']);
+  });
+});
+
 describe('resolveImageJobCards', () => {
   it('resolves each held card in the job via the same candidate-guess strategy as a fresh harvest', async () => {
     const job = {
@@ -790,6 +935,16 @@ describe('parseArgs', () => {
       language: 'de',
       job: 'images',
       limit: undefined,
+      dryRun: false,
+      dumpWikitext: false,
+    });
+  });
+
+  it('accepts the "images-deep" job', () => {
+    expect(parseArgs(['--lang', 'en', '--job', 'images-deep', '--limit', '40'])).toEqual({
+      language: 'en',
+      job: 'images-deep',
+      limit: 40,
       dryRun: false,
       dumpWikitext: false,
     });
