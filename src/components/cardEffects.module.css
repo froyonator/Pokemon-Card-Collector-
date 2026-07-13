@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Enlarged-card holo/foil pointer effect.
+
+   Technique credit: the general approach here -- pointer position tracked
+   into CSS custom properties, several gradient layers stacked over the card
+   art and composited with mix-blend-mode/filters, gated by a rarity tier --
+   is adapted from the idea popularized by Simon Goellner's (@simeydotme)
+   "Pokemon Cards CSS" project (https://github.com/simeydotme/pokemon-cards-css,
+   GPL-3.0, demo at https://poke-holo.simey.me/). No code, markup, or image
+   assets from that project are used here -- every gradient, texture, and
+   rule below is authored from scratch for this app's own card frame and
+   rarity data, and driven by the pointer tracking this app's own
+   useCardTilt hook (src/state/useCardTilt.ts) already does for the tilt
+   effect -- there is no second pointer listener anywhere in this file.
+
+   Rarity -> tier mapping (canonical version lives in
+   src/state/cardFoilMask.ts -- this is a mirror for readers who only ever
+   open this stylesheet):
+     sheen   Common, Uncommon, Rare, None/Promo/Classic Collection, and any
+             unrecognized rarity -- a faint ambient sheen only.
+     holo    The classic-holo family (*Holo*, Rare PRIME, Rare VMAX/VSTAR,
+             Radiant Rare, Shiny Rare, Double Rare) -- the classic holo
+             shine, masked to the illustration window via an inline
+             clip-path CardZoomOverlay computes from cardFoilMask's
+             per-era art-window rects.
+     ultra   Hyper/Secret/Ultra/Illustration/Special illustration/Mega
+             Hyper/Shiny Ultra Rare -- full-surface foil + rainbow sheen,
+             the strongest tier.
+   ========================================================================== */
+
+.foilEffect {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.foilShine,
+.foilSparkle,
+.foilRainbow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* --- shine: a broad pointer-following metallic band, the same
+   --tilt-shine-x/y/opacity custom properties useCardTilt already writes
+   onto .cardBody's inline style for the existing glare/sheen (see
+   CardZoomOverlay.module.css) -- inherited straight down to these layers,
+   no new tracking of any kind. --- */
+.foilShine {
+  background-image: linear-gradient(
+    115deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.55) 46%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.55) 54%,
+    transparent 68%
+  );
+  background-size: 240% 240%;
+  background-position: calc(100% - var(--tilt-shine-x, 50%)) calc(100% - var(--tilt-shine-y, 50%));
+  mix-blend-mode: color-dodge;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+/* --- sparkle: a procedural glitter texture -- six tiny radial-gradient
+   specks tiled across a 46x46px cell, no external asset or SVG data URI --
+   that drifts opposite the pointer for a subtle parallax, like foil grain
+   catching the light at an angle. --- */
+.foilSparkle {
+  background-image:
+    radial-gradient(circle at 15% 30%, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 62% 12%, rgba(255, 255, 255, 0.85) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 82% 62%, rgba(255, 255, 255, 0.9) 0 1.4px, transparent 1.6px),
+    radial-gradient(circle at 34% 76%, rgba(255, 255, 255, 0.75) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 6% 88%, rgba(255, 255, 255, 0.85) 0 1.2px, transparent 1.4px),
+    radial-gradient(circle at 92% 22%, rgba(255, 255, 255, 0.8) 0 1px, transparent 1.2px);
+  background-size: 46px 46px;
+  background-repeat: repeat;
+  background-position: calc(var(--tilt-shine-x, 50%) * 0.5) calc(var(--tilt-shine-y, 50%) * 0.5);
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+/* --- rainbow: a conic hue sweep centered on the pointer, only ever visible
+   on the ultra tier (see the tier rules below). --- */
+.foilRainbow {
+  background-image: conic-gradient(
+    from 0deg at var(--tilt-shine-x, 50%) var(--tilt-shine-y, 50%),
+    rgba(255, 90, 90, 0.8),
+    rgba(255, 205, 90, 0.8),
+    rgba(140, 230, 120, 0.8),
+    rgba(100, 190, 255, 0.8),
+    rgba(170, 130, 255, 0.8),
+    rgba(255, 120, 200, 0.8),
+    rgba(255, 90, 90, 0.8)
+  );
+  mix-blend-mode: color-dodge;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+/* --- tier intensity: base rules above hold every layer at opacity 0, these
+   scale it back up by tier via the pointer's own --tilt-shine-opacity (0
+   when the cursor isn't hovering, so a still card shows no foil at all in
+   the dynamic/pointer-reactive variant -- see .foilEffect[data-static] for
+   the reduced-motion resting look). --- */
+[data-foil-tier='sheen'] .foilShine {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.16);
+}
+[data-foil-tier='sheen'] .foilSparkle {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.12);
+}
+
+[data-foil-tier='holo'] .foilShine {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.55);
+}
+[data-foil-tier='holo'] .foilSparkle {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.5);
+}
+
+[data-foil-tier='ultra'] .foilShine {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.75);
+}
+[data-foil-tier='ultra'] .foilSparkle {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.7);
+}
+[data-foil-tier='ultra'] .foilRainbow {
+  opacity: calc(var(--tilt-shine-opacity, 0) * 0.45);
+}
+
+/* --- reduced motion: a fixed, non-pointer-reactive resting sheen. Motion is
+   disabled app-wide via useCardTilt's own shouldReduceMotion check (see
+   useCardTilt.ts), which means --tilt-shine-x/y/opacity are never written
+   at all in this mode -- every var() above would silently fall back to its
+   default (0 opacity, 50% position) and the card would show no foil
+   whatsoever. CardZoomOverlay renders this as a SEPARATE data-static
+   element (never the pointer-tracking one) precisely so its opacity/
+   position never depend on those unset custom properties: fixed values
+   only, and no transition, since nothing here ever changes after paint. --- */
+.foilEffect[data-static='true'] .foilShine,
+.foilEffect[data-static='true'] .foilSparkle,
+.foilEffect[data-static='true'] .foilRainbow {
+  transition: none;
+  background-position: 38% 32%;
+}
+
+.foilEffect[data-static='true'][data-foil-tier='sheen'] .foilShine {
+  opacity: 0.1;
+}
+.foilEffect[data-static='true'][data-foil-tier='sheen'] .foilSparkle {
+  opacity: 0.08;
+}
+
+.foilEffect[data-static='true'][data-foil-tier='holo'] .foilShine {
+  opacity: 0.26;
+}
+.foilEffect[data-static='true'][data-foil-tier='holo'] .foilSparkle {
+  opacity: 0.2;
+}
+
+.foilEffect[data-static='true'][data-foil-tier='ultra'] .foilShine {
+  opacity: 0.38;
+}
+.foilEffect[data-static='true'][data-foil-tier='ultra'] .foilSparkle {
+  opacity: 0.3;
+}
+.foilEffect[data-static='true'][data-foil-tier='ultra'] .foilRainbow {
+  opacity: 0.16;
+}
