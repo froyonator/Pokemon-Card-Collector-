@@ -1815,5 +1815,421 @@
       "name": "Gigantamax Hatterene",
       "animated": true
     }
+  ],
+  "regional": [
+    {
+      "slug": "rattata-alola",
+      "baseDex": 19,
+      "name": "Alolan Rattata",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "meowth-galar",
+      "baseDex": 52,
+      "name": "Galarian Meowth",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "growlithe-hisui",
+      "baseDex": 58,
+      "name": "Hisuian Growlithe",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "tauros-paldea-combat-breed",
+      "baseDex": 128,
+      "name": "Paldean Tauros (Combat Breed)",
+      "family": "paldean",
+      "animated": false
+    },
+    {
+      "slug": "raticate-alola",
+      "baseDex": 20,
+      "name": "Alolan Raticate",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "ponyta-galar",
+      "baseDex": 77,
+      "name": "Galarian Ponyta",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "arcanine-hisui",
+      "baseDex": 59,
+      "name": "Hisuian Arcanine",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "tauros-paldea-blaze-breed",
+      "baseDex": 128,
+      "name": "Paldean Tauros (Blaze Breed)",
+      "family": "paldean",
+      "animated": false
+    },
+    {
+      "slug": "raticate-totem-alola",
+      "baseDex": 20,
+      "name": "Alolan Raticate (Totem Form)",
+      "family": "alolan",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "rapidash-galar",
+      "baseDex": 78,
+      "name": "Galarian Rapidash",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "voltorb-hisui",
+      "baseDex": 100,
+      "name": "Hisuian Voltorb",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "tauros-paldea-aqua-breed",
+      "baseDex": 128,
+      "name": "Paldean Tauros (Aqua Breed)",
+      "family": "paldean",
+      "animated": false
+    },
+    {
+      "slug": "raichu-alola",
+      "baseDex": 26,
+      "name": "Alolan Raichu",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "slowpoke-galar",
+      "baseDex": 79,
+      "name": "Galarian Slowpoke",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "electrode-hisui",
+      "baseDex": 101,
+      "name": "Hisuian Electrode",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "wooper-paldea",
+      "baseDex": 194,
+      "name": "Paldean Wooper",
+      "family": "paldean",
+      "animated": true
+    },
+    {
+      "slug": "sandshrew-alola",
+      "baseDex": 27,
+      "name": "Alolan Sandshrew",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "slowbro-galar",
+      "baseDex": 80,
+      "name": "Galarian Slowbro",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "typhlosion-hisui",
+      "baseDex": 157,
+      "name": "Hisuian Typhlosion",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "sandslash-alola",
+      "baseDex": 28,
+      "name": "Alolan Sandslash",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "farfetchd-galar",
+      "baseDex": 83,
+      "name": "Galarian Farfetch'd",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "qwilfish-hisui",
+      "baseDex": 211,
+      "name": "Hisuian Qwilfish",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "vulpix-alola",
+      "baseDex": 37,
+      "name": "Alolan Vulpix",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "weezing-galar",
+      "baseDex": 110,
+      "name": "Galarian Weezing",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "sneasel-hisui",
+      "baseDex": 215,
+      "name": "Hisuian Sneasel",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "ninetales-alola",
+      "baseDex": 38,
+      "name": "Alolan Ninetales",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "mr-mime-galar",
+      "baseDex": 122,
+      "name": "Galarian Mr. Mime",
+      "family": "galarian",
+      "animated": false
+    },
+    {
+      "slug": "samurott-hisui",
+      "baseDex": 503,
+      "name": "Hisuian Samurott",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "diglett-alola",
+      "baseDex": 50,
+      "name": "Alolan Diglett",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "articuno-galar",
+      "baseDex": 144,
+      "name": "Galarian Articuno",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "lilligant-hisui",
+      "baseDex": 549,
+      "name": "Hisuian Lilligant",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "dugtrio-alola",
+      "baseDex": 51,
+      "name": "Alolan Dugtrio",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "zapdos-galar",
+      "baseDex": 145,
+      "name": "Galarian Zapdos",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "zorua-hisui",
+      "baseDex": 570,
+      "name": "Hisuian Zorua",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "meowth-alola",
+      "baseDex": 52,
+      "name": "Alolan Meowth",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "moltres-galar",
+      "baseDex": 146,
+      "name": "Galarian Moltres",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "zoroark-hisui",
+      "baseDex": 571,
+      "name": "Hisuian Zoroark",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "persian-alola",
+      "baseDex": 53,
+      "name": "Alolan Persian",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "slowking-galar",
+      "baseDex": 199,
+      "name": "Galarian Slowking",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "braviary-hisui",
+      "baseDex": 628,
+      "name": "Hisuian Braviary",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "geodude-alola",
+      "baseDex": 74,
+      "name": "Alolan Geodude",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "corsola-galar",
+      "baseDex": 222,
+      "name": "Galarian Corsola",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "sliggoo-hisui",
+      "baseDex": 705,
+      "name": "Hisuian Sliggoo",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "graveler-alola",
+      "baseDex": 75,
+      "name": "Alolan Graveler",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "zigzagoon-galar",
+      "baseDex": 263,
+      "name": "Galarian Zigzagoon",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "goodra-hisui",
+      "baseDex": 706,
+      "name": "Hisuian Goodra",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "golem-alola",
+      "baseDex": 76,
+      "name": "Alolan Golem",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "linoone-galar",
+      "baseDex": 264,
+      "name": "Galarian Linoone",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "avalugg-hisui",
+      "baseDex": 713,
+      "name": "Hisuian Avalugg",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "grimer-alola",
+      "baseDex": 88,
+      "name": "Alolan Grimer",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "darumaka-galar",
+      "baseDex": 554,
+      "name": "Galarian Darumaka",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "decidueye-hisui",
+      "baseDex": 724,
+      "name": "Hisuian Decidueye",
+      "family": "hisuian",
+      "animated": true
+    },
+    {
+      "slug": "muk-alola",
+      "baseDex": 89,
+      "name": "Alolan Muk",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "darmanitan-galar-standard",
+      "baseDex": 555,
+      "name": "Galarian Darmanitan (Standard Mode)",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "exeggutor-alola",
+      "baseDex": 103,
+      "name": "Alolan Exeggutor",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "darmanitan-galar-zen",
+      "baseDex": 555,
+      "name": "Galarian Darmanitan (Zen Mode)",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "marowak-alola",
+      "baseDex": 105,
+      "name": "Alolan Marowak",
+      "family": "alolan",
+      "animated": true
+    },
+    {
+      "slug": "yamask-galar",
+      "baseDex": 562,
+      "name": "Galarian Yamask",
+      "family": "galarian",
+      "animated": true
+    },
+    {
+      "slug": "stunfisk-galar",
+      "baseDex": 618,
+      "name": "Galarian Stunfisk",
+      "family": "galarian",
+      "animated": true
+    }
   ]
 }
