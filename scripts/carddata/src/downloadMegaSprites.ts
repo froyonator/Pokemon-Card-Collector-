@@ -54,6 +54,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import { spriteUrl } from '../../../src/api/pokeapi';
 import { MEGA_DEX, type MegaForm } from './data/megaDex';
 import { maybeConvertToWebp, validateAnimatedImageBytes, validateStaticImageBytes } from './downloadSprites';
@@ -68,6 +69,17 @@ export const MANIFEST_PATH = path.join(REPO_ROOT, 'public/sprites/manifest.json'
 export const CHECKPOINT_PATH = path.join(REPO_ROOT, 'scripts/carddata/data/mega-sprite-download-progress.json');
 
 const POKEAPI_BASE = 'https://pokeapi.co/api/v2';
+
+// A brand-new form id sometimes has no official-artwork PNG checked into the
+// sprite archive yet (its own "other/official-artwork/<id>.png" 404s) even
+// though the archive's "home" tree (3D render crops, same per-form-id
+// numbering) already has one -- confirmed live for the newest wave's
+// Tatsugiri mega varieties. Tried only as a fallback, after the primary
+// official-artwork URL comes back 404, and recorded via the checkpoint's
+// `artSource` so the manifest can flag which forms used it.
+export function homeRenderUrl(formId: number): string {
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${formId}.png`;
+}
 
 // --- Animated slug transform ---------------------------------------------
 
@@ -116,6 +128,13 @@ export type FormIdCheckpointEntry = FormIdEntry | FormIdUnresolvedEntry;
 interface StaticDoneEntry {
   status: 'done';
   bytes: number;
+  // Which tree of the sprite archive this file actually came from --
+  // omitted (implying 'sprite', the primary official-artwork tree) for
+  // every form resolved the normal way, so existing checkpoint entries from
+  // before this field existed stay valid without a migration. Only ever
+  // 'render' today (the other/home/ fallback -- see homeRenderUrl above);
+  // left open-ended in case a future last-resort source is added.
+  artSource?: 'sprite' | 'render';
 }
 interface StaticFailedEntry {
   status: 'failed';
@@ -174,6 +193,14 @@ export interface MegaManifestEntry {
   name: string;
   animated: boolean;
   animatedExt?: 'webp';
+  // Which sprite-archive tree the static PNG came from -- omitted for the
+  // common case (the primary official-artwork tree, same as every original
+  // -wave form) so most entries stay unchanged; only set to 'render' for a
+  // form the archive only had a "home" 3D-render crop for (see
+  // downloadMegaStatic's fallback). Not consumed by the app today; kept
+  // additive so a future UI could style/label render-sourced art
+  // differently if that's ever wanted.
+  artSource?: 'render';
 }
 
 export function buildMegaManifestSection(checkpoint: MegaCheckpoint): MegaManifestEntry[] {
@@ -189,6 +216,7 @@ export function buildMegaManifestSection(checkpoint: MegaCheckpoint): MegaManife
       animated: animatedEntry?.status === 'done',
     };
     if (animatedEntry?.status === 'done' && animatedEntry.ext === 'webp') entry.animatedExt = 'webp';
+    if (staticEntry.artSource === 'render') entry.artSource = 'render';
     entries.push(entry);
   }
   entries.sort((a, b) => (megaOrderOf(a.slug) ?? 0) - (megaOrderOf(b.slug) ?? 0));
@@ -292,13 +320,44 @@ async function resolveFormId(form: MegaForm, checkpoint: MegaCheckpoint): Promis
 
 // --- Per-form download ---------------------------------------------------
 
+// Downscales to at most 512px on the long edge, preserving aspect ratio --
+// never upscales. Most of the archive's official-artwork/home-render PNGs
+// already sit at or under that size, so this is a no-op for them; it only
+// actually re-encodes a form whose source image is unusually large.
+const MAX_STATIC_DIMENSION = 512;
+
+async function downscaleIfHuge(bytes: Buffer): Promise<Buffer> {
+  try {
+    const image = sharp(bytes);
+    const metadata = await image.metadata();
+    const { width, height } = metadata;
+    if (!width || !height || (width <= MAX_STATIC_DIMENSION && height <= MAX_STATIC_DIMENSION)) {
+      return bytes;
+    }
+    return await image.resize({ width: MAX_STATIC_DIMENSION, height: MAX_STATIC_DIMENSION, fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+  } catch {
+    return bytes; // if sharp can't read it, validateStaticImageBytes already vetted the magic bytes -- just keep the original
+  }
+}
+
 async function downloadMegaStatic(form: MegaForm, formId: number, checkpoint: MegaCheckpoint): Promise<void> {
   const destPath = path.join(MEGA_STATIC_DIR, `${form.slug}.png`);
   const existing = checkpoint.static[form.slug];
   if (existing?.status === 'done' && (await fileExists(destPath))) return;
 
-  const url = spriteUrl(formId);
-  const result = await fetchBytesWithRetry(url);
+  const primaryResult = await fetchBytesWithRetry(spriteUrl(formId));
+  let result = primaryResult;
+  let artSource: 'sprite' | 'render' = 'sprite';
+  if (!primaryResult.ok && primaryResult.status === 404) {
+    // The primary official-artwork tree has nothing for this form id yet --
+    // try the archive's "home" render tree before giving up (see
+    // homeRenderUrl above).
+    const fallbackResult = await fetchBytesWithRetry(homeRenderUrl(formId));
+    if (fallbackResult.ok) {
+      result = fallbackResult;
+      artSource = 'render';
+    }
+  }
   if (!result.ok) {
     checkpoint.static[form.slug] = { status: 'failed', reason: `HTTP ${result.status}` };
     console.warn(`[static] ${form.slug}: HTTP ${result.status}`);
@@ -310,9 +369,14 @@ async function downloadMegaStatic(form: MegaForm, formId: number, checkpoint: Me
     console.warn(`[static] ${form.slug}: ${validation.reason}`);
     return;
   }
+  const finalBytes = await downscaleIfHuge(result.bytes);
   await mkdir(MEGA_STATIC_DIR, { recursive: true });
-  await writeFile(destPath, result.bytes);
-  checkpoint.static[form.slug] = { status: 'done', bytes: result.bytes.byteLength };
+  await writeFile(destPath, finalBytes);
+  checkpoint.static[form.slug] = {
+    status: 'done',
+    bytes: finalBytes.byteLength,
+    ...(artSource === 'render' ? { artSource } : {}),
+  };
 }
 
 async function downloadMegaAnimated(form: MegaForm, checkpoint: MegaCheckpoint): Promise<void> {

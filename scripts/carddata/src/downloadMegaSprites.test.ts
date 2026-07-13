@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildMegaManifestSection,
   emptyMegaCheckpoint,
+  homeRenderUrl,
   loadMegaCheckpoint,
   megaAnimatedSlug,
   megaAnimatedSpriteUrl,
@@ -37,6 +38,14 @@ describe('megaAnimatedSlug', () => {
 
   it('applies the explicit override for Meowstic, whose animated-host name does not follow the general transform', () => {
     expect(megaAnimatedSlug('meowstic-male-mega')).toBe('meowstic-mmega');
+  });
+});
+
+describe('homeRenderUrl', () => {
+  it('builds the sprite archive\'s "home" render URL from a numeric form id', () => {
+    expect(homeRenderUrl(10322)).toBe(
+      'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/10322.png'
+    );
   });
 });
 
@@ -92,6 +101,32 @@ describe('buildMegaManifestSection', () => {
 
   it('produces an empty section for an empty checkpoint', () => {
     expect(buildMegaManifestSection(emptyMegaCheckpoint())).toEqual([]);
+  });
+
+  it('records artSource: render for a form whose static art came from the home-render fallback', () => {
+    const checkpoint: MegaCheckpoint = {
+      formIds: {},
+      static: { 'venusaur-mega': { status: 'done', bytes: 100, artSource: 'render' } },
+      animated: {},
+    };
+    const section = buildMegaManifestSection(checkpoint);
+    expect(section[0]).toEqual({
+      slug: 'venusaur-mega',
+      baseDex: 3,
+      name: 'Mega Venusaur',
+      animated: false,
+      artSource: 'render',
+    });
+  });
+
+  it('omits artSource entirely for a form resolved the normal way (no artSource on the checkpoint entry)', () => {
+    const checkpoint: MegaCheckpoint = {
+      formIds: {},
+      static: { 'venusaur-mega': { status: 'done', bytes: 100 } },
+      animated: {},
+    };
+    const section = buildMegaManifestSection(checkpoint);
+    expect(section[0]).not.toHaveProperty('artSource');
   });
 });
 
@@ -160,6 +195,18 @@ describe('mega checkpoint load/save round trip', () => {
       formIds: { 'venusaur-mega': { status: 'resolved', formId: 10033 } },
       static: { 'venusaur-mega': { status: 'done', bytes: 12345 } },
       animated: { 'venusaur-mega': { status: 'done', ext: 'gif', bytes: 999 } },
+    };
+    await saveMegaCheckpoint(filePath, checkpoint);
+    const loaded = await loadMegaCheckpoint(filePath);
+    expect(loaded).toEqual(checkpoint);
+  });
+
+  it('round-trips a static entry with artSource: render', async () => {
+    const filePath = path.join(tmpDir, 'progress.json');
+    const checkpoint: MegaCheckpoint = {
+      formIds: { 'tatsugiri-curly-mega': { status: 'resolved', formId: 10322 } },
+      static: { 'tatsugiri-curly-mega': { status: 'done', bytes: 137407, artSource: 'render' } },
+      animated: { 'tatsugiri-curly-mega': { status: 'not-found' } },
     };
     await saveMegaCheckpoint(filePath, checkpoint);
     const loaded = await loadMegaCheckpoint(filePath);

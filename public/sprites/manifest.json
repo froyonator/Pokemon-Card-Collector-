@@ -1604,6 +1604,20 @@
       "animatedExt": "webp"
     },
     {
+      "slug": "tatsugiri-curly-mega",
+      "baseDex": 978,
+      "name": "Mega Tatsugiri (Curly Form)",
+      "animated": false,
+      "artSource": "render"
+    },
+    {
+      "slug": "tatsugiri-droopy-mega",
+      "baseDex": 978,
+      "name": "Mega Tatsugiri (Droopy Form)",
+      "animated": false,
+      "artSource": "render"
+    },
+    {
       "slug": "tatsugiri-stretchy-mega",
       "baseDex": 978,
       "name": "Mega Tatsugiri (Stretchy Form)",

@@ -108,6 +108,27 @@ describe('megaSpriteUrls', () => {
     expect(urls.animatedUrl).toBeNull();
   });
 
+  it('uses the manifest-specified extension (e.g. .webp) instead of the .gif default for a mega slug', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        mega: [
+          {
+            slug: 'charizard-mega-x',
+            baseDex: 6,
+            name: 'Mega Charizard X',
+            animated: true,
+            animatedExt: 'webp',
+          },
+        ],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = megaSpriteUrls(entry);
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/mega/animated/charizard-mega-x.webp`);
+  });
+
   it('falls back entirely to the base species sprite when the manifest does not list this slug at all', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

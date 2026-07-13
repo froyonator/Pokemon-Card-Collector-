@@ -16,6 +16,7 @@ interface MegaManifestEntry {
   baseDex: number;
   name: string;
   animated: boolean;
+  animatedExt?: 'webp';
 }
 
 // public/sprites/manifest.json's own shape -- see downloadSprites.ts.
@@ -34,6 +35,13 @@ interface SpriteManifestCache {
   // future roster addition the sprite pipeline hasn't downloaded yet).
   megaStaticSlugs: Set<string>;
   megaAnimatedSlugs: Set<string>;
+  // Mirrors animatedFormats above, but for mega slugs: a mega form whose
+  // animated file was saved as .webp (see maybeConvertToWebp in
+  // downloadMegaSprites.ts) needs that extension here, or megaSpriteUrls
+  // below would build a URL for a .gif that was never written -- an onError
+  // 404 that used to fall the WHOLE tile all the way back to the base
+  // species' live sprite, wiping out perfectly good mega static art too.
+  megaAnimatedFormats: Record<string, string>;
 }
 
 // Empty coverage -- every dex number resolves to "no animated sprite" (pure
@@ -46,6 +54,7 @@ const EMPTY_MANIFEST: SpriteManifestCache = {
   animatedFormats: {},
   megaStaticSlugs: new Set(),
   megaAnimatedSlugs: new Set(),
+  megaAnimatedFormats: {},
 };
 
 // Set once loadSpriteManifest's fetch resolves (successfully or not --
@@ -71,11 +80,16 @@ async function fetchSpriteManifest(fetchImpl: typeof fetch): Promise<SpriteManif
     if (!response.ok) return EMPTY_MANIFEST;
     const data = (await response.json()) as Partial<SpriteManifest>;
     const mega = data.mega ?? [];
+    const megaAnimatedFormats: Record<string, string> = {};
+    for (const m of mega) {
+      if (m.animated && m.animatedExt) megaAnimatedFormats[m.slug] = m.animatedExt;
+    }
     return {
       animatedDexNumbers: new Set(data.animated ?? []),
       animatedFormats: data.animatedFormat ?? {},
       megaStaticSlugs: new Set(mega.map((m) => m.slug)),
       megaAnimatedSlugs: new Set(mega.filter((m) => m.animated).map((m) => m.slug)),
+      megaAnimatedFormats,
     };
   } catch {
     return EMPTY_MANIFEST;
@@ -137,8 +151,9 @@ export function megaSpriteUrls(entry: { spriteSlug: string; baseDexNumber: numbe
     return spriteUrls(entry.baseDexNumber);
   }
   const staticUrl = `${import.meta.env.BASE_URL}sprites/mega/static/${entry.spriteSlug}.png`;
+  const ext = manifestCache.megaAnimatedFormats[entry.spriteSlug] ?? 'gif';
   const animatedUrl = manifestCache.megaAnimatedSlugs.has(entry.spriteSlug)
-    ? `${import.meta.env.BASE_URL}sprites/mega/animated/${entry.spriteSlug}.gif`
+    ? `${import.meta.env.BASE_URL}sprites/mega/animated/${entry.spriteSlug}.${ext}`
     : null;
   return { staticUrl, animatedUrl };
 }
