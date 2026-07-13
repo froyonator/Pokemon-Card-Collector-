@@ -54,6 +54,13 @@ export interface CardImageProps {
   // to the placeholder/real image again -- there is otherwise no way to
   // clear an uploaded image from the UI once set.
   onRemoveUploadedImage?: () => void;
+  /** Fired when the actual rendered <img> (the hosted-URL branch or the
+   *  constructed imageBase/variant branch -- never the placeholder or
+   *  uploaded-image branches, which have nothing worth signalling) finishes
+   *  loading. Used by CardZoomOverlay to know when its hi-res layer is ready
+   *  to fade in over the thumbnail sitting beneath it. Optional and unused
+   *  by every existing caller. */
+  onLoad?: () => void;
 }
 
 interface Variant {
@@ -87,6 +94,7 @@ export function CardImage({
   preferHighQuality = false,
   hostedThumbUrl,
   hostedFullUrl,
+  onLoad,
 }: CardImageProps) {
   const [variantIndex, setVariantIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
@@ -252,6 +260,7 @@ export function CardImage({
         width={width}
         loading={loading}
         onError={handleHostedError}
+        onLoad={onLoad}
       />
     );
   }
@@ -275,6 +284,7 @@ export function CardImage({
       width={width}
       loading={loading}
       onError={handleError}
+      onLoad={onLoad}
     />
   );
 }

@@ -32,6 +32,12 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-5);
+  /* This is the element framer-motion actually spins (see
+     CardZoomOverlay.tsx's panelMotion) -- preserve-3d here starts the chain
+     that lets .cardFace/.cardFaceBack's backface-visibility correctly hide
+     whichever face is turned away, all the way down through .cardFrame and
+     .cardBody. */
+  transform-style: preserve-3d;
 }
 
 .close {
@@ -61,9 +67,13 @@
 }
 
 /* Stationary footprint for the tilt math (see CardZoomOverlay.tsx). Sized by
-   its child; never transformed. */
+   its child; never transformed. Still part of the preserve-3d chain (see
+   .panel above) even though it never rotates itself -- a single "flat"
+   (the default) link anywhere in the chain would flatten the 3D scene for
+   everything below it. */
 .cardFrame {
   position: relative;
+  transform-style: preserve-3d;
 }
 
 .cardBody {
@@ -78,6 +88,12 @@
     calc(var(--tilt-ry, 0) * -2.2px) calc(var(--tilt-rx, 0) * 2.2px + 24px) 38px
       rgba(0, 0, 0, 0.62)
   );
+  /* Part of the preserve-3d chain from .panel (see CardZoomOverlay.tsx's
+     panelMotion doc comment) down to .cardFace/.cardFaceBack's own
+     backface-visibility -- every ancestor in that chain needs this or the
+     browser flattens the 3D scene partway down and the card-back stops
+     hiding correctly mid-turn. */
+  transform-style: preserve-3d;
 }
 
 /* While the cursor is actively moving, the inline transform must track 1:1
@@ -97,6 +113,141 @@
   aspect-ratio: 5 / 7;
   height: auto;
   border-radius: var(--radius-xl);
+}
+
+/* --- thumb-first, then hi-res --- */
+
+/* Sized explicitly (rather than shrink-to-fit, like a lone .cardImage) since
+   its two children are both absolutely positioned and so contribute nothing
+   to its intrinsic size on their own. */
+.cardImageStack {
+  position: relative;
+  width: min(calc(78vh * 5 / 7), 88vw);
+  aspect-ratio: 5 / 7;
+}
+
+/* The thumbnail: the same low/webp (or resolved hosted thumb) image the
+   tile/picker cell this overlay was opened from just rendered, so it's
+   already warm in the browser cache and paints on the very first frame --
+   the panel is never left blank waiting on the network. Sits underneath the
+   hi-res layer at all times; there's nothing to fade since it's already the
+   thing on screen the instant this component mounts. */
+.cardImageThumb,
+.cardImageHiRes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The hi-res upgrade: invisible until its own <img> fires onLoad (see
+   CardZoomOverlay.tsx), then fades in over the thumbnail beneath it. Never
+   the thing gating first paint -- only ever a seamless upgrade on top of
+   whatever's already showing. */
+.cardImageHiRes {
+  opacity: 0;
+  transition: opacity 260ms var(--ease-out);
+}
+
+.cardImageHiResVisible {
+  opacity: 1;
+}
+
+/* --- card faces: front art + a dedicated card back --- */
+
+/* In normal flow -- sized by .cardFace (the front), which contains the real
+   art and is never taken out of flow. .cardFaceBack has nothing of its own
+   to size against, so it's absolutely positioned to match whatever box the
+   front established. Both faces stay in the same preserve-3d chain as their
+   ancestors above. */
+.cardFaces {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.cardFace,
+.cardFaceBack {
+  border-radius: var(--radius-xl);
+  /* Hides whichever face is currently turned away from the viewer as
+     .panel's rotateY sweeps past 90/270deg -- the actual mechanism behind
+     "the back is a real card back, not the front mirrored". */
+  backface-visibility: hidden;
+}
+
+.cardFace {
+  position: relative;
+}
+
+.cardFaceBack {
+  position: absolute;
+  inset: 0;
+  /* Pre-rotated 180deg so its content reads right-way-round once the turn
+     has carried it to face the viewer -- same technique as
+     BinderView.module.css's .leafFaceBack. */
+  transform: rotateY(180deg);
+}
+
+/* The card back itself: a deep blue plaque with a faint radial pattern and
+   a centered Poke Ball motif, deliberately distinct from the app's own warm
+   (brown/gold/ember) palette -- this is the one place in the UI meant to
+   read as "the other side of a trading card", not as more app chrome. Pure
+   CSS/SVG, not a reproduction of any official card back artwork. */
+.cardBack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  border: 6px solid rgba(240, 231, 211, 0.16);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.07), transparent 58%),
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.028) 0,
+      rgba(255, 255, 255, 0.028) 2px,
+      transparent 2px,
+      transparent 26px
+    ),
+    linear-gradient(155deg, #1c2a5e 0%, #101a3f 55%, #0a1128 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(240, 231, 211, 0.07),
+    inset 0 30px 70px rgba(0, 0, 0, 0.45);
+}
+
+/* The Poke Ball motif: same crimson/dark-band/cream construction as
+   PokeballSpinner.module.css's .ball/.button, so the two read as drawn by
+   the same hand, just static here (this is a resting card back, not a
+   loading state) and sized relative to the card rather than a fixed pixel
+   spinner. */
+.cardBackBall {
+  position: relative;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: linear-gradient(
+    to bottom,
+    var(--color-accent) 0 44%,
+    #241a10 44% 56%,
+    #f0e7d3 56% 100%
+  );
+  border: 3px solid #241a10;
+  box-shadow:
+    inset -3px -3px 8px rgba(0, 0, 0, 0.3),
+    0 10px 26px rgba(0, 0, 0, 0.5);
+}
+
+.cardBackBallButton {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30%;
+  height: 30%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #f0e7d3;
+  border: 3px solid #241a10;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.12);
 }
 
 /* --- decorative light, stacked over the art --- */

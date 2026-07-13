@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { cardImageUrl } from '../api/tcgdex';
 import { useCardTilt } from '../state/useCardTilt';
 import type { CardRecord } from '../types';
 import { CardImage } from './CardImage';
@@ -27,6 +28,24 @@ const ENTRANCE_DURATION_MS = 720;
 // class the entrance uses.
 const EXIT_DURATION_MS = 560;
 
+// The app's one shared "gentle deceleration" landing curve (see
+// src/styles/global.css's --ease-out custom property) -- reused here as a
+// literal numeric array because framer-motion's transition.ease wants
+// numbers, not a CSS var() string. Using the exact same curve the rest of
+// the app's UI motion already lands on keeps this flip's landing feeling
+// like the same hand drew it, rather than a bespoke curve invented just for
+// this one component.
+const LANDING_EASE = [0.16, 1, 0.3, 1] as const;
+
+// How long the opacity fade takes at each end of the flight, in seconds --
+// shared by both the entrance (fades in, THEN keeps flying opaque) and the
+// exit (keeps flying opaque, THEN fades out) so the two read as true
+// mirrors of each other. Deliberately shorter than the full flight: the
+// point of a flip-and-grow is to actually SEE the turn, so opacity should
+// clear out of the way early on the way in, and only step in at the very
+// end on the way out -- never dominate the middle of either flight.
+const FADE_SEGMENT_S = 0.22;
+
 export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOverlayProps) {
   const shouldReduceMotion = useReducedMotion();
   // Mirrors Picker's own hasNoImage check: a placeholder with no real art
@@ -34,6 +53,41 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // something worth tilting. An uploaded image, once it's the thing being
   // shown, is real card art from the tilt effect's point of view.
   const hasNoImage = !card.imageBase && !card.hostedFullUrl && !uploadedImageUri;
+
+  // Whether there's a cheap, already-rendered thumbnail source for this card
+  // (the same low/webp construction, or resolved hosted thumb, that the
+  // tile/picker cell this overlay was opened from just painted) worth
+  // showing instantly underneath the hi-res upgrade. A card with only a
+  // hosted FULL url and no thumb source at all (rare -- see hostedThumbUrl's
+  // own doc comment) falls back to the single-image path below rather than
+  // stacking a hi-res layer over nothing.
+  const hasThumbSource = Boolean(card.imageBase || card.hostedThumbUrl);
+  const showImageStack = !hasNoImage && hasThumbSource;
+
+  // The exact URL CardImage's own hi-res branch will resolve to (hosted
+  // full copy first, then the constructed high/png variant) -- computed
+  // here too so the moment this overlay opens, a bare `new Image()` can
+  // start fetching it immediately, in parallel with (and independent of)
+  // the CardImage component below actually mounting and requesting it. On a
+  // warm cache (the common case, since preloading fires every time this
+  // overlay opens) this just dedupes against the in-flight/cached request;
+  // on a cold one it gets the hi-res fetch started a beat earlier than
+  // waiting on React's own render/effect timing would.
+  const hiResUrl =
+    card.hostedFullUrl || (card.imageBase ? cardImageUrl(card.imageBase, 'high', 'png') : undefined);
+
+  useEffect(() => {
+    if (!hiResUrl) return;
+    const preload = new Image();
+    preload.src = hiResUrl;
+  }, [hiResUrl]);
+
+  // Flips true once the hi-res CardImage layer's own <img> fires onLoad.
+  // Starts false on every mount -- each distinct card gets a fresh overlay
+  // instance (Picker/DexGrid/BinderView all key this component by
+  // card.id), so there's no stale card's "loaded" flag to leak into a
+  // different card's first paint.
+  const [hiResLoaded, setHiResLoaded] = useState(false);
 
   // True once the entrance animation has actually landed. Reduced motion
   // has no flight to land from (just a quick fade), so it starts settled.
@@ -107,12 +161,12 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // pixel- and degree-exact.
   //
   // rotateY turns the full 360 rather than stopping at 180: stopping
-  // halfway would leave the card showing its backface. There's no
-  // dedicated card-back asset in this codebase, and neither this panel nor
-  // CardImage sets backface-visibility: hidden, so the browser's default
-  // (visible) shows the same artwork mirrored mid-turn -- fine for a beat
-  // that's gone in well under a second, and completing the full turn
-  // always lands back on the face regardless.
+  // halfway would leave the card showing its backface. .cardFace/
+  // .cardFaceBack below (see CardZoomOverlay.module.css) give that backface
+  // a real, deliberate card-back design (backface-visibility: hidden on
+  // both, the back pre-rotated 180deg) rather than the browser's default of
+  // showing the front artwork mirrored -- so mid-turn now shows an actual
+  // card back, and the full 360 always lands back on the face regardless.
   //
   // The 3D depth for this turn comes from CSS `perspective` on .overlay
   // (the panel's parent, see CardZoomOverlay.module.css) rather than a
@@ -131,6 +185,16 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // renders this overlay inside <AnimatePresence> (see Picker/DexGrid/
   // BinderView) -- without one, framer-motion applies the exit target
   // instantly on unmount, same as any other exit prop.
+  //
+  // filter carries a drop-shadow that grows from nothing at the launch/
+  // landing pose up to a soft, deep shadow at full size -- scale and shadow
+  // depth arrive together, so the card reads as lifting further off the
+  // table the bigger it gets, not as a flat cutout that merely resizes.
+  // transform/opacity/filter are the only properties animated anywhere in
+  // this transition -- all three are compositor/paint-only, so the flight
+  // never touches layout and stays smooth regardless of frame budget.
+  const RESTING_SHADOW = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0))';
+  const FLIGHT_SHADOW = 'drop-shadow(0 34px 54px rgba(0, 0, 0, 0.55))';
   const overlayMotion = {
     initial: { opacity: 0 },
     animate: { opacity: 1 },
@@ -144,30 +208,46 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
         transition: { duration: 0.1 },
       }
     : {
-        initial: { opacity: 0, scale: 0.3, rotateY: 0 },
-        animate: { opacity: 1, scale: 1, rotateY: 360 },
+        initial: { opacity: 0, scale: 0.3, rotateY: 0, filter: RESTING_SHADOW },
+        animate: { opacity: 1, scale: 1, rotateY: 360, filter: FLIGHT_SHADOW },
         // A target object's own `transition` overrides the shared one below
         // for that specific animation -- this is what lets the close run a
         // touch faster (EXIT_DURATION_MS) and with the mirror-image ease
-        // (roughly the entrance's curve run backwards: a slow start easing
-        // into an accelerating finish) without touching the entrance's own
-        // timing. Still a single plain tween, same as the entrance -- no
+        // (the entrance's landing curve run in reverse: a fast start easing
+        // OUT of view rather than into it) without touching the entrance's
+        // own timing. Still a single plain tween, same as the entrance -- no
         // spring, so nothing can overshoot past the resting pose and swing
         // back for a second phase.
+        //
+        // opacity is delayed to the FINAL FADE_SEGMENT_S of the flight
+        // (rather than given its own short duration starting at t=0, which
+        // is what this used to do) so the card stays fully visible while it
+        // shrinks and spins, then fades only right at the very end -- the
+        // true mirror of the entrance's "fade in fast, then fly opaque"
+        // below. Fading it out immediately instead (the previous behaviour)
+        // made the panel reach opacity 0 well before the shrink/spin tween
+        // had gone anywhere, which is what made the close read as having no
+        // visible animation at all: everything after that early fade was
+        // real motion happening on an invisible element.
         exit: {
           opacity: 0,
           scale: 0.3,
           rotateY: 0,
+          filter: RESTING_SHADOW,
           transition: {
             duration: EXIT_DURATION_MS / 1000,
-            ease: [0.64, 0, 0.78, 0] as const,
-            opacity: { duration: 0.2, ease: 'easeIn' as const },
+            ease: LANDING_EASE,
+            opacity: {
+              duration: FADE_SEGMENT_S,
+              ease: 'easeIn' as const,
+              delay: EXIT_DURATION_MS / 1000 - FADE_SEGMENT_S,
+            },
           },
         },
         transition: {
           duration: ENTRANCE_DURATION_MS / 1000,
-          ease: [0.22, 1, 0.36, 1] as const,
-          opacity: { duration: 0.26, ease: 'easeOut' as const },
+          ease: LANDING_EASE,
+          opacity: { duration: FADE_SEGMENT_S, ease: 'easeOut' as const },
         },
       };
 
@@ -186,6 +266,75 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // this can be opened from deep inside the Dex Grid, underneath ancestors
   // that establish their own stacking contexts; portaling out sidesteps
   // clipping regardless of where it's opened from.
+  const cardAlt = `${card.name} from ${card.setName}`;
+
+  // The card art itself, shared by both the flip-capable path (wrapped in
+  // the two-faced .cardFaces below) and the reduced-motion path (rendered
+  // directly, no faces/back needed since there's never any turn to reveal a
+  // backface during). Thumb-first-then-hi-res: when a cheap thumb source
+  // exists, the low/webp (or resolved hosted thumb) layer paints instantly
+  // underneath -- it's the same image the tile/picker cell this overlay
+  // opened from just rendered, so it's already warm in the browser cache --
+  // while a second, hi-res layer loads on top and fades in over it the
+  // moment its own onLoad fires. The panel is never left blank waiting on
+  // the hi-res fetch. Cards with no cheap thumb source (or no real image at
+  // all) fall back to the single CardImage this overlay always used.
+  const cardArt = showImageStack ? (
+    <div className={styles.cardImageStack}>
+      {/* Decorative duplicate of the hi-res layer below -- alt="" so it
+          doesn't register as a second accessible image with the same name
+          (screen readers, and this file's own getByAltText-based tests,
+          both need exactly one "<card> from <set>" image, and that's the
+          hi-res layer, since it's the one whose src ends up matching what
+          every existing test already asserted). */}
+      <CardImage
+        imageBase={card.imageBase}
+        hostedThumbUrl={card.hostedThumbUrl}
+        alt=""
+        className={`${styles.cardImage} ${styles.cardImageThumb}`}
+      />
+      <CardImage
+        imageBase={card.imageBase}
+        hostedFullUrl={card.hostedFullUrl}
+        alt={cardAlt}
+        className={[styles.cardImage, styles.cardImageHiRes, hiResLoaded && styles.cardImageHiResVisible]
+          .filter(Boolean)
+          .join(' ')}
+        preferHighQuality
+        onLoad={() => setHiResLoaded(true)}
+      />
+    </div>
+  ) : (
+    <CardImage
+      imageBase={card.imageBase}
+      hostedFullUrl={card.hostedFullUrl}
+      uploadedImageUri={uploadedImageUri}
+      alt={cardAlt}
+      className={styles.cardImage}
+      preferHighQuality
+    />
+  );
+
+  const cardDecoration = !hasNoImage && (
+    <>
+      {/* One-shot reveal glint, held back until the entrance has
+          actually landed (hasEntered) -- mounting it only then
+          means its sweep animation starts fresh right as the
+          card settles, rather than racing the flip and reading as
+          two effects fighting over the same half-second. Unmounted
+          again the instant closing starts (isLeaving) so it can't
+          sweep across the card mid reverse-spin. Then the
+          cursor-tracked glare + iridescent sheen, both purely
+          decorative and gated off the same way via useCardTilt's
+          disabled option. */}
+      {!shouldReduceMotion && hasEntered && !isLeaving && (
+        <span className={styles.glint} aria-hidden="true" />
+      )}
+      <span className={styles.sheen} aria-hidden="true" />
+      <span className={styles.glare} aria-hidden="true" />
+    </>
+  );
+
   return createPortal(
     <motion.div
       className={styles.overlay}
@@ -226,32 +375,38 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
             }
             style={tilt.style}
           >
-            <CardImage
-              imageBase={card.imageBase}
-              hostedFullUrl={card.hostedFullUrl}
-              uploadedImageUri={uploadedImageUri}
-              alt={`${card.name} from ${card.setName}`}
-              className={styles.cardImage}
-              preferHighQuality
-            />
-            {!hasNoImage && (
+            {shouldReduceMotion ? (
               <>
-                {/* One-shot reveal glint, held back until the entrance has
-                    actually landed (hasEntered) -- mounting it only then
-                    means its sweep animation starts fresh right as the
-                    card settles, rather than racing the flip and reading as
-                    two effects fighting over the same half-second. Unmounted
-                    again the instant closing starts (isLeaving) so it can't
-                    sweep across the card mid reverse-spin. Then the
-                    cursor-tracked glare + iridescent sheen, both purely
-                    decorative and gated off the same way via useCardTilt's
-                    disabled option. */}
-                {!shouldReduceMotion && hasEntered && !isLeaving && (
-                  <span className={styles.glint} aria-hidden="true" />
-                )}
-                <span className={styles.sheen} aria-hidden="true" />
-                <span className={styles.glare} aria-hidden="true" />
+                {cardArt}
+                {cardDecoration}
               </>
+            ) : (
+              // Two stacked, 3D-composited faces -- the front carries the
+              // real card art (+ decoration), the back is a dedicated card
+              // back design (see .cardBack below), pre-rotated 180deg with
+              // backface-visibility: hidden on both, exactly the same
+              // technique BinderView.module.css's .leafFace/.leafFaceBack
+              // pair uses for the binder's own page turn. preserve-3d has
+              // to be set on every ancestor between .panel (the element
+              // framer-motion is actually spinning) and this pair --
+              // .cardFrame and .cardBody included -- or the browser
+              // flattens the 3D scene partway down and the backface
+              // culling stops working. Skipped entirely under reduced
+              // motion: with no turn to ever reach 90deg, there's no
+              // backface to ever reveal.
+              <div className={styles.cardFaces}>
+                <div className={styles.cardFace}>
+                  {cardArt}
+                  {cardDecoration}
+                </div>
+                <div className={styles.cardFaceBack} aria-hidden="true">
+                  <div className={styles.cardBack}>
+                    <span className={styles.cardBackBall}>
+                      <span className={styles.cardBackBallButton} />
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>

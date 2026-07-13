@@ -163,8 +163,7 @@ describe('CardZoomOverlay', () => {
       vi.useFakeTimers();
       render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
       const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
-      const img = screen.getByAltText(/charizard ex from 151/i);
-      const cardBody = img.closest('div') as HTMLElement;
+      const cardBody = dialog.querySelector('[class*="cardBody"]') as HTMLElement;
 
       fireEvent.mouseMove(dialog, { clientX: 5, clientY: 5 });
       expect(cardBody).not.toHaveClass('cardTilting');
@@ -174,8 +173,7 @@ describe('CardZoomOverlay', () => {
       vi.useFakeTimers();
       render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
       const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
-      const img = screen.getByAltText(/charizard ex from 151/i);
-      const cardBody = img.closest('div') as HTMLElement;
+      const cardBody = dialog.querySelector('[class*="cardBody"]') as HTMLElement;
 
       act(() => {
         vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
@@ -235,8 +233,7 @@ describe('CardZoomOverlay', () => {
       vi.useFakeTimers();
       render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
       const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
-      const img = screen.getByAltText(/charizard ex from 151/i);
-      const cardBody = img.closest('div') as HTMLElement;
+      const cardBody = dialog.querySelector('[class*="cardBody"]') as HTMLElement;
 
       act(() => {
         vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
@@ -264,6 +261,96 @@ describe('CardZoomOverlay', () => {
       render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={onClose} />);
       await userEvent.click(screen.getByRole('button', { name: 'Close' }));
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('thumb-first, then hi-res image', () => {
+    // CardZoomOverlay portals its whole dialog straight to document.body
+    // (see the component's own doc comment), so its images never end up
+    // inside render()'s own `container` -- these queries deliberately look
+    // at the dialog root (found via screen, which searches the whole
+    // document) rather than `container`.
+    it('paints the low/webp thumbnail immediately, on the very first render, alongside the hi-res layer -- never an empty panel', () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      const images = dialog.querySelectorAll('img');
+      // Exactly two <img> elements for a card with a real image: the
+      // instantly-available thumb and the hi-res upgrade loading on top of
+      // it. Neither is missing on first render -- the whole point is that
+      // the panel is never blank while the hi-res fetch is in flight.
+      expect(images).toHaveLength(2);
+
+      const srcs = Array.from(images).map((img) => img.getAttribute('src'));
+      expect(srcs).toContain('https://assets.tcgdex.net/en/sv/sv03.5/199/low.webp');
+      expect(srcs).toContain('https://assets.tcgdex.net/en/sv/sv03.5/199/high.png');
+    });
+
+    it('keeps the hi-res layer invisible until it actually finishes loading, then fades it in', () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const hiResImg = screen.getByAltText(/charizard ex from 151/i);
+      expect(hiResImg.className).not.toMatch(/cardImageHiResVisible/);
+
+      fireEvent.load(hiResImg);
+
+      expect(hiResImg.className).toMatch(/cardImageHiResVisible/);
+    });
+
+    it('gives the thumbnail an empty alt so it never doubles up on the hi-res layer\'s accessible name', () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      const images = Array.from(dialog.querySelectorAll('img'));
+      const thumb = images.find((img) => img.getAttribute('alt') === '');
+      expect(thumb).toBeDefined();
+      // Exactly one image keeps the real accessible name -- the hi-res one.
+      expect(screen.getAllByAltText(/charizard ex from 151/i)).toHaveLength(1);
+    });
+
+    it('falls back to a single hi-res image (no stacking) when there is no cheap thumb source at all', () => {
+      const hostedFullOnlyCard: CardRecord = {
+        ...card,
+        id: 'hosted-full-only',
+        imageBase: '',
+        hostedFullUrl: 'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp',
+      };
+      render(<CardZoomOverlay card={hostedFullOnlyCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelectorAll('img')).toHaveLength(1);
+      expect(screen.getByAltText(/charizard ex from 151/i)).toHaveAttribute(
+        'src',
+        'https://raw.githubusercontent.com/example/repo/main/en/sv03.5/199/original.webp'
+      );
+    });
+
+    it('still shows the "no image available" placeholder, not a stack, for a card with no image at all', () => {
+      render(<CardZoomOverlay card={noImageCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelectorAll('img')).toHaveLength(0);
+      expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('card back', () => {
+    it('renders a card-back face during the flip entrance, when motion is on', () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[class*="cardFaceBack"]')).toBeInTheDocument();
+      expect(dialog.querySelector('[class*="cardBack"]')).toBeInTheDocument();
+    });
+
+    it('keeps the card-back face present while closing, when motion is on', async () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(dialog.querySelector('[class*="cardFaceBack"]')).toBeInTheDocument();
+    });
+
+    it('skips the card-back face entirely under reduced motion, since there is no flip to ever reveal it', () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[class*="cardFaceBack"]')).not.toBeInTheDocument();
     });
   });
 });
