@@ -1615,5 +1615,205 @@
       "name": "Mega Baxcalibur",
       "animated": false
     }
+  ],
+  "gmax": [
+    {
+      "slug": "venusaur-gmax",
+      "baseDex": 3,
+      "name": "Gigantamax Venusaur",
+      "animated": false
+    },
+    {
+      "slug": "charizard-gmax",
+      "baseDex": 6,
+      "name": "Gigantamax Charizard",
+      "animated": true
+    },
+    {
+      "slug": "blastoise-gmax",
+      "baseDex": 9,
+      "name": "Gigantamax Blastoise",
+      "animated": false
+    },
+    {
+      "slug": "pikachu-gmax",
+      "baseDex": 25,
+      "name": "Gigantamax Pikachu",
+      "animated": true
+    },
+    {
+      "slug": "meowth-gmax",
+      "baseDex": 52,
+      "name": "Gigantamax Meowth",
+      "animated": true
+    },
+    {
+      "slug": "eevee-gmax",
+      "baseDex": 133,
+      "name": "Gigantamax Eevee",
+      "animated": true
+    },
+    {
+      "slug": "lapras-gmax",
+      "baseDex": 131,
+      "name": "Gigantamax Lapras",
+      "animated": true
+    },
+    {
+      "slug": "snorlax-gmax",
+      "baseDex": 143,
+      "name": "Gigantamax Snorlax",
+      "animated": true
+    },
+    {
+      "slug": "rillaboom-gmax",
+      "baseDex": 812,
+      "name": "Gigantamax Rillaboom",
+      "animated": false
+    },
+    {
+      "slug": "cinderace-gmax",
+      "baseDex": 815,
+      "name": "Gigantamax Cinderace",
+      "animated": false
+    },
+    {
+      "slug": "toxtricity-amped-gmax",
+      "baseDex": 849,
+      "name": "Gigantamax Toxtricity",
+      "animated": true
+    },
+    {
+      "slug": "copperajah-gmax",
+      "baseDex": 879,
+      "name": "Gigantamax Copperajah",
+      "animated": true
+    },
+    {
+      "slug": "inteleon-gmax",
+      "baseDex": 818,
+      "name": "Gigantamax Inteleon",
+      "animated": true
+    },
+    {
+      "slug": "butterfree-gmax",
+      "baseDex": 12,
+      "name": "Gigantamax Butterfree",
+      "animated": true
+    },
+    {
+      "slug": "centiskorch-gmax",
+      "baseDex": 851,
+      "name": "Gigantamax Centiskorch",
+      "animated": true
+    },
+    {
+      "slug": "grimmsnarl-gmax",
+      "baseDex": 861,
+      "name": "Gigantamax Grimmsnarl",
+      "animated": true
+    },
+    {
+      "slug": "drednaw-gmax",
+      "baseDex": 834,
+      "name": "Gigantamax Drednaw",
+      "animated": true
+    },
+    {
+      "slug": "alcremie-gmax",
+      "baseDex": 869,
+      "name": "Gigantamax Alcremie",
+      "animated": true
+    },
+    {
+      "slug": "orbeetle-gmax",
+      "baseDex": 826,
+      "name": "Gigantamax Orbeetle",
+      "animated": true
+    },
+    {
+      "slug": "coalossal-gmax",
+      "baseDex": 839,
+      "name": "Gigantamax Coalossal",
+      "animated": true
+    },
+    {
+      "slug": "corviknight-gmax",
+      "baseDex": 823,
+      "name": "Gigantamax Corviknight",
+      "animated": true
+    },
+    {
+      "slug": "flapple-gmax",
+      "baseDex": 841,
+      "name": "Gigantamax Flapple",
+      "animated": true
+    },
+    {
+      "slug": "appletun-gmax",
+      "baseDex": 842,
+      "name": "Gigantamax Appletun",
+      "animated": true
+    },
+    {
+      "slug": "urshifu-single-strike-gmax",
+      "baseDex": 892,
+      "name": "Gigantamax Urshifu (Single Strike Style)",
+      "animated": false
+    },
+    {
+      "slug": "urshifu-rapid-strike-gmax",
+      "baseDex": 892,
+      "name": "Gigantamax Urshifu (Rapid Strike Style)",
+      "animated": false
+    },
+    {
+      "slug": "sandaconda-gmax",
+      "baseDex": 844,
+      "name": "Gigantamax Sandaconda",
+      "animated": true
+    },
+    {
+      "slug": "garbodor-gmax",
+      "baseDex": 569,
+      "name": "Gigantamax Garbodor",
+      "animated": true
+    },
+    {
+      "slug": "duraludon-gmax",
+      "baseDex": 884,
+      "name": "Gigantamax Duraludon",
+      "animated": true
+    },
+    {
+      "slug": "gengar-gmax",
+      "baseDex": 94,
+      "name": "Gigantamax Gengar",
+      "animated": true
+    },
+    {
+      "slug": "kingler-gmax",
+      "baseDex": 99,
+      "name": "Gigantamax Kingler",
+      "animated": true
+    },
+    {
+      "slug": "machamp-gmax",
+      "baseDex": 68,
+      "name": "Gigantamax Machamp",
+      "animated": true
+    },
+    {
+      "slug": "melmetal-gmax",
+      "baseDex": 809,
+      "name": "Gigantamax Melmetal",
+      "animated": true
+    },
+    {
+      "slug": "hatterene-gmax",
+      "baseDex": 858,
+      "name": "Gigantamax Hatterene",
+      "animated": true
+    }
   ]
 }
