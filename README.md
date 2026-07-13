@@ -68,6 +68,7 @@ React 18, TypeScript, Vite, Zustand, framer-motion, and Vitest, deployed to GitH
 
 - [TCGdex](https://tcgdex.dev): live card lookup API.
 - [PokeAPI sprites](https://github.com/PokeAPI/sprites): dex artwork.
+- [Pokemon Cards CSS](https://github.com/simeydotme/pokemon-cards-css) by Simon Goellner (@simeydotme): technique credit for the pointer-reactive holo/foil idea behind the enlarged card view's shine effect. No code or assets from that project are used here; this app's effect is a from-scratch implementation of the general approach for its own card frame and rarity tiers.
 
 Pokémon and Pokémon character names are trademarks of Nintendo. This is a fan-made tool, unaffiliated with Nintendo, The Pokémon Company, or Creatures Inc.
 
