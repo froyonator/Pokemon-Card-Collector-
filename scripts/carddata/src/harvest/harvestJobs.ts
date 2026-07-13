@@ -234,3 +234,52 @@ export function buildZhCnJobs(mapping: ZhCnArticleMappingFile): ZhCnJobBuildResu
   }
   return { jobs, unresolved };
 }
+
+// --- zh-tw (curated jobs file, the confirmed-missing Mega-era wave) --------
+//
+// Same situation as zh-cn: the gap manifest carries no per-set data for
+// zh-tw (languages.zh-tw.missingSets is empty -- zh-tw's this-cycle work was
+// entirely enrichment on already-held sets). The final completeness audit's
+// own Part 4 (zh-tw soft-match confirmation) named exactly 7 real remaining
+// gaps: one coherent Mega Evolution-era wave with no zh-tw-namespace article
+// discovered yet. Driven by a small hand-curated jobs file
+// (data/harvest/zh-tw-missing.json, gitignored) rather than the gap
+// manifest -- each entry names a best-effort "(TCG)" article title (zh-tw is
+// not a REGIONAL_NAMESPACE_LANGUAGES entry, so it reads the same English-
+// namespace article the EU-language missing-set jobs already use); the
+// harvest run itself is the first live confirmation any given title is
+// right, and --job retry-failed's variant/search resolution chain covers a
+// wrong guess the same way it does for every other language.
+
+/** One entry of the curated zh-tw missing-sets jobs file. */
+export interface ZhTwMissingSetEntry {
+  /** Stable slug identifying this entry (used for the proposedSetId when the entry carries no shorter code). */
+  key: string;
+  /** Best-effort setId proposal for this set, consistent with the app's existing setId scheme where a real code is already known from another language's holdings. */
+  proposedSetId: string;
+  /** The wiki article title to fetch verbatim, already carrying its "(TCG)" suffix -- a best-effort guess, not live-confirmed. */
+  articleTitle: string;
+  /** Free-form provenance/context note (e.g. which other language's harvest this guess was cross-checked against). */
+  notes: string;
+  cardCount?: number | null;
+}
+
+export interface ZhTwMissingSetsFile {
+  sets: ZhTwMissingSetEntry[];
+}
+
+/**
+ * Builds zh-tw missing-set jobs straight from the curated jobs file. Unlike
+ * buildZhCnJobs, every entry here already carries a concrete article title
+ * (the audit's list is exactly 7 named, understood sets, not an open-ended
+ * discovery bucket), so there is no `unresolved` half to this result.
+ */
+export function buildZhTwJobs(mapping: ZhTwMissingSetsFile): HarvestJob[] {
+  return mapping.sets.map((entry) => ({
+    language: 'zh-tw',
+    setName: entry.articleTitle,
+    proposedSetId: entry.proposedSetId,
+    cardCount: entry.cardCount ?? null,
+    releaseDate: null,
+  }));
+}

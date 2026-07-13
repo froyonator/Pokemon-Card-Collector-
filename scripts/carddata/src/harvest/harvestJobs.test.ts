@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMissingSetJobs,
   buildZhCnJobs,
+  buildZhTwJobs,
   deriveProposedSetId,
   deriveWikiArticleTitle,
   deriveZhCnSetId,
   type GapManifest,
   type ZhCnArticleMappingFile,
+  type ZhTwMissingSetsFile,
 } from './harvestJobs';
 
 describe('deriveWikiArticleTitle', () => {
@@ -235,5 +237,58 @@ describe('buildZhCnJobs', () => {
 
   it('returns empty jobs/unresolved for an empty mapping', () => {
     expect(buildZhCnJobs({ sets: [] })).toEqual({ jobs: [], unresolved: [] });
+  });
+});
+
+describe('buildZhTwJobs', () => {
+  const mapping: ZhTwMissingSetsFile = {
+    sets: [
+      {
+        key: 'black-bolt-white-flare',
+        proposedSetId: 'blackboltwhiteflare',
+        articleTitle: 'Black Bolt & White Flare (TCG)',
+        notes: 'cross-checked against ja',
+        cardCount: null,
+      },
+      {
+        key: 'mega-dream-ex',
+        proposedSetId: 'megadreamex',
+        articleTitle: 'MEGA Dream ex (TCG)',
+        notes: 'cross-checked against id',
+        cardCount: 250,
+      },
+    ],
+  };
+
+  it('builds one job per entry, all scoped to zh-tw', () => {
+    const jobs = buildZhTwJobs(mapping);
+    expect(jobs).toHaveLength(2);
+    expect(jobs.every((job) => job.language === 'zh-tw')).toBe(true);
+  });
+
+  it('uses the mapping articleTitle verbatim as setName (no namespace suffix appended)', () => {
+    const jobs = buildZhTwJobs(mapping);
+    expect(jobs[0].setName).toBe('Black Bolt & White Flare (TCG)');
+    expect(jobs[1].setName).toBe('MEGA Dream ex (TCG)');
+  });
+
+  it('uses the mapping proposedSetId verbatim, no re-derivation', () => {
+    const jobs = buildZhTwJobs(mapping);
+    expect(jobs.map((job) => job.proposedSetId)).toEqual(['blackboltwhiteflare', 'megadreamex']);
+  });
+
+  it('carries cardCount through when the entry recorded one, else null', () => {
+    const jobs = buildZhTwJobs(mapping);
+    expect(jobs[0].cardCount).toBeNull();
+    expect(jobs[1].cardCount).toBe(250);
+  });
+
+  it('always sets releaseDate to null (the jobs file does not track it)', () => {
+    const jobs = buildZhTwJobs(mapping);
+    expect(jobs.every((job) => job.releaseDate === null)).toBe(true);
+  });
+
+  it('returns an empty list for an empty mapping', () => {
+    expect(buildZhTwJobs({ sets: [] })).toEqual([]);
   });
 });

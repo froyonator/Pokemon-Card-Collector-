@@ -57,9 +57,11 @@ import { buildEnrichmentJobs, type EnrichmentJob, type LocalIncompleteManifest }
 import {
   buildMissingSetJobs,
   buildZhCnJobs,
+  buildZhTwJobs,
   type GapManifest,
   type HarvestJob,
   type ZhCnArticleMappingFile,
+  type ZhTwMissingSetsFile,
 } from './harvestJobs';
 import {
   resolveJobArticles,
@@ -753,6 +755,7 @@ const DATA_DIR = 'data';
 const GAP_MANIFEST_PATH = path.join(DATA_DIR, 'gap-audit', 'GAP-MANIFEST.json');
 const LOCAL_INCOMPLETE_PATH = path.join(DATA_DIR, 'gap-audit', 'local-incomplete.json');
 const ZH_CN_ARTICLES_PATH = path.join(DATA_DIR, 'harvest', 'zh-cn-articles.json');
+const ZH_TW_MISSING_PATH = path.join(DATA_DIR, 'harvest', 'zh-tw-missing.json');
 const ARTICLE_OVERRIDES_PATH = path.join(DATA_DIR, 'harvest', 'article-overrides.json');
 const PROGRESS_PATH = path.join(DATA_DIR, 'harvest', 'progress.json');
 const DEBUG_DIR = path.join(DATA_DIR, 'harvest', 'debug');
@@ -837,11 +840,25 @@ async function loadZhCnJobs(): Promise<HarvestJob[]> {
   return jobs;
 }
 
+/**
+ * zh-tw also has no per-set data in the gap manifest (missingSets is empty
+ * -- zh-tw's harvest this cycle was pure enrichment on already-held sets),
+ * so its missing-set jobs come from the curated jobs file instead -- see
+ * buildZhTwJobs's own doc comment.
+ */
+async function loadZhTwJobs(): Promise<HarvestJob[]> {
+  const mapping = JSON.parse(await readFile(ZH_TW_MISSING_PATH, 'utf8')) as ZhTwMissingSetsFile;
+  return buildZhTwJobs(mapping);
+}
+
+async function loadMissingSetJobs(language: string): Promise<HarvestJob[]> {
+  if (language === 'zh-cn') return loadZhCnJobs();
+  if (language === 'zh-tw') return loadZhTwJobs();
+  return buildMissingSetJobs(JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest, [language]);
+}
+
 async function runMissingSets(cli: CliArgs): Promise<void> {
-  const allJobs: HarvestJob[] =
-    cli.language === 'zh-cn'
-      ? await loadZhCnJobs()
-      : buildMissingSetJobs(JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest, [cli.language]);
+  const allJobs: HarvestJob[] = await loadMissingSetJobs(cli.language);
   const progress = await loadProgress();
   const pending = selectPendingJobs(
     allJobs,
@@ -1098,10 +1115,7 @@ async function runRetryFailed(cli: CliArgs): Promise<void> {
     return;
   }
 
-  const allJobs: HarvestJob[] =
-    cli.language === 'zh-cn'
-      ? await loadZhCnJobs()
-      : buildMissingSetJobs(JSON.parse(await readFile(GAP_MANIFEST_PATH, 'utf8')) as GapManifest, [cli.language]);
+  const allJobs: HarvestJob[] = await loadMissingSetJobs(cli.language);
   const pending = allJobs.filter((job) => retryTargets.has(job.proposedSetId));
   const limited = typeof cli.limit === 'number' ? pending.slice(0, cli.limit) : pending;
 
