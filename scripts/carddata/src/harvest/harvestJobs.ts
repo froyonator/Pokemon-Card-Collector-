@@ -53,6 +53,16 @@ export interface HarvestJob {
    * override mapping; ordinary missing-sets jobs leave it unset.
    */
   articles?: ArticleTarget[];
+  /**
+   * Set when the bulk-export availability gate (bulkExportGen1Backfill.ts)
+   * could not find this set in the bulk export AT ALL for the job's
+   * language -- the wiki is the only lead we have, but the wiki itself
+   * cannot confirm the set was ever printed in this language, so any rows
+   * harvested from it will carry English names rather than localized ones.
+   * Never set for en/ja/id/th/zh-cn jobs (only the EU availability gate
+   * produces it); absent (not just false) for those.
+   */
+  localizedNamesUnavailable?: boolean;
 }
 
 const DEFAULT_MISSING_SET_LANGUAGES = ['en', 'ja', 'id', 'th'] as const;
@@ -97,7 +107,24 @@ function slugifySetName(name: string): string {
   return base || 'set';
 }
 
-/** Builds one HarvestJob per missingSets entry, for each requested language (default: en/ja/id/th, matching the manifest's confirmed real-gap languages). */
+/**
+ * Builds one HarvestJob per missingSets entry, for each requested language
+ * (default: en/ja/id/th, matching the manifest's confirmed real-gap
+ * languages). Also drives the five European languages (fr/de/es/it/pt) when
+ * passed explicitly -- their manifest entries carry ENGLISH set names (the
+ * gap audit diffed them structurally against en.json's setId universe, not
+ * against a per-language catalog -- see GAP-REPORT.md Part 3), and these
+ * languages share en's setId scheme, so no special-casing is needed here:
+ * deriveWikiArticleTitle's ordinary "(TCG)" namespace (these are not
+ * REGIONAL_NAMESPACE_LANGUAGES) already yields the correct English article
+ * title, and deriveProposedSetId's code-based derivation already yields the
+ * correct setId straight from the manifest's own `code` field. What IS
+ * EU-specific is deciding which of these jobs should actually be wiki-
+ * harvested vs. sourced straight from the bulk export vs. dropped as
+ * never-printed -- that gate lives in bulkExportGen1Backfill.ts, layered on
+ * top of this function's plain job list rather than inside it (this
+ * function stays pure/network-free, per its own file-level doc comment).
+ */
 export function buildMissingSetJobs(
   manifest: GapManifest,
   languages: readonly string[] = DEFAULT_MISSING_SET_LANGUAGES

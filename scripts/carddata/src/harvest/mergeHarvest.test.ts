@@ -35,8 +35,11 @@ describe('harvestedCardToRecord', () => {
     });
   });
 
-  it('returns null for a card with no resolved image', () => {
-    expect(harvestedCardToRecord(card({ imageUrl: null, imageMissing: true }), 'en', 'm11', 'X')).toBeNull();
+  it('keeps a card with no resolved image, leaving hosted image fields absent for the image passes to fill', () => {
+    const record = harvestedCardToRecord(card({ imageUrl: null, imageMissing: true }), 'en', 'm11', 'X');
+    expect(record).not.toBeNull();
+    expect(record?.hostedThumbUrl).toBeUndefined();
+    expect(record?.hostedFullUrl).toBeUndefined();
   });
 
   it('falls back to Unknown rarity when the row had none', () => {
@@ -92,15 +95,17 @@ describe('mergeMissingSet', () => {
     expect(existing['25']).toHaveLength(1);
   });
 
-  it('skips a candidate row with no resolved image without counting it as existing', () => {
+  it('merges a candidate row with no resolved image so a later image pass can fill it', () => {
     const existing: Record<string, CardRecord[]> = {};
     const outcome = mergeMissingSet(
       existing,
       harvestResult({ cards: [card({ imageUrl: null, imageMissing: true })] })
     );
-    expect(outcome.added).toBe(0);
-    expect(outcome.skippedNoImage).toBe(1);
-    expect(outcome.candidateCount).toBe(0);
+    expect(outcome.added).toBe(1);
+    expect(outcome.skippedNoImage).toBe(0);
+    expect(outcome.candidateCount).toBe(1);
+    const merged = existing['25']?.[0];
+    expect(merged?.hostedThumbUrl).toBeUndefined();
   });
 
   it('aborts and writes nothing when overlap with existing data is implausibly high', () => {

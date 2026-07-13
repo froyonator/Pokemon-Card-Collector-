@@ -264,8 +264,8 @@ export function buildBulkExportRecord(
 
 // --- filesystem walking / dynamic import ---------------------------------
 
-/** Recursively finds every card module: a `.ts` file exactly three path segments below `root` (<serieDir>/<setDir>/<file>.ts). Serie-level (`<root>/<Serie>.ts`) and set-level (`<root>/<Serie>/<Set>.ts`) index files sit at 1 and 2 segments respectively and are skipped by construction. */
-export async function findCardFiles(root: string): Promise<string[]> {
+/** Recursively collects every `.ts` file sitting exactly `targetDepth` path segments below `root`, skipping anything shallower or deeper. Shared by findCardFiles (depth 2: <serieDir>/<setDir>/<file>.ts) and findSetIndexFiles (depth 1: <serieDir>/<SetName>.ts). */
+async function walkTsFilesAtDepth(root: string, targetDepth: number): Promise<string[]> {
   const files: string[] = [];
 
   async function walk(dir: string, depth: number): Promise<void> {
@@ -279,7 +279,7 @@ export async function findCardFiles(root: string): Promise<string[]> {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(fullPath, depth + 1);
-      } else if (depth === 2 && entry.name.endsWith('.ts')) {
+      } else if (depth === targetDepth && entry.name.endsWith('.ts')) {
         files.push(fullPath);
       }
     }
@@ -287,6 +287,26 @@ export async function findCardFiles(root: string): Promise<string[]> {
 
   await walk(root, 0);
   return files;
+}
+
+/** Recursively finds every card module: a `.ts` file exactly three path segments below `root` (<serieDir>/<setDir>/<file>.ts). Serie-level (`<root>/<Serie>.ts`) and set-level (`<root>/<Serie>/<Set>.ts`) index files sit at 1 and 2 segments respectively and are skipped by construction. */
+export async function findCardFiles(root: string): Promise<string[]> {
+  return walkTsFilesAtDepth(root, 2);
+}
+
+/**
+ * Finds every Set index file: a `.ts` file exactly one path segment below
+ * `root` (<serieDir>/<SetName>.ts), sitting alongside that set's own card
+ * directory of the same name (e.g. `data/E-Card/Expedition Base Set.ts`
+ * describes the cards living under `data/E-Card/Expedition Base Set/`).
+ * Serie-level index files (depth 0) and card files (depth 2) are skipped.
+ * Used to build a setId -> card-directory index (see buildSetIdIndex) --
+ * the bulk export's own directory names are display set names, not our
+ * setId scheme, so this index is the only reliable way to resolve one to
+ * the other.
+ */
+export async function findSetIndexFiles(root: string): Promise<string[]> {
+  return walkTsFilesAtDepth(root, 1);
 }
 
 // A small number of card files (confirmed: exactly 2 in the whole clone, both
@@ -330,7 +350,54 @@ export async function loadCardModule(absolutePath: string): Promise<BulkExportCa
   return card;
 }
 
-async function loadTranslationDict(bulkExportRoot: string, language: string): Promise<TranslationDict | undefined> {
+/**
+ * Loads one Set index module (e.g. `data/E-Card/Expedition Base Set.ts`) --
+ * the same dynamic-import mechanism as loadCardModule (see
+ * importPossiblyPatched), but for a Set object rather than a Card. A Set
+ * object carries its own `id`+`serie` and never a `set` field (that's the
+ * Card shape pointing AT its Set), which is how this tells the two apart
+ * without a second parser. Returns undefined for anything that doesn't look
+ * like a Set.
+ */
+export async function loadSetModule(absolutePath: string): Promise<{ id: string; name: LanguageMap } | undefined> {
+  const mod = await importPossiblyPatched(absolutePath);
+  const set = mod.default as { id?: unknown; name?: unknown; serie?: unknown; set?: unknown } | undefined;
+  if (!set || typeof set !== 'object' || typeof set.id !== 'string' || !set.serie || set.set) return undefined;
+  return { id: set.id, name: (set.name as LanguageMap | undefined) ?? {} };
+}
+
+/** One resolved entry of buildSetIdIndex: where a set's card files live, plus the Set object's own (often partial) per-language name map -- e.g. "ecard1"'s carries fr/it/de names, but plenty of pre-2011 sets only carry `en`. */
+export interface SetIdIndexEntry {
+  cardDir: string;
+  name: LanguageMap;
+}
+
+/**
+ * Builds a setId -> {card-directory, name} index for one data root (western
+ * `data/` or Asian `data-asia/`), by walking every Set index file and
+ * reading its own `id` field. This is the "same mapping bulkExportIngest
+ * uses" the Gen1 backfill and availability checker
+ * (bulkExportGen1Backfill.ts) rely on to resolve our own setId scheme to
+ * the bulk export's own directory naming (directory names are display set
+ * names, e.g. "Expedition Base Set", not setIds like "ecard1"). A setId
+ * colliding across two directories (not expected in practice) keeps the
+ * first one found rather than erroring.
+ */
+export async function buildSetIdIndex(root: string): Promise<Map<string, SetIdIndexEntry>> {
+  const index = new Map<string, SetIdIndexEntry>();
+  const indexFiles = await findSetIndexFiles(root);
+  for (const file of indexFiles) {
+    const set = await loadSetModule(file);
+    if (!set || index.has(set.id)) continue;
+    const extension = path.extname(file);
+    const cardDir = extension ? file.slice(0, -extension.length) : file;
+    index.set(set.id, { cardDir, name: set.name });
+  }
+  return index;
+}
+
+/** Exported for reuse by the Gen1 backfill path (bulkExportGen1Backfill.ts), which needs the same per-language rarity/category dictionary this module's own ordinary ingest uses. */
+export async function loadTranslationDict(bulkExportRoot: string, language: string): Promise<TranslationDict | undefined> {
   try {
     const raw = await readFile(path.join(bulkExportRoot, 'meta', 'translations', `${language}.json`), 'utf8');
     return JSON.parse(raw) as TranslationDict;

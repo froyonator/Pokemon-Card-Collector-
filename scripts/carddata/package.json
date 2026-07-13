@@ -17,7 +17,9 @@
     "harvest": "tsx src/harvest/runHarvest.ts",
     "harvest:merge": "tsx src/harvest/mergeHarvest.ts",
     "harvest:local-images": "tsx src/harvest/localImageFill.ts",
-    "build-database": "tsx src/buildStaticDatabase.ts"
+    "harvest:eu-backfill": "tsx src/harvest/bulkExportGen1Backfill.ts",
+    "build-database": "tsx src/buildStaticDatabase.ts",
+    "download-sprites": "tsx src/downloadSprites.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

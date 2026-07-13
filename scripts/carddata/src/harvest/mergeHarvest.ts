@@ -30,14 +30,19 @@ function harvestOutputDir(language: string): string {
   return path.join(DATA_DIR, 'harvest', language);
 }
 
-/** Converts one harvested card row into this app's CardRecord shape, per language/setId. Image guesses that never resolved are skipped -- a record with no image adds nothing displayable. */
+/**
+ * Converts one harvested card row into this app's CardRecord shape, per
+ * language/setId. Cards whose image never resolved are still kept: the
+ * follow-up image passes (the local same-print fill and the images job)
+ * can usually supply one afterwards, and a trackable record with a real
+ * name and rarity beats an absent card even while its image is pending.
+ */
 export function harvestedCardToRecord(
   card: HarvestedCard,
   language: string,
   setId: string,
   setName: string
 ): CardRecord | null {
-  if (!card.imageUrl) return null;
   return {
     id: `wk-${language}-${setId}-${card.localId}`,
     name: card.name,
@@ -48,8 +53,7 @@ export function harvestedCardToRecord(
     rarity: card.rarity ?? 'Unknown',
     imageBase: '',
     language,
-    hostedThumbUrl: card.imageUrl,
-    hostedFullUrl: card.imageUrl,
+    ...(card.imageUrl ? { hostedThumbUrl: card.imageUrl, hostedFullUrl: card.imageUrl } : {}),
   };
 }
 

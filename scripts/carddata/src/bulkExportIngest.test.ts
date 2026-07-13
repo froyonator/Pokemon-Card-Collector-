@@ -5,12 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { rangesForGenerations } from './snapshotAllGens';
 import {
   buildBulkExportRecord,
+  buildSetIdIndex,
   convertRoot,
   dataFolderForLanguage,
   findCardFiles,
+  findSetIndexFiles,
   imageUrlIfAvailable,
   isCardAvailableInLanguage,
   loadCardModule,
+  loadSetModule,
   localIdFromFileName,
   parseIngestArguments,
   resolveLanguageText,
@@ -303,6 +306,59 @@ describe('loadCardModule', () => {
     expect(card?.set.id).toBe('ts1');
     expect(card?.set.serie.id).toBe('testserie');
     expect(card?.dexId).toEqual([152]);
+  });
+});
+
+describe('findSetIndexFiles', () => {
+  it('finds only the depth-1 set index files, not serie index or card files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    const western = await findSetIndexFiles(path.join(root, 'data'));
+    expect(western).toEqual([path.join(root, 'data', 'TestSerie', 'TestSet.ts')]);
+
+    const asian = await findSetIndexFiles(path.join(root, 'data-asia'));
+    expect(asian).toEqual([path.join(root, 'data-asia', 'TestSerieJa', 'TestSetJa.ts')]);
+  });
+});
+
+describe('loadSetModule', () => {
+  it('dynamically imports a Set index file and returns its id + name map', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    const set = await loadSetModule(path.join(root, 'data', 'TestSerie', 'TestSet.ts'));
+    expect(set).toEqual({ id: 'ts1', name: { en: 'Test Set', fr: 'Set de Test' } });
+  });
+
+  it('returns undefined for a card file (has a `set` field, not a Set object)', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    const notASet = await loadSetModule(path.join(root, 'data', 'TestSerie', 'TestSet', '1.ts'));
+    expect(notASet).toBeUndefined();
+  });
+});
+
+describe('buildSetIdIndex', () => {
+  it('maps setId -> {cardDir, name} for every set found under the root', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    const index = await buildSetIdIndex(path.join(root, 'data'));
+    expect(index.size).toBe(1);
+    expect(index.get('ts1')).toEqual({
+      cardDir: path.join(root, 'data', 'TestSerie', 'TestSet'),
+      name: { en: 'Test Set', fr: 'Set de Test' },
+    });
+  });
+
+  it('returns an empty index for an unknown setId lookup, without throwing', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'carddata-bulk-fixture-'));
+    await writeFixtureTree(root);
+
+    const index = await buildSetIdIndex(path.join(root, 'data'));
+    expect(index.get('doesnotexist')).toBeUndefined();
   });
 });
 

@@ -103,6 +103,51 @@ describe('buildMissingSetJobs', () => {
   });
 });
 
+describe('buildMissingSetJobs for the European languages (fr/de/es/it/pt)', () => {
+  // These manifest entries use ENGLISH set names (the gap audit diffs
+  // fr/de/es/it/pt structurally against en.json's setId universe -- see
+  // GAP-REPORT.md Part 3), which is exactly what deriveWikiArticleTitle
+  // expects for a non-regional-namespace language.
+  const euManifest: GapManifest = {
+    languages: {
+      fr: {
+        missingSets: [
+          { name: 'Base Set 2', code: 'base4', cardCount: 100, releaseDate: 'February 24, 2000' },
+          { name: 'Legendary Collection', code: 'lc', cardCount: 99, releaseDate: 'May 24, 2002' },
+        ],
+      },
+      pt: {
+        missingSets: [{ name: 'Base Set', code: 'base1', cardCount: 69, releaseDate: 'January 9, 1999' }],
+      },
+    },
+  };
+
+  it('produces the ordinary "(TCG)" article title (not the ATCG regional namespace) for each EU language', () => {
+    for (const language of ['fr', 'de', 'es', 'it', 'pt']) {
+      expect(deriveWikiArticleTitle('Base Set 2', language)).toBe('Base Set 2 (TCG)');
+    }
+  });
+
+  it('builds jobs for fr with the manifest code used verbatim as proposedSetId', () => {
+    const jobs = buildMissingSetJobs(euManifest, ['fr']);
+    expect(jobs).toEqual([
+      { language: 'fr', setName: 'Base Set 2 (TCG)', proposedSetId: 'base4', cardCount: 100, releaseDate: 'February 24, 2000' },
+      { language: 'fr', setName: 'Legendary Collection (TCG)', proposedSetId: 'lc', cardCount: 99, releaseDate: 'May 24, 2002' },
+    ]);
+  });
+
+  it('builds jobs independently per EU language, each scoped to its own manifest entries', () => {
+    const jobs = buildMissingSetJobs(euManifest, ['fr', 'pt']);
+    expect(jobs.filter((j) => j.language === 'fr')).toHaveLength(2);
+    expect(jobs.filter((j) => j.language === 'pt')).toHaveLength(1);
+    expect(jobs.find((j) => j.language === 'pt')?.proposedSetId).toBe('base1');
+  });
+
+  it('is a no-op (empty list) for an EU language with no manifest entries', () => {
+    expect(buildMissingSetJobs(euManifest, ['de'])).toEqual([]);
+  });
+});
+
 describe('deriveZhCnSetId', () => {
   it('lowercases and strips punctuation from a single csCode', () => {
     expect(deriveZhCnSetId({ csCode: 'CS35', key: 'scorching-skies', articleTitle: 'Scorching Skies (ATCG)' })).toBe(
