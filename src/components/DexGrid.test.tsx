@@ -1255,7 +1255,7 @@ describe('Mega grouping', () => {
     expect(screen.getByRole('button', { name: /mega audino/i })).toBeInTheDocument();
 
     const tiles = screen.getAllByRole('button');
-    expect(tiles).toHaveLength(48);
+    expect(tiles).toHaveLength(96);
     // MEGA_DEX_ENTRIES is already in release order -- the rendered DOM order
     // of tile names must match it exactly.
     expect(tiles.map((t) => t.getAttribute('title'))).toEqual(

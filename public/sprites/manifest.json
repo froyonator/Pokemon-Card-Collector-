@@ -1313,6 +1313,307 @@
       "baseDex": 531,
       "name": "Mega Audino",
       "animated": true
+    },
+    {
+      "slug": "clefable-mega",
+      "baseDex": 36,
+      "name": "Mega Clefable",
+      "animated": true
+    },
+    {
+      "slug": "victreebel-mega",
+      "baseDex": 71,
+      "name": "Mega Victreebel",
+      "animated": true
+    },
+    {
+      "slug": "starmie-mega",
+      "baseDex": 121,
+      "name": "Mega Starmie",
+      "animated": true
+    },
+    {
+      "slug": "dragonite-mega",
+      "baseDex": 149,
+      "name": "Mega Dragonite",
+      "animated": true
+    },
+    {
+      "slug": "meganium-mega",
+      "baseDex": 154,
+      "name": "Mega Meganium",
+      "animated": true
+    },
+    {
+      "slug": "feraligatr-mega",
+      "baseDex": 160,
+      "name": "Mega Feraligatr",
+      "animated": true
+    },
+    {
+      "slug": "skarmory-mega",
+      "baseDex": 227,
+      "name": "Mega Skarmory",
+      "animated": true
+    },
+    {
+      "slug": "froslass-mega",
+      "baseDex": 478,
+      "name": "Mega Froslass",
+      "animated": true
+    },
+    {
+      "slug": "emboar-mega",
+      "baseDex": 500,
+      "name": "Mega Emboar",
+      "animated": true
+    },
+    {
+      "slug": "excadrill-mega",
+      "baseDex": 530,
+      "name": "Mega Excadrill",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "scolipede-mega",
+      "baseDex": 545,
+      "name": "Mega Scolipede",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "scrafty-mega",
+      "baseDex": 560,
+      "name": "Mega Scrafty",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "eelektross-mega",
+      "baseDex": 604,
+      "name": "Mega Eelektross",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "chandelure-mega",
+      "baseDex": 609,
+      "name": "Mega Chandelure",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "chesnaught-mega",
+      "baseDex": 652,
+      "name": "Mega Chesnaught",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "delphox-mega",
+      "baseDex": 655,
+      "name": "Mega Delphox",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "greninja-mega",
+      "baseDex": 658,
+      "name": "Mega Greninja",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "pyroar-mega",
+      "baseDex": 668,
+      "name": "Mega Pyroar",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "floette-mega",
+      "baseDex": 670,
+      "name": "Mega Floette",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "malamar-mega",
+      "baseDex": 687,
+      "name": "Mega Malamar",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "barbaracle-mega",
+      "baseDex": 689,
+      "name": "Mega Barbaracle",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "dragalge-mega",
+      "baseDex": 691,
+      "name": "Mega Dragalge",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "hawlucha-mega",
+      "baseDex": 701,
+      "name": "Mega Hawlucha",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "zygarde-mega",
+      "baseDex": 718,
+      "name": "Mega Zygarde",
+      "animated": false
+    },
+    {
+      "slug": "drampa-mega",
+      "baseDex": 780,
+      "name": "Mega Drampa",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "falinks-mega",
+      "baseDex": 870,
+      "name": "Mega Falinks",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "raichu-mega-x",
+      "baseDex": 26,
+      "name": "Mega Raichu X",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "raichu-mega-y",
+      "baseDex": 26,
+      "name": "Mega Raichu Y",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "chimecho-mega",
+      "baseDex": 358,
+      "name": "Mega Chimecho",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "absol-mega-z",
+      "baseDex": 359,
+      "name": "Mega Absol Z",
+      "animated": false
+    },
+    {
+      "slug": "staraptor-mega",
+      "baseDex": 398,
+      "name": "Mega Staraptor",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "garchomp-mega-z",
+      "baseDex": 445,
+      "name": "Mega Garchomp Z",
+      "animated": false
+    },
+    {
+      "slug": "lucario-mega-z",
+      "baseDex": 448,
+      "name": "Mega Lucario Z",
+      "animated": false
+    },
+    {
+      "slug": "heatran-mega",
+      "baseDex": 485,
+      "name": "Mega Heatran",
+      "animated": false
+    },
+    {
+      "slug": "darkrai-mega",
+      "baseDex": 491,
+      "name": "Mega Darkrai",
+      "animated": false
+    },
+    {
+      "slug": "golurk-mega",
+      "baseDex": 623,
+      "name": "Mega Golurk",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "meowstic-male-mega",
+      "baseDex": 678,
+      "name": "Mega Meowstic",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "crabominable-mega",
+      "baseDex": 740,
+      "name": "Mega Crabominable",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "golisopod-mega",
+      "baseDex": 768,
+      "name": "Mega Golisopod",
+      "animated": false
+    },
+    {
+      "slug": "magearna-mega",
+      "baseDex": 801,
+      "name": "Mega Magearna",
+      "animated": false
+    },
+    {
+      "slug": "magearna-original-mega",
+      "baseDex": 801,
+      "name": "Mega Magearna (Original Color)",
+      "animated": false
+    },
+    {
+      "slug": "zeraora-mega",
+      "baseDex": 807,
+      "name": "Mega Zeraora",
+      "animated": false
+    },
+    {
+      "slug": "scovillain-mega",
+      "baseDex": 952,
+      "name": "Mega Scovillain",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "glimmora-mega",
+      "baseDex": 970,
+      "name": "Mega Glimmora",
+      "animated": true,
+      "animatedExt": "webp"
+    },
+    {
+      "slug": "tatsugiri-stretchy-mega",
+      "baseDex": 978,
+      "name": "Mega Tatsugiri (Stretchy Form)",
+      "animated": false
+    },
+    {
+      "slug": "baxcalibur-mega",
+      "baseDex": 998,
+      "name": "Mega Baxcalibur",
+      "animated": false
     }
   ]
 }

@@ -1,3 +1,5 @@
+import { isMegaCardName } from '../data/megaDex';
+import { MEGA_GROUP_ID } from '../data/defaultRarityGroups';
 import type { CardRecord, RarityGroup } from '../types';
 
 export function activeRarities(groups: RarityGroup[], activeGroupIds: string[]): Set<string> {
@@ -32,6 +34,7 @@ export function availableCardsForDex(
   overrides: Record<string, string> = {},
   activeGroupIds: string[] = []
 ): CardRecord[] {
+  const megaGroupActive = activeGroupIds.includes(MEGA_GROUP_ID);
   return allCards.filter((card) => {
     // Precedence: an explicit per-card override (user-assigned or seeded via
     // DEFAULT_CARD_OVERRIDES) always wins. Failing that, automatic Trainer
@@ -39,10 +42,18 @@ export function availableCardsForDex(
     // overridden there. Failing that, fall back to raw rarity matching.
     const overrideGroupId =
       overrides[card.id] ?? (isTrainerGalleryCard(card.setId) ? 'alt-art' : undefined);
-    if (overrideGroupId !== undefined) {
-      return activeGroupIds.includes(overrideGroupId);
-    }
-    return activeSet.has(card.rarity);
+    const normallyAvailable =
+      overrideGroupId !== undefined
+        ? activeGroupIds.includes(overrideGroupId)
+        : activeSet.has(card.rarity);
+    if (normallyAvailable) return true;
+    // Cross-cutting Mega lens (see defaultRarityGroups.ts's 'mega' built-in
+    // group): a Mega-tagged card is ADDITIONALLY available whenever the
+    // Mega group is active, on top of whatever its own rarity/override-based
+    // group membership already grants -- this only runs after the normal
+    // check above already said "no", so it can only ever add visibility,
+    // never take it away.
+    return megaGroupActive && isMegaCardName(card.name);
   });
 }
 

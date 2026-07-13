@@ -46,10 +46,10 @@ describe('GENERATIONS', () => {
     expect(total).toBe(1025);
   });
 
-  it('has a "mega" entry with exactly 48 synthetic-numbered entries, all above every real dex number', () => {
+  it('has a "mega" entry with exactly 96 synthetic-numbered entries, all above every real dex number', () => {
     const mega = GENERATIONS.find((g) => g.id === 'mega');
     expect(mega?.label).toBe('Mega');
-    expect(mega?.entries).toHaveLength(48);
+    expect(mega?.entries).toHaveLength(96);
     expect(mega?.entries.every((e) => e.number > MEGA_DEX_BASE)).toBe(true);
   });
 });
@@ -87,7 +87,7 @@ describe('entriesForGenerations', () => {
 
   it('returns the Mega entries, in release order, when "mega" is requested', () => {
     const entries = entriesForGenerations(['mega']);
-    expect(entries).toHaveLength(48);
+    expect(entries).toHaveLength(96);
     expect(entries.map((e) => e.number)).toEqual(
       MEGA_DEX_ENTRIES.map((e) => e.number).sort((a, b) => a - b)
     );
@@ -95,7 +95,7 @@ describe('entriesForGenerations', () => {
 
   it('merges a numbered generation with "mega", sorted so Mega entries trail every real dex number', () => {
     const entries = entriesForGenerations([1, 'mega']);
-    expect(entries).toHaveLength(151 + 48);
+    expect(entries).toHaveLength(151 + 96);
     expect(entries[0].name).toBe('Bulbasaur');
     expect(entries[150].name).toBe('Mew');
     expect(entries[151].number).toBeGreaterThan(MEGA_DEX_BASE);
@@ -105,10 +105,10 @@ describe('entriesForGenerations', () => {
 describe('allDexEntries', () => {
   it('returns every entry across every known generation, including Mega, sorted by dex number', () => {
     const entries = allDexEntries();
-    expect(entries).toHaveLength(1025 + 48);
+    expect(entries).toHaveLength(1025 + 96);
     expect(entries[0].name).toBe('Bulbasaur');
     expect(entries[1024].name).toBe('Pecharunt');
-    expect(entries[entries.length - 1].number).toBe(MEGA_DEX_BASE + 48);
+    expect(entries[entries.length - 1].number).toBe(MEGA_DEX_BASE + 96);
   });
 
   it('is numbered sequentially from 1 to 1025 for the real dex range, with no gaps or duplicates', () => {

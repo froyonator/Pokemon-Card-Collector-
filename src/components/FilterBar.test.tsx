@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FilterBar } from './FilterBar';
@@ -40,6 +40,19 @@ describe('FilterBar', () => {
     expect(useAppStore.getState().activeGroupIds).toContain('full-art');
   });
 
+  it('shows the Mega rarity group checkbox in Card rarity groups, active by default, and toggles it', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
+    await userEvent.click(screen.getByText('Card rarity groups'));
+    const raritySection = screen.getByText('Card rarity groups').closest('details')!;
+    const megaGroupCheckbox = within(raritySection).getByLabelText('Mega');
+    expect(megaGroupCheckbox).toBeChecked();
+    await userEvent.click(megaGroupCheckbox);
+    expect(useAppStore.getState().activeGroupIds).not.toContain('mega');
+    await userEvent.click(megaGroupCheckbox);
+    expect(useAppStore.getState().activeGroupIds).toContain('mega');
+  });
+
   it('changes the language', async () => {
     render(<FilterBar />);
     await userEvent.click(screen.getByText('Filters'));
@@ -71,7 +84,12 @@ describe('FilterBar', () => {
     render(<FilterBar />);
     await userEvent.click(screen.getByText('Filters'));
     await userEvent.click(screen.getByText('Generations'));
-    const megaCheckbox = screen.getByLabelText('Mega');
+    // Scoped to the Generations section: the "Card rarity groups" section
+    // (see below) has its own, unrelated checkbox also labeled "Mega" --
+    // the built-in name-based rarity group -- so an unscoped getByLabelText
+    // would now match two elements.
+    const generationsSection = screen.getByText('Generations').closest('details')!;
+    const megaCheckbox = within(generationsSection).getByLabelText('Mega');
     expect(megaCheckbox).not.toBeChecked();
 
     await userEvent.click(megaCheckbox);

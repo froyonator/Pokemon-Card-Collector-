@@ -605,7 +605,7 @@ describe('replaceUserData with binders', () => {
 describe('persist config resilience', () => {
   it('sets a version and a migrate function, so a future breaking schema change has a real hook instead of relying on shallow-merge alone', () => {
     const options = useAppStore.persist.getOptions();
-    expect(options.version).toBe(2);
+    expect(options.version).toBe(3);
     expect(typeof options.migrate).toBe('function');
   });
 
@@ -619,6 +619,41 @@ describe('persist config resilience', () => {
     const migrated = (await options.migrate!(v1State, 1)) as typeof v1State;
     expect(migrated.groups.some((g) => g.id === 'standard-prints')).toBe(true);
     // Present but NOT activated -- the user's own active set is untouched.
+    expect(migrated.activeGroupIds).toEqual(['full-art']);
+  });
+
+  it('the v2->v3 migration appends the new Mega group to persisted groups, leaving activeGroupIds untouched', async () => {
+    const options = useAppStore.persist.getOptions();
+    // A v2 user's persisted groups already have 'standard-prints' (from the
+    // v1->v2 migration or a fresh v2 install) but predate 'mega'.
+    const v2State = {
+      groups: [
+        { id: 'full-art', name: 'Full Art', rarities: ['Ultra Rare'] },
+        { id: 'standard-prints', name: 'Standard prints', rarities: ['Common'] },
+      ],
+      activeGroupIds: ['full-art'],
+    };
+    const migrated = (await options.migrate!(v2State, 2)) as typeof v2State;
+    expect(migrated.groups.some((g) => g.id === 'mega')).toBe(true);
+    const megaGroup = migrated.groups.find((g) => g.id === 'mega');
+    expect(megaGroup?.name).toBe('Mega');
+    expect(megaGroup?.rarities).toEqual([]);
+    // Present but NOT activated by the migration itself -- even though a
+    // brand-new install seeds 'mega' active (it's purely additive), a
+    // migration never silently changes what an EXISTING user currently
+    // sees. The user's own active set is untouched, same as v1->v2.
+    expect(migrated.activeGroupIds).toEqual(['full-art']);
+  });
+
+  it('the v1->v3 migration (an old user who skipped straight to the latest version) ends up with both new groups appended', async () => {
+    const options = useAppStore.persist.getOptions();
+    const v1State = {
+      groups: [{ id: 'full-art', name: 'Full Art', rarities: ['Ultra Rare'] }],
+      activeGroupIds: ['full-art'],
+    };
+    const migrated = (await options.migrate!(v1State, 1)) as typeof v1State;
+    expect(migrated.groups.some((g) => g.id === 'standard-prints')).toBe(true);
+    expect(migrated.groups.some((g) => g.id === 'mega')).toBe(true);
     expect(migrated.activeGroupIds).toEqual(['full-art']);
   });
 

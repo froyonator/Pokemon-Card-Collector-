@@ -119,6 +119,68 @@ describe('availableCardsForDex', () => {
     );
     expect(result.map((c) => c.id).sort()).toEqual(['1', 'swsh12.5tg-TG04']);
   });
+
+  describe('the Mega group cross-cutting lens', () => {
+    // A Mega-tagged card whose own rarity is completely ordinary (not in any
+    // active rarity group) -- the kind of card that would otherwise be
+    // invisible everywhere.
+    const megaCard: CardRecord = {
+      ...cards[0],
+      id: 'mega-1',
+      name: 'Mega Charizard X ex',
+      rarity: 'Common',
+    };
+    // A real, unrelated species whose name merely CONTAINS "mega" midword --
+    // must never be swept in by the Mega group.
+    const yanmegaCard: CardRecord = {
+      ...cards[0],
+      id: 'yanmega-1',
+      name: 'Yanmega ex',
+      rarity: 'Common',
+    };
+
+    it('surfaces a Mega-tagged card when the Mega group is active, even though its raw rarity matches no active group', () => {
+      const set = activeRarities(groups, ['a']); // 'Ultra Rare' only
+      const result = availableCardsForDex([megaCard], set, {}, ['a', 'mega']);
+      expect(result.map((c) => c.id)).toEqual(['mega-1']);
+    });
+
+    it('does not surface the Mega-tagged card when the Mega group is inactive and its rarity matches nothing else', () => {
+      const set = activeRarities(groups, ['a']);
+      const result = availableCardsForDex([megaCard], set, {}, ['a']);
+      expect(result).toHaveLength(0);
+    });
+
+    it('never sweeps in Yanmega, whose name merely contains "mega" midword', () => {
+      const set = activeRarities(groups, ['a']);
+      const result = availableCardsForDex([yanmegaCard], set, {}, ['a', 'mega']);
+      expect(result).toHaveLength(0);
+    });
+
+    it('a Mega card whose rarity already matches an active group is available whether or not the Mega group is also active (cross-cutting, not exclusive)', () => {
+      const set = activeRarities(groups, ['a']);
+      const rareMegaCard: CardRecord = { ...megaCard, id: 'mega-2', rarity: 'Ultra Rare' };
+      const withoutMega = availableCardsForDex([rareMegaCard], set, {}, ['a']);
+      const withMega = availableCardsForDex([rareMegaCard], set, {}, ['a', 'mega']);
+      expect(withoutMega.map((c) => c.id)).toEqual(['mega-2']);
+      expect(withMega.map((c) => c.id)).toEqual(['mega-2']);
+    });
+
+    it('is purely additive: turning the Mega group on never removes a card that was already available', () => {
+      const set = activeRarities(groups, ['a']);
+      const before = availableCardsForDex([...cards, megaCard], set, {}, ['a']);
+      const after = availableCardsForDex([...cards, megaCard], set, {}, ['a', 'mega']);
+      for (const card of before) {
+        expect(after.map((c) => c.id)).toContain(card.id);
+      }
+    });
+
+    it('still surfaces a Mega card the user manually filed under an inactive group (e.g. Not Usable) when the Mega group is active -- the lens is genuinely cross-cutting, not just a rarity-matching shortcut', () => {
+      const set = activeRarities(groups, ['a']);
+      const result = availableCardsForDex([megaCard], set, { 'mega-1': 'not-usable' }, ['a', 'mega']);
+      expect(result.map((c) => c.id)).toEqual(['mega-1']);
+    });
+  });
 });
 
 describe('isTrainerGalleryCard', () => {

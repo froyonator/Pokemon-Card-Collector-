@@ -176,6 +176,16 @@ export const useAppStore = create<AppState>()(
         // it exists so sparse-data languages are viewable at all, not to
         // flood the default special-art views -- see its own comment in
         // defaultRarityGroups.ts.
+        //
+        // 'mega' (see defaultRarityGroups.ts) is deliberately left IN,
+        // unlike those two: its membership check in selectors.ts's
+        // availableCardsForDex is purely additive -- a Mega-tagged card only
+        // ever gains visibility from the group being active, on top of
+        // whatever its own rarity already grants, and never causes a card
+        // that would otherwise show to disappear. Toggling it on for a
+        // brand-new user can't hide or reprioritize anything, so unlike
+        // 'standard-prints' there's no flood-the-default-view risk to guard
+        // against by starting it off.
         activeGroupIds: DEFAULT_RARITY_GROUPS.filter(
           (g) => g.id !== 'not-usable' && g.id !== 'standard-prints'
         ).map((g) => g.id),
@@ -401,7 +411,20 @@ export const useAppStore = create<AppState>()(
       // appends any default group missing from the persisted list, while
       // deliberately NOT touching activeGroupIds: the new group arrives
       // present-but-inactive, exactly like a fresh install.
-      version: 2,
+      //
+      // v2 -> v3: same shape of gap, this time for the new 'mega' built-in
+      // group (see defaultRarityGroups.ts) -- an existing user's persisted
+      // `groups` predates it and would never gain it on its own. Reuses the
+      // exact same migrate() loop below unchanged (it already appends ANY
+      // DEFAULT_RARITY_GROUPS entry missing from the persisted list, not
+      // just 'standard-prints' specifically), so bumping the version number
+      // is the only change needed to make it run again for already-migrated
+      // users. activeGroupIds is deliberately left untouched here too, same
+      // as v1 -> v2: even though a brand-new install seeds 'mega' active
+      // (see its own comment above), a MIGRATION never silently changes
+      // what an existing user currently sees -- it arrives present but
+      // inactive, and the user opts in via the Filters checkbox.
+      version: 3,
       migrate: (persistedState): ReturnType<typeof partializeUserData> => {
         const state = persistedState as ReturnType<typeof partializeUserData>;
         if (Array.isArray(state?.groups)) {

@@ -11,8 +11,10 @@ import {
   megaAnimatedSpriteUrl,
   mergeMegaIntoManifest,
   saveMegaCheckpoint,
+  selectForms,
   type MegaCheckpoint,
 } from './downloadMegaSprites';
+import { MEGA_DEX } from './data/megaDex';
 
 describe('megaAnimatedSlug', () => {
   it('keeps the slug unchanged for a plain mega (no X/Y split)', () => {
@@ -25,6 +27,29 @@ describe('megaAnimatedSlug', () => {
     expect(megaAnimatedSlug('charizard-mega-y')).toBe('charizard-megay');
     expect(megaAnimatedSlug('mewtwo-mega-x')).toBe('mewtwo-megax');
     expect(megaAnimatedSlug('mewtwo-mega-y')).toBe('mewtwo-megay');
+  });
+
+  it('fuses the hyphen between "mega" and a trailing Z suffix (newest-wave second mega stones)', () => {
+    expect(megaAnimatedSlug('absol-mega-z')).toBe('absol-megaz');
+    expect(megaAnimatedSlug('garchomp-mega-z')).toBe('garchomp-megaz');
+    expect(megaAnimatedSlug('lucario-mega-z')).toBe('lucario-megaz');
+  });
+
+  it('applies the explicit override for Meowstic, whose animated-host name does not follow the general transform', () => {
+    expect(megaAnimatedSlug('meowstic-male-mega')).toBe('meowstic-mmega');
+  });
+});
+
+describe('selectForms', () => {
+  it('returns every form by default', () => {
+    expect(selectForms([])).toEqual(MEGA_DEX);
+  });
+
+  it('returns only order > 48 (the newest-wave additions) with --only-new', () => {
+    const forms = selectForms(['--only-new']);
+    expect(forms.length).toBe(MEGA_DEX.length - 48);
+    expect(forms.every((f) => f.order > 48)).toBe(true);
+    expect(forms[0].slug).toBe('clefable-mega');
   });
 });
 

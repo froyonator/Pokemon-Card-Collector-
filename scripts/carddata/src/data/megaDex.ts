@@ -1,10 +1,25 @@
 // scripts/carddata/src/data/megaDex.ts
 //
-// Canonical, ordered list of every official Mega Evolution form (the X&Y /
-// Omega Ruby & Alpha Sapphire generation of Mega Evolution): 46 species, 48
-// forms once Charizard X/Y and Mewtwo X/Y are each counted separately. This
-// is the single source of truth the app's mega-grouping worker and the
-// sprite/card audits both read from.
+// Canonical, ordered list of every official Mega Evolution form. Derived
+// from the reference wiki's own "Mega Evolution" article (fetched once via
+// src/harvest/wikiApiClient.ts, see data/mega-evolution-article.wikitext.txt,
+// gitignored) so the roster comes from an independent authoritative source
+// rather than from our own card database: 96 total forms across three
+// waves --
+//
+//   1. X&Y / Omega Ruby & Alpha Sapphire (46 species, 48 forms once
+//      Charizard X/Y and Mewtwo X/Y are each counted separately).
+//   2. The newest game wave's base game (26 species/forms).
+//   3. The newest game wave's DLC (18 species, 22 forms once every
+//      form-variation -- Raichu X/Y, the second mega stone some species
+//      that already had a classic mega form gained, Magearna's Original
+//      Color variant, and Tatsugiri's three cosmetic forms -- is counted
+//      separately, matching the source article's own "if form variations
+//      are counted" figure).
+//
+// 48 + 26 + 22 = 96, matching the source article's total. This is the
+// single source of truth the app's mega-grouping worker and the sprite/card
+// audits both read from.
 //
 // `slug` matches the form-variety naming used by the static sprite archive's
 // species/variety listing (see downloadMegaSprites.ts) -- e.g.
@@ -17,7 +32,10 @@
 // Mega Evolution reference material). This is a documented convention, not
 // a week-by-week reveal timeline -- Diancie and Mega Blaziken were both
 // distributed via mid-generation events but are grouped with the X&Y wave
-// they belong to, consistent with how they're normally listed.
+// they belong to, consistent with how they're normally listed. The two
+// newest-wave sections continue this convention: the source article's own
+// dex-number listing order within each of its two tables (base game, then
+// DLC), which is also each table's own introduction order.
 export interface MegaForm {
   slug: string;
   baseDex: number;
@@ -84,10 +102,80 @@ const ORAS_WAVE: Array<[string, number, string]> = [
   ['audino-mega', 531, 'Audino'],
 ];
 
+// --- Newest game wave, base game (order 49-74): source article's own
+// dex-number listing order, which is also its introduction order ---
+const ZA_BASE_WAVE: Array<[string, number, string]> = [
+  ['clefable-mega', 36, 'Clefable'],
+  ['victreebel-mega', 71, 'Victreebel'],
+  ['starmie-mega', 121, 'Starmie'],
+  ['dragonite-mega', 149, 'Dragonite'],
+  ['meganium-mega', 154, 'Meganium'],
+  ['feraligatr-mega', 160, 'Feraligatr'],
+  ['skarmory-mega', 227, 'Skarmory'],
+  ['froslass-mega', 478, 'Froslass'],
+  ['emboar-mega', 500, 'Emboar'],
+  ['excadrill-mega', 530, 'Excadrill'],
+  ['scolipede-mega', 545, 'Scolipede'],
+  ['scrafty-mega', 560, 'Scrafty'],
+  ['eelektross-mega', 604, 'Eelektross'],
+  ['chandelure-mega', 609, 'Chandelure'],
+  ['chesnaught-mega', 652, 'Chesnaught'],
+  ['delphox-mega', 655, 'Delphox'],
+  ['greninja-mega', 658, 'Greninja'],
+  ['pyroar-mega', 668, 'Pyroar'],
+  // Base form is specifically Eternal Flower Floette (the source article's
+  // only listed pre-Mega form for this row); speciesLabel stays the plain
+  // species name to match this file's existing "no form qualifier unless
+  // there are sibling mega forms to disambiguate" convention.
+  ['floette-mega', 670, 'Floette'],
+  ['malamar-mega', 687, 'Malamar'],
+  ['barbaracle-mega', 689, 'Barbaracle'],
+  ['dragalge-mega', 691, 'Dragalge'],
+  ['hawlucha-mega', 701, 'Hawlucha'],
+  // Base form is Zygarde's Complete Forme (the source article's only listed
+  // pre-Mega form for this row).
+  ['zygarde-mega', 718, 'Zygarde'],
+  ['drampa-mega', 780, 'Drampa'],
+  ['falinks-mega', 870, 'Falinks'],
+];
+
+// --- Newest game wave, DLC (order 75-96): source article's own dex-number
+// listing order, which is also its introduction order. Three species here
+// (Absol, Garchomp, Lucario) already have a classic X&Y-wave mega form --
+// this DLC gave each a SECOND, distinct mega stone/form ("Z"), so both
+// share one baseDex the same way Charizard/Mewtwo X and Y already do. ---
+const ZA_MEGA_DIMENSION_WAVE: Array<[string, number, string]> = [
+  ['raichu-mega-x', 26, 'Raichu X'],
+  ['raichu-mega-y', 26, 'Raichu Y'],
+  ['chimecho-mega', 358, 'Chimecho'],
+  ['absol-mega-z', 359, 'Absol Z'],
+  ['staraptor-mega', 398, 'Staraptor'],
+  ['garchomp-mega-z', 445, 'Garchomp Z'],
+  ['lucario-mega-z', 448, 'Lucario Z'],
+  ['heatran-mega', 485, 'Heatran'],
+  ['darkrai-mega', 491, 'Darkrai'],
+  ['golurk-mega', 623, 'Golurk'],
+  // Base species has separate Male/Female forms, but the source article
+  // gives them one shared Mega Evolution image/name; pokeapi.co's variety
+  // for it is keyed off the male base form.
+  ['meowstic-male-mega', 678, 'Meowstic'],
+  ['crabominable-mega', 740, 'Crabominable'],
+  ['golisopod-mega', 768, 'Golisopod'],
+  ['magearna-mega', 801, 'Magearna'],
+  ['magearna-original-mega', 801, 'Magearna (Original Color)'],
+  ['zeraora-mega', 807, 'Zeraora'],
+  ['scovillain-mega', 952, 'Scovillain'],
+  ['glimmora-mega', 970, 'Glimmora'],
+  ['tatsugiri-curly-mega', 978, 'Tatsugiri (Curly Form)'],
+  ['tatsugiri-droopy-mega', 978, 'Tatsugiri (Droopy Form)'],
+  ['tatsugiri-stretchy-mega', 978, 'Tatsugiri (Stretchy Form)'],
+  ['baxcalibur-mega', 998, 'Baxcalibur'],
+];
+
 function buildForms(): MegaForm[] {
   const forms: MegaForm[] = [];
   let order = 1;
-  for (const [slug, baseDex, speciesLabel] of [...XY_WAVE, ...ORAS_WAVE]) {
+  for (const [slug, baseDex, speciesLabel] of [...XY_WAVE, ...ORAS_WAVE, ...ZA_BASE_WAVE, ...ZA_MEGA_DIMENSION_WAVE]) {
     forms.push({ slug, baseDex, speciesLabel, displayName: `Mega ${speciesLabel}`, order: order++ });
   }
   return forms;
@@ -109,6 +197,15 @@ export function megaFormsForDex(baseDex: number): MegaForm[] {
 // that tags a card as a Mega form. A card matches if ANY pattern tests true
 // against its `name` field. See scripts/carddata/data/mega-audit.md for the
 // full per-language coverage numbers these were audited against.
+//
+// Guard, re-verified against the newest-wave roster above: "Yanmega" is a
+// real, unrelated species (dex 469, not a Mega form of anything) whose name
+// happens to contain the substring "mega". None of the three patterns below
+// match it or "Yanmega ex" -- `legacy-m-ex` requires the species name to
+// come immediately after a bare "M" separator, and `modern-mega-ex-gx` /
+// `ja-modern-mega` both anchor "Mega"/"メガ" to the START of the name
+// (`^Mega`/`^メガ`), so a species name that merely CONTAINS "mega" midword
+// never matches. See the `shouldNotMatch` fixtures in megaDex.test.ts.
 export interface MegaNamePattern {
   id: string;
   re: RegExp;

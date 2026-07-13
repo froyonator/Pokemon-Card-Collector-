@@ -1,5 +1,15 @@
 import type { RarityGroup } from '../types';
 
+// The one built-in group whose membership isn't rarity-based at all -- see
+// selectors.ts's availableCardsForDex, which is where 'mega' actually gets
+// its special, name-based (isMegaCardName) treatment instead of matching
+// against `rarities` like every other group here. Referenced by id rather
+// than importing this constant everywhere a group needs to be checked,
+// since the persisted `groups`/`activeGroupIds` arrays are plain JSON (see
+// store.ts) -- there's no way to persist a function, so the special-casing
+// has to live in code, keyed off this id, not on the group object itself.
+export const MEGA_GROUP_ID = 'mega';
+
 export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
   {
     id: 'full-art',
@@ -18,6 +28,22 @@ export const DEFAULT_RARITY_GROUPS: RarityGroup[] = [
     id: 'rainbow-gold',
     name: 'Rainbow / Gold Secret',
     rarities: ['Secret Rare', 'Hyper rare', 'Mega Hyper Rare', 'Amazing Rare', 'Black White Rare'],
+  },
+  {
+    // Cross-cutting, NAME-based membership -- unlike every other group here,
+    // 'rarities' below is never consulted for this one (and is left empty on
+    // purpose; the Manage Groups panel's rarity-reassignment UI simply has
+    // nothing to move here, which is correct). A card counts as a member
+    // whenever isMegaCardName(card.name) is true (see megaDex.ts),
+    // REGARDLESS of its rarity or which other group it already belongs to --
+    // e.g. a Secret Rare Mega card is in both 'rainbow-gold' AND 'mega' at
+    // once. See selectors.ts's availableCardsForDex for the actual
+    // membership check, keyed off MEGA_GROUP_ID above, and store.ts for why
+    // it's seeded ACTIVE by default (purely additive: toggling it on can
+    // only ever surface more cards, never hide ones already visible).
+    id: MEGA_GROUP_ID,
+    name: 'Mega',
+    rarities: [],
   },
   {
     id: 'vintage-special',

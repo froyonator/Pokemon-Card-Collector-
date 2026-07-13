@@ -3,7 +3,7 @@
 // App-side mirror of scripts/carddata/src/data/megaDex.ts (the data
 // pipeline's canonical Mega Evolution list). App code can't import across
 // the scripts/carddata package boundary, so this is a hand-kept copy of the
-// same 48-form roster, ordering, and card-name matcher patterns -- if the
+// same 96-form roster, ordering, and card-name matcher patterns -- if the
 // pipeline module's MEGA_DEX or MEGA_NAME_PATTERNS ever change, mirror the
 // change here too.
 //
@@ -16,7 +16,7 @@
 export const MEGA_DEX_BASE = 20000;
 
 export interface MegaDexEntry {
-  /** Synthetic dex number: MEGA_DEX_BASE + release order (20001-20048). */
+  /** Synthetic dex number: MEGA_DEX_BASE + release order (20001-20096). */
   number: number;
   /** The real national dex number of the base species (e.g. 6 for Charizard). */
   baseDexNumber: number;
@@ -87,10 +87,76 @@ const ORAS_WAVE: Array<[string, number, string]> = [
   ['audino-mega', 531, 'Audino'],
 ];
 
+// --- Newest game wave, base game (order 49-74): source article's own
+// dex-number listing order, which is also its introduction order ---
+const ZA_BASE_WAVE: Array<[string, number, string]> = [
+  ['clefable-mega', 36, 'Clefable'],
+  ['victreebel-mega', 71, 'Victreebel'],
+  ['starmie-mega', 121, 'Starmie'],
+  ['dragonite-mega', 149, 'Dragonite'],
+  ['meganium-mega', 154, 'Meganium'],
+  ['feraligatr-mega', 160, 'Feraligatr'],
+  ['skarmory-mega', 227, 'Skarmory'],
+  ['froslass-mega', 478, 'Froslass'],
+  ['emboar-mega', 500, 'Emboar'],
+  ['excadrill-mega', 530, 'Excadrill'],
+  ['scolipede-mega', 545, 'Scolipede'],
+  ['scrafty-mega', 560, 'Scrafty'],
+  ['eelektross-mega', 604, 'Eelektross'],
+  ['chandelure-mega', 609, 'Chandelure'],
+  ['chesnaught-mega', 652, 'Chesnaught'],
+  ['delphox-mega', 655, 'Delphox'],
+  ['greninja-mega', 658, 'Greninja'],
+  ['pyroar-mega', 668, 'Pyroar'],
+  ['floette-mega', 670, 'Floette'],
+  ['malamar-mega', 687, 'Malamar'],
+  ['barbaracle-mega', 689, 'Barbaracle'],
+  ['dragalge-mega', 691, 'Dragalge'],
+  ['hawlucha-mega', 701, 'Hawlucha'],
+  ['zygarde-mega', 718, 'Zygarde'],
+  ['drampa-mega', 780, 'Drampa'],
+  ['falinks-mega', 870, 'Falinks'],
+];
+
+// --- Newest game wave, DLC (order 75-96): source article's own dex-number
+// listing order, which is also its introduction order. Three species here
+// (Absol, Garchomp, Lucario) already have a classic X&Y-wave mega form --
+// this DLC gave each a SECOND, distinct mega stone/form ("Z"), so both
+// share one baseDex the same way Charizard/Mewtwo X and Y already do. ---
+const ZA_MEGA_DIMENSION_WAVE: Array<[string, number, string]> = [
+  ['raichu-mega-x', 26, 'Raichu X'],
+  ['raichu-mega-y', 26, 'Raichu Y'],
+  ['chimecho-mega', 358, 'Chimecho'],
+  ['absol-mega-z', 359, 'Absol Z'],
+  ['staraptor-mega', 398, 'Staraptor'],
+  ['garchomp-mega-z', 445, 'Garchomp Z'],
+  ['lucario-mega-z', 448, 'Lucario Z'],
+  ['heatran-mega', 485, 'Heatran'],
+  ['darkrai-mega', 491, 'Darkrai'],
+  ['golurk-mega', 623, 'Golurk'],
+  ['meowstic-male-mega', 678, 'Meowstic'],
+  ['crabominable-mega', 740, 'Crabominable'],
+  ['golisopod-mega', 768, 'Golisopod'],
+  ['magearna-mega', 801, 'Magearna'],
+  ['magearna-original-mega', 801, 'Magearna (Original Color)'],
+  ['zeraora-mega', 807, 'Zeraora'],
+  ['scovillain-mega', 952, 'Scovillain'],
+  ['glimmora-mega', 970, 'Glimmora'],
+  ['tatsugiri-curly-mega', 978, 'Tatsugiri (Curly Form)'],
+  ['tatsugiri-droopy-mega', 978, 'Tatsugiri (Droopy Form)'],
+  ['tatsugiri-stretchy-mega', 978, 'Tatsugiri (Stretchy Form)'],
+  ['baxcalibur-mega', 998, 'Baxcalibur'],
+];
+
 function buildEntries(): MegaDexEntry[] {
   const entries: MegaDexEntry[] = [];
   let order = 1;
-  for (const [slug, baseDexNumber, speciesLabel] of [...XY_WAVE, ...ORAS_WAVE]) {
+  for (const [slug, baseDexNumber, speciesLabel] of [
+    ...XY_WAVE,
+    ...ORAS_WAVE,
+    ...ZA_BASE_WAVE,
+    ...ZA_MEGA_DIMENSION_WAVE,
+  ]) {
     entries.push({
       number: MEGA_DEX_BASE + order,
       baseDexNumber,
@@ -183,10 +249,22 @@ export function isMegaCardName(name: string): boolean {
 // every non-English Mega card. isMegaCardName alone is what narrows an
 // already species-scoped bucket down to just its Mega prints.
 //
-// Only Charizard (dex 6) and Mewtwo (dex 150) have two separate Mega forms
-// (X and Y) sharing one base species, so only they need the extra X/Y
-// token split below.
-const XY_SPLIT_BASE_DEX = new Set([6, 150]);
+// Charizard (dex 6), Mewtwo (dex 150), and Raichu (dex 26, added with the
+// newest game wave's DLC) each have two separate Mega forms (X and Y)
+// sharing one base species, so only they need the extra X/Y token split
+// below.
+//
+// Absol (359), Garchomp (445), and Lucario (448) also gained a SECOND mega
+// form in that same DLC wave (a "Z" mega stone, alongside their existing
+// classic form) but no card name convention for a "Z" token has been
+// observed anywhere in the card data (see mega-audit.md) -- unlike X/Y,
+// which is an established, real card-naming convention going back to the
+// original Charizard X/Y cards. Deliberately NOT inventing a Z split here:
+// those two entries fall through to the same "no readable variant token ->
+// included on both" behavior the legacy Charizard/Mewtwo cards already use
+// below, which is the correct default until real Mega Absol/Garchomp/
+// Lucario Z cards (if any) show what naming convention they actually use.
+const XY_SPLIT_BASE_DEX = new Set([6, 26, 150]);
 
 function entryVariant(entry: MegaDexEntry): 'X' | 'Y' | null {
   if (entry.slug.endsWith('-mega-x')) return 'X';

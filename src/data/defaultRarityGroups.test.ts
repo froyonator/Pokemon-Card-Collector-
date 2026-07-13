@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RARITY_GROUPS, fetchRarityList, isKnownPocketRarity } from './defaultRarityGroups';
+import {
+  DEFAULT_RARITY_GROUPS,
+  MEGA_GROUP_ID,
+  fetchRarityList,
+  isKnownPocketRarity,
+} from './defaultRarityGroups';
 
 describe('DEFAULT_RARITY_GROUPS', () => {
-  it('has 6 groups with unique ids', () => {
-    expect(DEFAULT_RARITY_GROUPS).toHaveLength(6);
+  it('has 7 groups with unique ids', () => {
+    expect(DEFAULT_RARITY_GROUPS).toHaveLength(7);
     const ids = new Set(DEFAULT_RARITY_GROUPS.map((g) => g.id));
-    expect(ids.size).toBe(6);
+    expect(ids.size).toBe(7);
+  });
+
+  it('seeds the Mega group with an empty rarities list (name-based membership, not rarity-based)', () => {
+    const group = DEFAULT_RARITY_GROUPS.find((g) => g.id === MEGA_GROUP_ID);
+    expect(group?.name).toBe('Mega');
+    expect(group?.rarities).toEqual([]);
   });
 
   it('seeds standard-prints with the base-print rarities plus the two "source recorded nothing" values', () => {

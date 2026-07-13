@@ -1,15 +1,26 @@
 // scripts/carddata/src/downloadMegaSprites.ts
 //
 // Downloads a self-hosted sprite set for every official Mega Evolution form
-// (see src/data/megaDex.ts -- 46 species, 48 forms) into public/sprites/mega/,
-// mirroring the conventions downloadSprites.ts already established for base
-// forms so the running app never hot-links a third-party host at runtime:
+// (see src/data/megaDex.ts -- 96 forms across the classic X&Y/ORAS wave and
+// the newest game wave) into public/sprites/mega/, mirroring the
+// conventions downloadSprites.ts already established for base forms so the
+// running app never hot-links a third-party host at runtime:
 //
-//   public/sprites/mega/static/<slug>.png    -- all 48 forms.
+//   public/sprites/mega/static/<slug>.png    -- every form that resolves a
+//                                               form id and static image;
+//                                               a newest-wave form that
+//                                               resolves neither is simply
+//                                               left out of the manifest's
+//                                               "mega" section below, so the
+//                                               app falls back to that
+//                                               form's base species sprite.
 //   public/sprites/mega/animated/<slug>.gif  -- as many as the animated
 //                                               source covers (.webp instead
 //                                               when conversion saves space;
 //                                               see maybeConvertToWebp).
+//
+// Run with --only-new to process just the newest-wave additions (order 49+)
+// without re-touching already-checkpointed original-wave forms.
 //   public/sprites/manifest.json             -- gains a "mega" array:
 //                                               [{ slug, baseDex, name,
 //                                                  animated, animatedExt? }]
@@ -63,10 +74,27 @@ const POKEAPI_BASE = 'https://pokeapi.co/api/v2';
 // Mega slugs (from megaDex.ts) already match the sprite archive's own
 // variety-name spelling, e.g. "venusaur-mega", "charizard-mega-x". The
 // animated host uses the same spelling EXCEPT it fuses "-mega-x"/"-mega-y"
-// into "-megax"/"-megay" (hyphen dropped only between "mega" and the X/Y
-// suffix, kept everywhere else).
+// (and, verified live for the newest wave's second-mega-stone forms,
+// "-mega-z") into "-megax"/"-megay"/"-megaz" (hyphen dropped only between
+// "mega" and the X/Y/Z suffix, kept everywhere else).
+//
+// One newest-wave slug doesn't follow that transform at all: Meowstic's
+// mega variety is keyed off its male base form ("meowstic-male-mega" --
+// see megaDex.ts), but the animated host's own male-Meowstic base sprite is
+// "meowstic-m", and appending "mega" to that is done with NO hyphen at all
+// ("meowstic-mmega"), confirmed live. Every other newest-wave slug that
+// isn't listed here was also checked live and confirmed NOT present on the
+// animated host (see downloadMegaSprites -- those forms fall back to
+// animated:false / the base species sprite, same as any other not-yet
+// -covered form).
+const ANIMATED_SLUG_OVERRIDES: Record<string, string> = {
+  'meowstic-male-mega': 'meowstic-mmega',
+};
+
 export function megaAnimatedSlug(slug: string): string {
-  return slug.replace(/-mega-(x|y)$/, '-mega$1');
+  const override = ANIMATED_SLUG_OVERRIDES[slug];
+  if (override) return override;
+  return slug.replace(/-mega-(x|y|z)$/, '-mega$1');
 }
 
 export function megaAnimatedSpriteUrl(slug: string): string {
@@ -392,11 +420,24 @@ export async function run(forms: MegaForm[] = MEGA_DEX): Promise<MegaRunSummary>
   return summary;
 }
 
+// --- CLI entry -----------------------------------------------------------
+
+// The original 48 X&Y/ORAS forms (order 1-48) were downloaded and
+// checkpointed already; --only-new re-runs against just the newest-wave
+// additions (order 49+, see megaDex.ts) without re-touching the checkpoint
+// entries -- and therefore without re-hitting pokeapi.co/the sprite hosts
+// -- for forms already resolved.
+const ORIGINAL_WAVE_FORM_COUNT = 48;
+
+export function selectForms(argv: string[]): MegaForm[] {
+  return argv.includes('--only-new') ? MEGA_DEX.filter((f) => f.order > ORIGINAL_WAVE_FORM_COUNT) : MEGA_DEX;
+}
+
 // Only run when executed directly (not when imported by tests), matching
 // this pipeline's existing scripts (see downloadSprites.ts).
 const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMainModule) {
-  run()
+  run(selectForms(process.argv.slice(2)))
     .then((summary) => {
       console.log('Mega sprite download complete.');
       console.log(`  Static:   ${summary.staticDone}/${summary.totalForms} done, ${summary.staticFailed} failed, ${(summary.staticBytes / 1_000_000).toFixed(1)} MB`);
