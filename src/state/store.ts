@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
+import { DEFAULT_RARITY_GROUPS, MEGA_GROUP_ID } from '../data/defaultRarityGroups';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
 import type { GenerationId } from '../data/generations';
 import type {
@@ -98,6 +98,25 @@ export interface AppState {
   binders: Binder[];
   activeBinderId: string;
   hasUnsavedChanges: boolean;
+
+  // Mega auto-switch bookkeeping (see toggleGeneration's doc comment below
+  // for the full behavior). Deliberately session-only -- NOT included in
+  // partializeUserData/ExportedUserData below -- since this is transient UI
+  // state describing an in-progress auto-switch, not user collection data
+  // worth persisting across reloads or round-tripping through an export/
+  // import backup. Worst case on a reload mid-auto-switch: the "restore on
+  // Mega deselect" step is skipped once, which the user can trivially
+  // correct by hand via the Filters panel; nothing is lost or corrupted.
+  //
+  // Holds the activeGroupIds snapshot taken the moment Mega became the sole
+  // selected generation, or null when no auto-switch is currently active.
+  preMegaActiveGroupIds: string[] | null;
+  // True once the user has explicitly changed the rarity-group selection
+  // (toggleActiveGroup/setGroups) WHILE an auto-switch is active -- their
+  // explicit choice then wins, and toggleGeneration's restore-on-deselect
+  // step must not clobber it. Reset to false whenever Mega toggles off
+  // (whether or not it actually restored anything).
+  megaAutoSwitchOverridden: boolean;
 
   setLanguage: (language: string) => void;
   toggleActiveGroup: (groupId: string) => void;
@@ -212,6 +231,8 @@ export const useAppStore = create<AppState>()(
         binders: [seedBinder],
         activeBinderId: seedBinder.id,
         hasUnsavedChanges: false,
+        preMegaActiveGroupIds: null,
+        megaAutoSwitchOverridden: false,
 
         setLanguage: (language) => set({ language }),
         toggleActiveGroup: (groupId) =>
@@ -219,14 +240,86 @@ export const useAppStore = create<AppState>()(
             activeGroupIds: state.activeGroupIds.includes(groupId)
               ? state.activeGroupIds.filter((id) => id !== groupId)
               : [...state.activeGroupIds, groupId],
+            // A manual group change while an auto-switch is in progress
+            // (preMegaActiveGroupIds !== null) is the user's own explicit
+            // choice overriding the automatic one -- flag it so
+            // toggleGeneration's restore-on-Mega-deselect step below leaves
+            // it alone instead of clobbering it back to the pre-Mega
+            // snapshot. Left untouched (not reset to false) when no
+            // auto-switch is active, so an override made just before Mega
+            // gets deselected isn't silently un-flagged by some other
+            // unrelated group toggle in between.
+            megaAutoSwitchOverridden:
+              state.preMegaActiveGroupIds !== null ? true : state.megaAutoSwitchOverridden,
           })),
         setGroups: (groups) => set({ groups, hasUnsavedChanges: true }),
+        // Wraps the plain add/remove-from-selectedGenerations toggle with
+        // the Mega <-> rarity-group auto-switch: "when Mega is selected
+        // then rarity auto switches to Mega unless we specifically select"
+        // (user spec). Two transitions matter, both edge-triggered off
+        // whether Mega is the SOLE selected generation before vs. after
+        // this toggle (not just whether Mega itself is in the list):
+        //
+        //  - Entering Mega-only (any other selection -> exactly ['mega']):
+        //    snapshot the current activeGroupIds into
+        //    preMegaActiveGroupIds and switch activeGroupIds to just the
+        //    Mega group, so the grid immediately shows Mega's own cards
+        //    without the user having to separately open Filters and tick
+        //    it -- see selectors.ts's availableCardsForDex, whose
+        //    megaGroupActive check is what actually makes a Mega-tagged
+        //    card visible regardless of its raw rarity. A card whose only
+        //    prints carry a rarity outside every other default-active
+        //    group (several Mega species' sole cards use a rarity, e.g.
+        //    Pocket-exclusive tiers, that isn't in ANY curated group) would
+        //    otherwise render with an empty picker despite real cards
+        //    existing -- reported live as "Mega Blastoise shows no cards".
+        //  - Leaving Mega-only (exactly ['mega'] -> anything else, whether
+        //    Mega was deselected outright or another generation was added
+        //    alongside it): restore whatever was active before the
+        //    auto-switch, UNLESS the user explicitly changed the
+        //    rarity-group selection while auto-switched
+        //    (megaAutoSwitchOverridden) -- their explicit choice wins and
+        //    is left exactly as they set it, not clobbered back to the
+        //    pre-Mega snapshot.
+        //
+        // Deliberately does NOT trigger when Mega is selected ALONGSIDE one
+        // or more normal generations (a mixed grid needs its normal-
+        // generation rarity groups too, not just Mega's) -- a considered
+        // product judgment call, not an oversight: see the mixed-selection
+        // test coverage in store.test.ts.
         toggleGeneration: (id) =>
-          set((state) => ({
-            selectedGenerations: state.selectedGenerations.includes(id)
+          set((state) => {
+            const nextSelected = state.selectedGenerations.includes(id)
               ? state.selectedGenerations.filter((gid) => gid !== id)
-              : [...state.selectedGenerations, id],
-          })),
+              : [...state.selectedGenerations, id];
+            const wasMegaOnly =
+              state.selectedGenerations.length === 1 && state.selectedGenerations[0] === 'mega';
+            const isMegaOnly = nextSelected.length === 1 && nextSelected[0] === 'mega';
+
+            if (!wasMegaOnly && isMegaOnly) {
+              return {
+                selectedGenerations: nextSelected,
+                preMegaActiveGroupIds: state.activeGroupIds,
+                megaAutoSwitchOverridden: false,
+                activeGroupIds: [MEGA_GROUP_ID],
+              };
+            }
+
+            if (wasMegaOnly && !isMegaOnly) {
+              const restoredGroupIds =
+                state.preMegaActiveGroupIds !== null && !state.megaAutoSwitchOverridden
+                  ? state.preMegaActiveGroupIds
+                  : state.activeGroupIds;
+              return {
+                selectedGenerations: nextSelected,
+                activeGroupIds: restoredGroupIds,
+                preMegaActiveGroupIds: null,
+                megaAutoSwitchOverridden: false,
+              };
+            }
+
+            return { selectedGenerations: nextSelected };
+          }),
         setCardOverride: (cardId, groupId) =>
           set((state) => {
             if (groupId === null) {
@@ -395,6 +488,14 @@ export const useAppStore = create<AppState>()(
             binders: data.binders,
             activeBinderId: data.activeBinderId,
             hasUnsavedChanges: false,
+            // A restored backup's activeGroupIds/selectedGenerations pair
+            // is the user's own explicit, complete state -- any in-progress
+            // Mega auto-switch bookkeeping from before the import is stale
+            // (it describes a pre-Mega snapshot that no longer corresponds
+            // to anything in the just-loaded data) and must not linger to
+            // clobber the imported groups on a later Mega toggle-off.
+            preMegaActiveGroupIds: null,
+            megaAutoSwitchOverridden: false,
           }),
       };
     },

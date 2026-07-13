@@ -28,6 +28,8 @@ function resetStore() {
     ],
     activeBinderId: 'default',
     hasUnsavedChanges: false,
+    preMegaActiveGroupIds: null,
+    megaAutoSwitchOverridden: false,
   });
 }
 
@@ -185,6 +187,95 @@ describe('toggleGeneration', () => {
 
   it('does not set hasUnsavedChanges (it is a view filter, not collection data)', () => {
     useAppStore.getState().toggleGeneration(2);
+    expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
+  });
+});
+
+describe('toggleGeneration: Mega <-> rarity-group auto-switch', () => {
+  const allGroupIds = DEFAULT_RARITY_GROUPS.map((g) => g.id);
+
+  it('auto-activates only the Mega group when Mega becomes the sole selected generation, remembering the prior groups', () => {
+    useAppStore.getState().toggleGeneration(1); // deselect gen 1 -> []
+    expect(useAppStore.getState().selectedGenerations).toEqual([]);
+
+    useAppStore.getState().toggleGeneration('mega'); // -> ['mega'], the sole selection
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual(['mega']);
+    expect(state.activeGroupIds).toEqual(['mega']);
+    expect(state.preMegaActiveGroupIds).toEqual(allGroupIds);
+  });
+
+  it('restores the previously active rarity groups when Mega is deselected', () => {
+    useAppStore.getState().toggleGeneration(1); // -> []
+    useAppStore.getState().toggleGeneration('mega'); // -> ['mega'], auto-switched
+
+    useAppStore.getState().toggleGeneration('mega'); // deselect Mega -> []
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual([]);
+    expect(state.activeGroupIds).toEqual(allGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+    expect(state.megaAutoSwitchOverridden).toBe(false);
+  });
+
+  it('does not clobber an explicit rarity-group change made while Mega is auto-switched', () => {
+    useAppStore.getState().toggleGeneration(1); // -> []
+    useAppStore.getState().toggleGeneration('mega'); // -> ['mega'], activeGroupIds -> ['mega']
+
+    // The user explicitly picks a different group while Mega is active.
+    useAppStore.getState().toggleActiveGroup('full-art');
+    expect(useAppStore.getState().megaAutoSwitchOverridden).toBe(true);
+    const explicitGroupIds = useAppStore.getState().activeGroupIds;
+    expect(explicitGroupIds).toEqual(['mega', 'full-art']);
+
+    useAppStore.getState().toggleGeneration('mega'); // deselect Mega
+
+    const state = useAppStore.getState();
+    // The explicit choice wins: NOT restored back to the pre-Mega snapshot.
+    expect(state.activeGroupIds).toEqual(explicitGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+    expect(state.megaAutoSwitchOverridden).toBe(false);
+  });
+
+  it('leaves rarity groups alone when Mega is selected alongside a normal generation (mixed selection)', () => {
+    // resetStore seeds selectedGenerations as [1]; selecting Mega on top of
+    // it makes a mixed selection, not a Mega-only one.
+    useAppStore.getState().toggleGeneration('mega');
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual([1, 'mega']);
+    expect(state.activeGroupIds).toEqual(allGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+  });
+
+  it('still auto-switches when a mixed selection narrows down to Mega-only', () => {
+    useAppStore.getState().toggleGeneration('mega'); // -> [1, 'mega'], mixed
+    expect(useAppStore.getState().preMegaActiveGroupIds).toBeNull();
+
+    useAppStore.getState().toggleGeneration(1); // deselect gen 1 -> ['mega'] only
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual(['mega']);
+    expect(state.activeGroupIds).toEqual(['mega']);
+    expect(state.preMegaActiveGroupIds).toEqual(allGroupIds);
+  });
+
+  it('restores when leaving Mega-only by ADDING another generation, not just by deselecting Mega', () => {
+    useAppStore.getState().toggleGeneration(1); // -> []
+    useAppStore.getState().toggleGeneration('mega'); // -> ['mega'], auto-switched
+
+    useAppStore.getState().toggleGeneration(3); // add Gen 3 -> ['mega', 3], mixed again
+
+    const state = useAppStore.getState();
+    expect(state.selectedGenerations).toEqual(['mega', 3]);
+    expect(state.activeGroupIds).toEqual(allGroupIds);
+    expect(state.preMegaActiveGroupIds).toBeNull();
+  });
+
+  it('does not set hasUnsavedChanges from the auto-switch (it is a view filter, not collection data)', () => {
+    useAppStore.getState().toggleGeneration(1);
+    useAppStore.getState().toggleGeneration('mega');
     expect(useAppStore.getState().hasUnsavedChanges).toBe(false);
   });
 });

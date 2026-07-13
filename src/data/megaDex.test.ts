@@ -206,9 +206,31 @@ describe('cardMatchesMegaEntry / cardsForMegaEntry', () => {
     expect(cardMatchesMegaEntry('Mega Raichu Y ex', raichuX)).toBe(false);
   });
 
-  it('does NOT split Lucario\'s classic and Z mega forms (no observed "Z" card-naming convention) -- a matching card counts for both', () => {
+  it('assigns a variant-ambiguous Lucario card to the classic entry only, not the Z entry (no observed "Z" card-naming convention yet)', () => {
     expect(cardMatchesMegaEntry('Mega Lucario ex', lucario)).toBe(true);
-    expect(cardMatchesMegaEntry('Mega Lucario ex', lucarioZ)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Lucario ex', lucarioZ)).toBe(false);
+    expect(cardMatchesMegaEntry('M-Lucario EX', lucario)).toBe(true);
+    expect(cardMatchesMegaEntry('M-Lucario EX', lucarioZ)).toBe(false);
+  });
+
+  it('would assign an explicit Z-token Lucario card to the Z entry only, not the classic one, if one ever appears', () => {
+    expect(cardMatchesMegaEntry('Mega Lucario Z ex', lucarioZ)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Lucario Z ex', lucario)).toBe(false);
+  });
+
+  it('applies the same classic-vs-Z split to Garchomp and Absol', () => {
+    const garchomp = MEGA_DEX_ENTRIES.find((e) => e.slug === 'garchomp-mega')!;
+    const garchompZ = MEGA_DEX_ENTRIES.find((e) => e.slug === 'garchomp-mega-z')!;
+    const absol = MEGA_DEX_ENTRIES.find((e) => e.slug === 'absol-mega')!;
+    const absolZ = MEGA_DEX_ENTRIES.find((e) => e.slug === 'absol-mega-z')!;
+    expect(cardMatchesMegaEntry('M Garchomp-EX', garchomp)).toBe(true);
+    expect(cardMatchesMegaEntry('M Garchomp-EX', garchompZ)).toBe(false);
+    expect(cardMatchesMegaEntry('Mega Garchomp Z ex', garchompZ)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Garchomp Z ex', garchomp)).toBe(false);
+    expect(cardMatchesMegaEntry('M Absol EX', absol)).toBe(true);
+    expect(cardMatchesMegaEntry('M Absol EX', absolZ)).toBe(false);
+    expect(cardMatchesMegaEntry('Mega Absol Z ex', absolZ)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Absol Z ex', absol)).toBe(false);
   });
 
   it('cardsForMegaEntry filters a card list down to just this entry\'s matches, fixtured from the spec', () => {
@@ -221,5 +243,42 @@ describe('cardMatchesMegaEntry / cardsForMegaEntry', () => {
       'M Charizard-EX',
       'Mega Charizard ex',
     ]);
+  });
+
+  it('does not bleed an explicit-token Mewtwo Y card onto the Mewtwo X tile, or vice versa (regression: reported live as Mega Mewtwo X showing Y cards)', () => {
+    const mewtwoX = MEGA_DEX_ENTRIES.find((e) => e.slug === 'mewtwo-mega-x')!;
+    const mewtwoY = MEGA_DEX_ENTRIES.find((e) => e.slug === 'mewtwo-mega-y')!;
+    expect(cardMatchesMegaEntry('Mega Mewtwo X ex', mewtwoX)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Mewtwo X ex', mewtwoY)).toBe(false);
+    expect(cardMatchesMegaEntry('Mega Mewtwo Y ex', mewtwoY)).toBe(true);
+    expect(cardMatchesMegaEntry('Mega Mewtwo Y ex', mewtwoX)).toBe(false);
+    // The real data today only has the tokenless legacy "M Mewtwo EX" family
+    // (no modern X/Y-tagged Mewtwo print exists yet) -- that stays on BOTH
+    // tiles, per the documented ambiguous-legacy-card rule, not a bleed.
+    expect(cardMatchesMegaEntry('M Mewtwo EX', mewtwoX)).toBe(true);
+    expect(cardMatchesMegaEntry('M Mewtwo EX', mewtwoY)).toBe(true);
+  });
+
+  // Real card names pulled directly from public/data/cards/en.json's dex-9
+  // (Blastoise) bucket -- the exact species reported live as "Mega Blastoise
+  // shows no cards" -- covering both naming families and both rarity tiers
+  // (a mobile-game Pocket-exclusive rarity alongside an Ultra Rare).
+  it('matches every real Mega Blastoise card name shape found in the data, both naming families', () => {
+    const blastoiseMega = MEGA_DEX_ENTRIES.find((e) => e.slug === 'blastoise-mega')!;
+    const realBlastoiseCards = [
+      { name: 'Mega Blastoise ex', rarity: 'Four Diamond' },
+      { name: 'Mega Blastoise ex', rarity: 'Two Star' },
+      { name: 'Mega Blastoise ex', rarity: 'Two Star' },
+      { name: 'M Blastoise EX', rarity: 'Ultra Rare' },
+      { name: 'M Blastoise EX', rarity: 'Ultra Rare' },
+      { name: 'M Blastoise EX', rarity: 'Ultra Rare' },
+      { name: 'M Blastoise EX', rarity: 'Ultra Rare' },
+      // Plain (non-Mega) Blastoise prints from the same dex-9 bucket, which
+      // must never leak onto the Mega tile.
+      { name: 'Blastoise', rarity: 'Common' },
+      { name: 'Blastoise ex', rarity: 'Double Rare' },
+      { name: 'Blastoise EX', rarity: 'Ultra Rare' },
+    ];
+    expect(cardsForMegaEntry(realBlastoiseCards, blastoiseMega)).toHaveLength(7);
   });
 });

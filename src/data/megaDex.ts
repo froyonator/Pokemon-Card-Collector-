@@ -238,7 +238,7 @@ export function isMegaCardName(name: string): boolean {
   return MEGA_NAME_PATTERNS.some((p) => p.re.test(name));
 }
 
-// --- Per-entry filtering (species + X/Y variant splitting) ---------------
+// --- Per-entry filtering (species + X/Y/Z variant splitting) -------------
 //
 // Species scoping itself doesn't need a literal name-substring check here:
 // callers filter a base species' ALREADY dex-number-scoped card bucket
@@ -251,60 +251,91 @@ export function isMegaCardName(name: string): boolean {
 //
 // Charizard (dex 6), Mewtwo (dex 150), and Raichu (dex 26, added with the
 // newest game wave's DLC) each have two separate Mega forms (X and Y)
-// sharing one base species, so only they need the extra X/Y token split
-// below.
+// sharing one base species, and NO un-suffixed entry of their own -- every
+// card for that species is either the X form, the Y form, or (the legacy
+// "M Charizard EX" family) ambiguous between the two.
 //
 // Absol (359), Garchomp (445), and Lucario (448) also gained a SECOND mega
-// form in that same DLC wave (a "Z" mega stone, alongside their existing
-// classic form) but no card name convention for a "Z" token has been
-// observed anywhere in the card data (see mega-audit.md) -- unlike X/Y,
-// which is an established, real card-naming convention going back to the
-// original Charizard X/Y cards. Deliberately NOT inventing a Z split here:
-// those two entries fall through to the same "no readable variant token ->
-// included on both" behavior the legacy Charizard/Mewtwo cards already use
-// below, which is the correct default until real Mega Absol/Garchomp/
-// Lucario Z cards (if any) show what naming convention they actually use.
-const XY_SPLIT_BASE_DEX = new Set([6, 26, 150]);
+// form in that same DLC wave (a "Z" mega stone), but -- unlike the X/Y
+// pairs -- each KEPT its original, un-suffixed entry (e.g. "absol-mega")
+// alongside the new "-mega-z" one. That shapes the split rule differently:
+// see the wantedVariant === null branch in cardMatchesMegaEntry below.
+//
+// Every one of these six base dex numbers needs SOME variant split; which
+// rule applies (X/Y-style "ambiguous shows on every variant tile" vs.
+// Z-style "ambiguous belongs to the un-suffixed entry only") is decided by
+// AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX below.
+const VARIANT_SPLIT_BASE_DEX = new Set([6, 26, 150, 359, 445, 448]);
 
-function entryVariant(entry: MegaDexEntry): 'X' | 'Y' | null {
+// The X/Y-only families: no un-suffixed entry exists for these, so a
+// tokenless (ambiguous) card name -- e.g. the legacy "M Charizard EX"
+// family, which never distinguishes X from Y in its name at all, see
+// mega-audit.md -- can't be dropped into a "base" bucket the way a Z-form
+// species' ambiguous cards can. It's shown on every variant tile of the
+// species instead, rather than silently disappearing from all of them.
+const AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX = new Set([6, 26, 150]);
+
+type MegaVariant = 'X' | 'Y' | 'Z';
+
+function entryVariant(entry: MegaDexEntry): MegaVariant | null {
   if (entry.slug.endsWith('-mega-x')) return 'X';
   if (entry.slug.endsWith('-mega-y')) return 'Y';
+  if (entry.slug.endsWith('-mega-z')) return 'Z';
   return null;
 }
 
-// Reads an explicit X/Y variant token out of a card name, or null if the
+// Reads an explicit X/Y/Z variant token out of a card name, or null if the
 // name carries no such token (e.g. the legacy "M Charizard EX" family,
 // which never distinguishes X from Y in its name at all -- see
-// mega-audit.md). Two shapes are recognized:
-//  - Latin family: a standalone "X"/"Y" token bounded by spaces/hyphens/the
-//    string's own edges, e.g. "Mega Charizard X ex" or "Mega Charizard
-//    X-ex". Deliberately does NOT match the "X" inside "EX"/"ex" itself
-//    (no boundary on both sides there).
+// mega-audit.md). No real "Z"-token card name has been observed anywhere in
+// the data yet (see mega-audit.md and megaDex.test.ts's fixtures), but the
+// token is recognized here on the same terms as X/Y so a future Mega
+// Absol/Garchomp/Lucario Z print is picked up automatically, without a code
+// change, the moment its name follows the same convention. Two shapes are
+// recognized:
+//  - Latin family: a standalone "X"/"Y"/"Z" token bounded by spaces/
+//    hyphens/the string's own edges, e.g. "Mega Charizard X ex" or "Mega
+//    Charizard X-ex". Deliberately does NOT match the "X" inside "EX"/"ex"
+//    itself (no boundary on both sides there).
 //  - Japanese modern family: the variant letter fused directly onto the
 //    "ex" suffix with no separator at all, e.g. "メガリザードンXex".
-function extractVariantToken(cardName: string): 'X' | 'Y' | null {
-  const latinMatch = cardName.match(/(?:^|[\s-])([XY])(?=$|[\s-])/);
-  if (latinMatch) return latinMatch[1] as 'X' | 'Y';
-  const jaMatch = cardName.match(/([XY])ex$/);
-  if (jaMatch) return jaMatch[1] as 'X' | 'Y';
+function extractVariantToken(cardName: string): MegaVariant | null {
+  const latinMatch = cardName.match(/(?:^|[\s-])([XYZ])(?=$|[\s-])/);
+  if (latinMatch) return latinMatch[1] as MegaVariant;
+  const jaMatch = cardName.match(/([XYZ])ex$/);
+  if (jaMatch) return jaMatch[1] as MegaVariant;
   return null;
 }
 
 // Whether a card name belongs to a given Mega dex entry. Callers are
 // expected to have already scoped `cardName` to the entry's base species
 // (see the module comment above) -- this only adds the Mega-family check
-// and, for the four X/Y-split forms, the variant split.
+// and, for the six variant-split species, the X/Y/Z split.
 export function cardMatchesMegaEntry(cardName: string, entry: MegaDexEntry): boolean {
   if (!isMegaCardName(cardName)) return false;
-  if (!XY_SPLIT_BASE_DEX.has(entry.baseDexNumber)) return true;
+  if (!VARIANT_SPLIT_BASE_DEX.has(entry.baseDexNumber)) return true;
   const wantedVariant = entryVariant(entry);
-  if (wantedVariant === null) return true;
   const cardVariant = extractVariantToken(cardName);
-  // A card name with no readable X/Y token (the legacy "M Charizard EX"
-  // family) can't be assigned to one variant over the other from its name
-  // alone, so it's included on BOTH the X and Y tile rather than silently
-  // dropped from either.
-  if (cardVariant === null) return true;
+  if (wantedVariant === null) {
+    // The un-suffixed "classic" entry of a Z-form species (Absol/Garchomp/
+    // Lucario's own original entry, kept alongside their new "-mega-z"
+    // one -- see the module comment above). A card with no explicit
+    // variant token IS this classic form by default; a card that DOES
+    // carry an explicit token belongs on that other, suffixed entry
+    // instead, not here too. (X/Y-only species have no un-suffixed entry
+    // at all, so this branch never runs for them.)
+    return cardVariant === null;
+  }
+  if (cardVariant === null) {
+    // No readable variant token: shown on every variant tile for the
+    // X/Y-only families (there's no un-suffixed entry for it to belong to
+    // instead, see AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX above).
+    // For a Z-form species this branch is unreachable for a tokenless card
+    // -- it already matched the wantedVariant === null entry above and
+    // returned there -- so this only ever evaluates false for one of the
+    // three Z entries, correctly excluding it.
+    return AMBIGUOUS_SHOWS_ON_EVERY_VARIANT_BASE_DEX.has(entry.baseDexNumber);
+  }
   return cardVariant === wantedVariant;
 }
 

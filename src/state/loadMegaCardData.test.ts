@@ -102,6 +102,38 @@ describe('loadMegaCardData', () => {
     expect(onEntryLoaded).toHaveBeenCalledWith(charizardX.number);
   });
 
+  // Real names/rarities pulled directly from public/data/cards/en.json's
+  // dex-9 (Blastoise) bucket -- reported live as "Mega Blastoise shows no
+  // cards" despite real prints existing. Exercises the load-then-filter
+  // pipeline end to end (static fetch -> dex-9 scoping -> Mega name/variant
+  // filter -> synthetic-number cache write), not just cardsForMegaEntry in
+  // isolation.
+  it('loads every real Mega Blastoise card name shape into the synthetic cache slot', async () => {
+    const blastoiseMega = MEGA_DEX_ENTRIES.find((e) => e.slug === 'blastoise-mega')!;
+    vi.mocked(loadStaticCardData).mockResolvedValue({
+      9: [
+        card({ id: 'B1a-020', name: 'Mega Blastoise ex', rarity: 'Four Diamond', dexNumber: 9 }),
+        card({ id: 'B1a-078', name: 'Mega Blastoise ex', rarity: 'Two Star', dexNumber: 9 }),
+        card({ id: 'B1a-084', name: 'Mega Blastoise ex', rarity: 'Two Star', dexNumber: 9 }),
+        card({ id: 'g1-18', name: 'M Blastoise EX', rarity: 'Ultra Rare', dexNumber: 9 }),
+        card({ id: 'xy1-30', name: 'M Blastoise EX', rarity: 'Ultra Rare', dexNumber: 9 }),
+        card({ id: 'xy12-102', name: 'M Blastoise EX', rarity: 'Ultra Rare', dexNumber: 9 }),
+        card({ id: 'xy12-22', name: 'M Blastoise EX', rarity: 'Ultra Rare', dexNumber: 9 }),
+        // Plain (non-Mega) Blastoise prints sharing the same dex-9 bucket,
+        // which must never leak onto the Mega tile's synthetic cache slot.
+        card({ id: 'base-1', name: 'Blastoise', rarity: 'Common', dexNumber: 9 }),
+        card({ id: 'base-2', name: 'Blastoise ex', rarity: 'Double Rare', dexNumber: 9 }),
+      ],
+    });
+
+    await loadMegaCardData('en', [blastoiseMega]);
+
+    const megaCards = getCachedCards('en', blastoiseMega.number);
+    expect(megaCards?.map((c) => c.id).sort()).toEqual(
+      ['B1a-020', 'B1a-078', 'B1a-084', 'g1-18', 'xy1-30', 'xy12-102', 'xy12-22'].sort()
+    );
+  });
+
   it('preserves an owned Mega card that falls outside the freshly-filtered set', async () => {
     vi.mocked(loadStaticCardData).mockResolvedValue({ 6: [] });
     setCachedCards('en', charizardX.number, [card({ id: 'kept', name: 'M Charizard-EX' })]);
