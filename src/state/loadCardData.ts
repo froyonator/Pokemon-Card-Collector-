@@ -237,6 +237,15 @@ function mergeReferencedCards(
   return preserveReferencedCards(withoutRegionalForms, accumulator.entry.number, owned, wishlist, language);
 }
 
+// Live fallback: the curated dex x rarity fan-out against TCGdex's live API.
+// Both current callers (DexGrid's auto-load preload and Refresh Data, and
+// Picker only indirectly via those) invoke this ONLY with `dexEntries`
+// already narrowed to whatever staticDataByGeneration/staticBucketForDex
+// found no static file for (a language/generation with no static coverage,
+// e.g. nl/ru/pl's Gen1) -- see DexGrid.tsx's `stillMissing`/`liveEntries`.
+// This function itself has no static-coverage check of its own; it trusts
+// its caller to have already done that filtering, exactly like a covered
+// dex number never reaching here in the first place.
 export async function loadAllCardData(
   language: string,
   options: LoadAllCardDataOptions = {}
@@ -253,6 +262,9 @@ export async function loadAllCardData(
   } = options;
 
   try {
+    // Live fallback: see this function's own doc comment above -- reached
+    // only for dex entries the caller already determined have no static
+    // coverage.
     const sets = await fetchSets(language, fetchImpl, signal);
     const setNameById = new Map(sets.map((s) => [s.id, s.name]));
 
@@ -338,6 +350,7 @@ export async function loadAllCardData(
       // continuing to consume real network/API request budget, beyond just
       // having its eventual results ignored.
       if (signal?.aborted) return;
+      // Live fallback: see loadAllCardData's own doc comment above.
       const briefs = await fetchCardsForDexAndRarity(entry.number, rarity, language, fetchImpl, signal);
       const accumulator = accumulators.get(entry.number);
       if (!accumulator) return;
@@ -455,21 +468,23 @@ export async function loadAllPrintingsForDex(
       return withoutRegionalForms;
     }
 
-    // No static coverage for this language/generation (e.g. nl/ru/pl, or a
-    // generation not yet deployed) -- fall back to the live top-up path,
-    // unchanged from before static-first except that every fetch it makes
-    // (via tcgdex.ts) now carries its own request timeout, so a stalled
-    // connection can no longer hang this indefinitely.
+    // Live fallback: no static coverage for this language/generation (e.g.
+    // nl/ru/pl, or a generation not yet deployed) -- fall back to the live
+    // top-up path, unchanged from before static-first except that every
+    // fetch it makes (via tcgdex.ts) now carries its own request timeout, so
+    // a stalled connection can no longer hang this indefinitely.
     const briefs = await fetchAllCardsForDex(dexNumber, pokemonName, language, fetchImpl, signal);
     // mapWithConcurrency preserves input order in its results array regardless
     // of which detail fetch resolves first, so `cards` still lines up with
     // `briefs` exactly as the old sequential loop did.
     const cards = await mapWithConcurrency(briefs, CONCURRENCY, async (brief) => {
-      // Unlike loadAllCardData above, this doesn't need a separate fetchSets
-      // call for a name lookup: the per-card detail response already carries
-      // the correct set name directly (detail.set.name), since a full detail
-      // fetch is already required here to get each card's rarity (the list
-      // endpoint queried by fetchAllCardsForDex omits rarity entirely).
+      // Live fallback (same static-coverage gap as fetchAllCardsForDex
+      // above). Unlike loadAllCardData above, this doesn't need a separate
+      // fetchSets call for a name lookup: the per-card detail response
+      // already carries the correct set name directly (detail.set.name),
+      // since a full detail fetch is already required here to get each
+      // card's rarity (the list endpoint queried by fetchAllCardsForDex
+      // omits rarity entirely).
       const detail = await fetchCardDetail(brief.id, language, fetchImpl, signal);
       const setId = deriveSetId(brief.id, brief.localId);
       const card: CardRecord = {

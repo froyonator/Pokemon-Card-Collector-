@@ -277,6 +277,13 @@ export function CardImage({
   }
 
   return (
+    // Live fallback: cardImageUrl only builds a URL onto TCGdex's own image
+    // CDN (never a JSON API call) as the <img> src, reached only when
+    // neither hosted{Thumb,Full}Url resolved a card (the static database
+    // build step -- see resolveCardAssets.ts -- had no better hosted copy
+    // for this exact card/quality). The onError handler below is what
+    // actually drives the retry chain across variants (same self-hosted
+    // + CDN-onError-fallback pattern as data/sprites.ts).
     <img
       src={cardImageUrl(imageBase, variant.quality, variant.ext)}
       alt={alt}

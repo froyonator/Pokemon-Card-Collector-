@@ -419,6 +419,37 @@ async function buildGeneration(generation: number, outputDir: string, languageFi
   );
 }
 
+// Pure: the payload written to public/data/cards/db-version.json. A plain
+// opaque string the app (src/api/dbVersion.ts) only ever compares for
+// equality against whatever it last saw -- never parsed as a date or
+// compared with <, so any string that changes on every real content update
+// works; an ISO build timestamp is simplest and doubles as a human-readable
+// "when was this built" for anyone reading the file by hand. `now` is
+// injected (rather than called directly inside) so this stays a pure,
+// directly testable function with no wall-clock dependency.
+export function buildDbVersionPayload(now: () => Date = () => new Date()): { version: string } {
+  return { version: now().toISOString() };
+}
+
+// Rewrites public/data/cards/db-version.json with a fresh stamp. Called once
+// per pipeline run, after whichever build actually ran (Gen1 or a Gen2-9
+// generation) -- see main() below -- regardless of how many (or how few)
+// languages that run touched, so ANY static-database content change (a
+// rarity fix, a newly filled coverage gap, a re-resolved hosted image, a
+// brand-new generation) bumps the one stamp the app's whole card cache keys
+// its staleness check off of (src/state/dbVersionSync.ts). Deliberately not
+// scoped per-language or per-generation: a single global stamp is what lets
+// that boot-time check stay a single small fetch instead of one per
+// language, and a stale cache for ANY static-covered language is exactly the
+// bug this exists to self-heal, not just the language(s) a given run
+// happened to rebuild.
+async function writeDbVersionStamp(outputDir: string): Promise<void> {
+  const payload = buildDbVersionPayload();
+  const outputPath = path.join(outputDir, 'db-version.json');
+  await writeFile(outputPath, JSON.stringify(payload), 'utf8');
+  console.log(`Wrote ${outputPath} (version: ${payload.version})`);
+}
+
 async function main(): Promise<void> {
   // Run via `npm run build-database` from scripts/carddata (its own package,
   // matching every snapshot-* script's cwd assumption -- see
@@ -434,6 +465,8 @@ async function main(): Promise<void> {
   } else {
     await buildGeneration(generation, outputDir, languageFilter);
   }
+
+  await writeDbVersionStamp(outputDir);
 }
 
 // Guards the CLI run behind an entry-module check -- buildStaticDatabase.test.ts

@@ -30,6 +30,45 @@ const pikachuCard: CardRecord = {
   language: 'en',
 };
 
+function fetchMock(overrides?: { dbVersion?: unknown; sets?: unknown; ok?: boolean }) {
+  return vi.fn(async (url: string) => {
+    if (url.includes('db-version.json')) {
+      if (overrides?.ok === false) {
+        return { ok: false, status: 500, json: async () => ({}) } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => overrides?.dbVersion ?? { version: '2026-07-14T00:00:00.000Z' },
+      } as Response;
+    }
+    if (url.includes('/sets')) {
+      if (overrides?.ok === false) {
+        return { ok: false, status: 500, json: async () => ({}) } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          overrides?.sets ?? [
+            { id: 'sv03.5', name: '151' },
+            { id: 'me04', name: 'Chaos Rising' },
+          ],
+      } as Response;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'sv03.5-199',
+        localId: '199',
+        name: 'Charizard ex',
+        set: { id: 'sv03.5', name: '151' },
+      }),
+    } as Response;
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   setCachedCards('en', 6, [charizardCard]);
@@ -43,31 +82,7 @@ beforeEach(() => {
     selectedGenerations: [1],
     hasUnsavedChanges: false,
   });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.includes('/sets')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => [
-            { id: 'sv03.5', name: '151' },
-            { id: 'me04', name: 'Chaos Rising' },
-          ],
-        } as Response;
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          id: 'sv03.5-199',
-          localId: '199',
-          name: 'Charizard ex',
-          set: { id: 'sv03.5', name: '151' },
-        }),
-      } as Response;
-    })
-  );
+  vi.stubGlobal('fetch', fetchMock());
 });
 
 describe('Summary', () => {
@@ -79,13 +94,13 @@ describe('Summary', () => {
     // trigger a spurious warning. Every test in this file renders <Summary />,
     // which now always kicks off that fetch on mount, whether or not the
     // test cares about its result.
-    await screen.findByText('Chaos Rising');
+    await screen.findByText(/card database last updated/i);
   });
 
   it('shows progress against Pokemon with at least one available card', async () => {
     render(<Summary />);
     expect(screen.getByText(/1 of 2 pok.mon with an available card/i)).toBeInTheDocument();
-    await screen.findByText('Chaos Rising');
+    await screen.findByText(/card database last updated/i);
   });
 
   it('counts a Pokemon toward availability when its only matching card comes from a manual override, not its raw rarity', async () => {
@@ -108,27 +123,63 @@ describe('Summary', () => {
     });
     render(<Summary />);
     expect(screen.getByText(/2 of 2 pok.mon with an available card/i)).toBeInTheDocument();
-    await screen.findByText('Chaos Rising');
+    await screen.findByText(/card database last updated/i);
   });
 
-  it('shows the newest set name from the card database once the sets list resolves', async () => {
-    render(<Summary />);
-    expect(await screen.findByText('Chaos Rising')).toBeInTheDocument();
+  describe('data-currency indicator: static-covered language (en)', () => {
+    it('shows a formatted "last updated" date sourced from the static database\'s own version stamp, with zero live /sets calls', async () => {
+      const fetch = fetchMock({ dbVersion: { version: '2026-07-14T00:00:00.000Z' } });
+      vi.stubGlobal('fetch', fetch);
+
+      render(<Summary />);
+
+      expect(await screen.findByText(/card database last updated/i)).toBeInTheDocument();
+      expect(screen.getByText(/jul 14, 2026/i)).toBeInTheDocument();
+      expect(screen.queryByText(/card database current through/i)).not.toBeInTheDocument();
+
+      // The only fetch this component ever issues for a static-covered
+      // language is the static db-version.json file -- never TCGdex's live
+      // /sets endpoint.
+      const calledUrls = fetch.mock.calls.map(([url]) => String(url));
+      expect(calledUrls.some((url) => url.includes('db-version.json'))).toBe(true);
+      expect(calledUrls.some((url) => url.includes('/sets'))).toBe(false);
+    });
+
+    it('shows nothing for the data-currency line when the db-version fetch fails', async () => {
+      vi.stubGlobal('fetch', fetchMock({ ok: false }));
+      render(<Summary />);
+      await screen.findByText('1 / 151');
+      expect(screen.queryByText(/card database last updated/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/card database current through/i)).not.toBeInTheDocument();
+    });
   });
 
-  it('shows nothing for the data-currency line when the sets fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        if (url.includes('/sets')) {
-          return { ok: false, status: 500, json: async () => ({}) } as Response;
-        }
-        return { ok: true, status: 200, json: async () => ({}) } as Response;
-      })
-    );
-    render(<Summary />);
-    await screen.findByText('1 / 151');
-    expect(screen.queryByText(/card database current through/i)).not.toBeInTheDocument();
+  describe('data-currency indicator: live-only language (nl has no static coverage)', () => {
+    beforeEach(() => {
+      useAppStore.setState({ language: 'nl' });
+    });
+
+    it('falls back to the live TCGdex /sets endpoint and shows the newest set name', async () => {
+      const fetch = fetchMock();
+      vi.stubGlobal('fetch', fetch);
+
+      render(<Summary />);
+
+      expect(await screen.findByText('Chaos Rising')).toBeInTheDocument();
+      expect(screen.getByText(/card database current through/i)).toBeInTheDocument();
+      expect(screen.queryByText(/card database last updated/i)).not.toBeInTheDocument();
+
+      const calledUrls = fetch.mock.calls.map(([url]) => String(url));
+      expect(calledUrls.some((url) => url.includes('/sets'))).toBe(true);
+      expect(calledUrls.some((url) => url.includes('db-version.json'))).toBe(false);
+    });
+
+    it('shows nothing for the data-currency line when the sets fetch fails', async () => {
+      vi.stubGlobal('fetch', fetchMock({ ok: false }));
+      render(<Summary />);
+      await screen.findByText('1 / 151');
+      expect(screen.queryByText(/card database current through/i)).not.toBeInTheDocument();
+    });
   });
 
   it('clamps the progress bar fill to 100% when owned cards exceed the available count under the active filter', async () => {
@@ -147,6 +198,6 @@ describe('Summary', () => {
     const { container } = render(<Summary />);
     const fill = container.querySelector('.progressBarFill') as HTMLElement;
     expect(fill.style.width).toBe('100%');
-    await screen.findByText('Chaos Rising');
+    await screen.findByText(/card database last updated/i);
   });
 });

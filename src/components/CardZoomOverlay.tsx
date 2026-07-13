@@ -75,6 +75,10 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // overlay opens) this just dedupes against the in-flight/cached request;
   // on a cold one it gets the hi-res fetch started a beat earlier than
   // waiting on React's own render/effect timing would.
+  // Live fallback: cardImageUrl only builds a URL onto TCGdex's own image
+  // CDN (never a JSON API call), reached only when hostedFullUrl didn't
+  // resolve this card (see CardImage.tsx's identical hosted-first,
+  // CDN-fallback pattern for the full rationale).
   const hiResUrl =
     card.hostedFullUrl || (card.imageBase ? cardImageUrl(card.imageBase, 'high', 'png') : undefined);
 

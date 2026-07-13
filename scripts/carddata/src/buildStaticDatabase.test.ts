@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  buildDbVersionPayload,
   mergeResolvedAssets,
   outputPathForLanguage,
   parseGenerationFlag,
@@ -178,6 +179,22 @@ describe('parseGenerationFlag', () => {
 
   it('tolerates a combined --langs flag without erroring', () => {
     expect(parseGenerationFlag(['--gen', '2', '--langs', 'ja,fr'])).toBe(2);
+  });
+});
+
+describe('buildDbVersionPayload', () => {
+  it('stamps the injected clock\'s ISO timestamp as `version`', () => {
+    const fixedNow = new Date('2026-07-14T12:00:00.000Z');
+    expect(buildDbVersionPayload(() => fixedNow)).toEqual({ version: '2026-07-14T12:00:00.000Z' });
+  });
+
+  it('defaults to the real wall clock when no clock is injected', () => {
+    const before = Date.now();
+    const payload = buildDbVersionPayload();
+    const after = Date.now();
+    const stamped = new Date(payload.version).getTime();
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(after);
   });
 });
 

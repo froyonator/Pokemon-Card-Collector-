@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearCardCache,
+  clearCardCacheForLanguages,
   getAllCachedRarities,
   getCachedCards,
   hasCachedDataForLanguage,
+  hasFullPrintHistory,
   isLatestWriteGeneration,
+  markFullPrintHistoryFetched,
   reserveWriteGeneration,
   setCachedCards,
+  setSyntheticFilterVersion,
+  getSyntheticFilterVersion,
 } from './cardCache';
 import type { CardRecord } from '../types';
 
@@ -73,6 +78,51 @@ describe('card cache', () => {
   it('clearCardCache empties the cache', () => {
     setCachedCards('en', 6, [sampleCard]);
     clearCardCache();
+    expect(getCachedCards('en', 6)).toBeUndefined();
+  });
+});
+
+describe('clearCardCacheForLanguages', () => {
+  it('clears only the listed languages\' card cache entries, leaving other languages untouched', () => {
+    setCachedCards('en', 6, [sampleCard]);
+    setCachedCards('ja', 4, [commonCardJa]);
+
+    clearCardCacheForLanguages(['en']);
+
+    expect(getCachedCards('en', 6)).toBeUndefined();
+    expect(getCachedCards('ja', 4)).toEqual([commonCardJa]);
+  });
+
+  it('also clears full-print-history and synthetic-filter-version entries for the listed languages', () => {
+    setCachedCards('en', 6, [sampleCard]);
+    markFullPrintHistoryFetched('en', 6);
+    setSyntheticFilterVersion('en', 6, 3);
+
+    clearCardCacheForLanguages(['en']);
+
+    expect(hasFullPrintHistory('en', 6)).toBe(false);
+    expect(getSyntheticFilterVersion('en', 6)).toBeUndefined();
+  });
+
+  it('leaves an unlisted language\'s full-print-history and synthetic-filter-version entries untouched', () => {
+    setCachedCards('ja', 4, [commonCardJa]);
+    markFullPrintHistoryFetched('ja', 4);
+    setSyntheticFilterVersion('ja', 4, 2);
+
+    clearCardCacheForLanguages(['en']);
+
+    expect(hasFullPrintHistory('ja', 4)).toBe(true);
+    expect(getSyntheticFilterVersion('ja', 4)).toBe(2);
+  });
+
+  it('is a no-op when given an empty language list', () => {
+    setCachedCards('en', 6, [sampleCard]);
+    clearCardCacheForLanguages([]);
+    expect(getCachedCards('en', 6)).toEqual([sampleCard]);
+  });
+
+  it('is a no-op when nothing has been cached at all', () => {
+    expect(() => clearCardCacheForLanguages(['en'])).not.toThrow();
     expect(getCachedCards('en', 6)).toBeUndefined();
   });
 });

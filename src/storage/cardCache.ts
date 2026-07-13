@@ -173,6 +173,39 @@ export function clearCardCache(): void {
   localStorage.removeItem(SYNTHETIC_FILTER_VERSION_KEY);
 }
 
+// Narrower sibling of clearCardCache above: drops only the entries whose key
+// (see cardCacheKey -- always `${language}:${dexNumber}`, and a language code
+// never itself contains a colon) belongs to one of `languages`, across all
+// three cache shapes, leaving every other language's cache (and, since these
+// are the only three keys this module owns, everything else in
+// localStorage -- owned/wishlist/binders live entirely under state/store.ts's
+// own separate persisted key) untouched. Built for state/dbVersionSync.ts's
+// boot-time staleness check: a static-database version bump only affects
+// static-covered languages' cached card data, so nl/ru/pl (live-API-only, see
+// data/staticCoverage.ts) must not be wiped and forced into a wasted
+// re-fetch alongside them.
+export function clearCardCacheForLanguages(languages: string[]): void {
+  const languageSet = new Set(languages);
+  if (languageSet.size === 0) return;
+
+  function purge(key: string): void {
+    const cache = readJson<Record<string, unknown>>(key, {});
+    let changed = false;
+    for (const cacheKey of Object.keys(cache)) {
+      const language = cacheKey.slice(0, cacheKey.indexOf(':'));
+      if (languageSet.has(language)) {
+        delete cache[cacheKey];
+        changed = true;
+      }
+    }
+    if (changed) writeJson(key, cache);
+  }
+
+  purge(CARD_CACHE_KEY);
+  purge(FULL_PRINT_HISTORY_KEY);
+  purge(SYNTHETIC_FILTER_VERSION_KEY);
+}
+
 export function getSyntheticFilterVersion(language: string, dexNumber: number): number | undefined {
   const cache = readJson<SyntheticFilterVersionCacheShape>(SYNTHETIC_FILTER_VERSION_KEY, {});
   return cache[cardCacheKey(language, dexNumber)];
