@@ -8,6 +8,7 @@ import type { SetlistRow, WikiImageInfo, WikiPageWikitext } from './types';
 import {
   buildCardIdIndex,
   buildDeepImageQueue,
+  buildDeepSetArticleCandidates,
   buildImageJobs,
   buildRowImageCandidates,
   chunkQueue,
@@ -24,6 +25,7 @@ import {
   imageJobCardToGen1Row,
   isDeepImageCardDone,
   isEnrichDone,
+  matchDeepCardsToSetRows,
   isImagesDone,
   isMissingSetDone,
   isMissingSetFailed,
@@ -41,6 +43,7 @@ import {
   type ProgressFile,
 } from './runHarvest';
 import type { ResolvedArticle } from './retryResolution';
+import type { DeepImageJobCard } from './deepImageResolver';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../fixtures/harvest/${name}`, import.meta.url)), 'utf-8');
@@ -991,5 +994,69 @@ describe('end-to-end: zh-cn (ATCG) fixture', () => {
 
     const resolution = resolveZhCnSetId('gallantgalaxy', extractCsCode(setInfo));
     expect(resolution).toEqual({ setId: 'cs5a', mismatched: true });
+  });
+});
+
+describe('matchDeepCardsToSetRows', () => {
+  function row(overrides: Partial<SetlistRow> = {}): SetlistRow {
+    return {
+      cardNumber: 'SM198',
+      regulationMark: null,
+      displayName: 'Bulbasaur',
+      cardArticleTitle: 'Bulbasaur (SM Promo 198)',
+      primaryType: null,
+      secondaryField: null,
+      rarity: null,
+      promoNote: null,
+      nameSource: 'tcgIdMacro',
+      originSetName: null,
+      ...overrides,
+    };
+  }
+  function deepCard(overrides: Partial<DeepImageJobCard> = {}): DeepImageJobCard {
+    return {
+      cardId: 'smp-SM198',
+      dexNumber: 1,
+      generation: 1,
+      name: 'Bulbasaur',
+      localId: 'SM198',
+      rarity: null,
+      setId: 'smp',
+      setName: 'SM Black Star Promos',
+      ...overrides,
+    };
+  }
+
+  it('matches a held card to its row by exact normalized code, zero-padding notwithstanding', () => {
+    const rows = [row({ cardNumber: '1/12', cardArticleTitle: "Weedle (McDonald's Collection 1)" })];
+    const cards = [deepCard({ cardId: '2014xy-1', localId: '1', name: 'Weedle', setName: "McDonald's Collection 2014" })];
+    const matches = matchDeepCardsToSetRows(cards, rows, "McDonald's Collection 2014");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].row.cardArticleTitle).toBe("Weedle (McDonald's Collection 1)");
+  });
+
+  it('matches prefix-tolerantly via the row article title context when the row number is bare', () => {
+    const rows = [row({ cardNumber: '198', cardArticleTitle: 'Bulbasaur (SM Promo 198)' })];
+    const matches = matchDeepCardsToSetRows([deepCard()], rows, 'SM Black Star Promos');
+    expect(matches).toHaveLength(1);
+  });
+
+  it('leaves a card unmatched rather than guessing when no row code agrees', () => {
+    const rows = [row({ cardNumber: 'SM199' })];
+    expect(matchDeepCardsToSetRows([deepCard()], rows, 'SM Black Star Promos')).toHaveLength(0);
+  });
+
+  it('never lets one row satisfy two cards', () => {
+    const rows = [row()];
+    const cards = [deepCard(), deepCard({ cardId: 'dup' })];
+    expect(matchDeepCardsToSetRows(cards, rows, 'SM Black Star Promos')).toHaveLength(1);
+  });
+});
+
+describe('buildDeepSetArticleCandidates', () => {
+  it('leads with the plain (TCG) title and includes orthographic variants', () => {
+    const candidates = buildDeepSetArticleCandidates('Pokemon GO');
+    expect(candidates[0]).toBe('Pokemon GO (TCG)');
+    expect(candidates).toContain('Pokémon GO (TCG)');
   });
 });

@@ -14,6 +14,15 @@
 //                          all (ImageHarvestResult) -> in-place
 //                          hostedThumbUrl/hostedFullUrl fills only, only
 //                          where currently absent, never new records.
+//                          --job images-deep's images-deep-<chunk>.json
+//                          files share this exact shape (plus diagnostics
+//                          fields this merge ignores) and flow through the
+//                          same path; because a deep chunk can span every
+//                          generation, the images path alone merges against
+//                          ALL of a language's generation files
+//                          (public/data/cards/<lang>/gen<N>.json), not just
+//                          the Gen1 <lang>.json -- see mergeImages' combined
+//                          view in main().
 //
 // Follows the established patterns in augmentFromSupplemental.ts (same
 // CardRecord shape, same normalized-setId + leading-zero-stripped-localId
@@ -352,16 +361,59 @@ async function main(): Promise<void> {
     );
   }
 
-  for (const filename of imagesFiles) {
-    const harvested: ImageHarvestResult = JSON.parse(
-      await readFile(path.join(harvestOutputDir(language), filename), 'utf8')
-    );
-    const outcome = mergeImages(existing, harvested);
-    console.log(
-      `${language}/${outcome.setId} (images): requested=${outcome.requested} filled=${outcome.filled} ` +
-        `alreadyHad=${outcome.alreadyHad} notResolved=${outcome.notResolved} notFound=${outcome.notFound}` +
-        (dryRun ? ' [dry-run, not written]' : '')
-    );
+  // The images path merges against EVERY generation file, not just the
+  // Gen1 <lang>.json: --job images-deep's chunks deliberately span all
+  // generations, and a gen2-9 card's record lives in
+  // public/data/cards/<lang>/gen<N>.json. A combined view keyed
+  // "<generation>:<dexNumber>" shares the very same bucket arrays as each
+  // loaded per-generation object, so mergeImages' in-place fills land in
+  // whichever file actually holds the record, and the notFound count means
+  // "not held in ANY generation file" rather than "not Gen1".
+  if (imagesFiles.length > 0) {
+    const generationDbs: Array<{ generation: number; filePath: string; db: Record<string, CardRecord[]> }> = [
+      { generation: 1, filePath: targetPath, db: existing },
+    ];
+    for (let generation = 2; generation <= 9; generation++) {
+      const filePath = path.join(APP_CARDS_DIR, language, `gen${generation}.json`);
+      try {
+        generationDbs.push({ generation, filePath, db: JSON.parse(await readFile(filePath, 'utf8')) });
+      } catch {
+        // This language has no static file for this generation -- skip it.
+      }
+    }
+
+    const combined: Record<string, CardRecord[]> = {};
+    for (const { generation, db } of generationDbs) {
+      for (const [dexNumber, bucket] of Object.entries(db)) combined[`${generation}:${dexNumber}`] = bucket;
+    }
+
+    const hostedCount = (db: Record<string, CardRecord[]>) =>
+      Object.values(db).reduce((n, bucket) => n + bucket.filter((c) => c.hostedThumbUrl || c.hostedFullUrl).length, 0);
+    const hostedBefore = new Map(generationDbs.map(({ generation, db }) => [generation, hostedCount(db)]));
+
+    for (const filename of imagesFiles) {
+      const harvested: ImageHarvestResult = JSON.parse(
+        await readFile(path.join(harvestOutputDir(language), filename), 'utf8')
+      );
+      const outcome = mergeImages(combined, harvested);
+      console.log(
+        `${language}/${outcome.setId} (images): requested=${outcome.requested} filled=${outcome.filled} ` +
+          `alreadyHad=${outcome.alreadyHad} notResolved=${outcome.notResolved} notFound=${outcome.notFound}` +
+          (dryRun ? ' [dry-run, not written]' : '')
+      );
+    }
+
+    if (!dryRun) {
+      // Gen1 (targetPath/existing) is written by the shared tail below;
+      // write back only the OTHER generation files that actually gained
+      // an image, so an images run never churns untouched files.
+      for (const { generation, filePath, db } of generationDbs) {
+        if (generation === 1) continue;
+        if (hostedCount(db) === hostedBefore.get(generation)) continue;
+        await writeFile(filePath, JSON.stringify(db), 'utf8');
+        console.log(`${language}/gen${generation}: image fills written to ${filePath}`);
+      }
+    }
   }
 
   if (dryRun) {

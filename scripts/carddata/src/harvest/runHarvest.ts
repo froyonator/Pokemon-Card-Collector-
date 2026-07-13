@@ -586,6 +586,58 @@ export interface DeepImageHarvestResult {
   chunkIndex: number;
 }
 
+/**
+ * The set-rows stage's pure core: matches still-unresolved held cards (all
+ * of one setId) against their set article's parsed rows by print code --
+ * exact normalized-code equality first ("SM198" == "SM198", "037" == "37"),
+ * then the prefix-tolerant fallback (see cardCodesMatch) contextualized by
+ * the row's own article-title disambiguator (which carries the set name
+ * that accounts for a bare wiki-side number's missing prefix). A row is
+ * consumed by at most one card. The match itself is the print-identity
+ * proof for this stage: the set article was derived from the card's OWN
+ * held setName, and the row was selected by print code, so the two held
+ * facts corroborate each other before any image is trusted.
+ */
+export function matchDeepCardsToSetRows(
+  cards: DeepImageJobCard[],
+  rows: SetlistRow[],
+  articleSetName: string
+): Array<{ card: DeepImageJobCard; row: SetlistRow }> {
+  const byCode = new Map<string, SetlistRow[]>();
+  for (const row of rows) {
+    const code = normalizeCardCode(row.cardNumber);
+    const bucket = byCode.get(code);
+    if (bucket) bucket.push(row);
+    else byCode.set(code, [row]);
+  }
+
+  const consumed = new Set<SetlistRow>();
+  const matched: Array<{ card: DeepImageJobCard; row: SetlistRow }> = [];
+  for (const card of cards) {
+    const exact = (byCode.get(normalizeCardCode(card.localId)) ?? []).find((row) => !consumed.has(row));
+    let row = exact ?? null;
+    if (!row) {
+      row =
+        rows.find((candidate) => {
+          if (consumed.has(candidate)) return false;
+          const rowContext = parseCardArticleDisambiguator(candidate.cardArticleTitle)?.setName ?? articleSetName;
+          return cardCodesMatch(card.localId, candidate.cardNumber, rowContext);
+        }) ?? null;
+    }
+    if (row) {
+      consumed.add(row);
+      matched.push({ card, row });
+    }
+  }
+  return matched;
+}
+
+/** Article-title candidates for a held setName's own set page: "<setName> (TCG)" plus orthographic variants -- the same construction missing-set jobs use (deriveWikiArticleTitle's en-family branch). */
+export function buildDeepSetArticleCandidates(setName: string): string[] {
+  const base = `${setName} (TCG)`;
+  return [base, ...generateTitleVariants(base)];
+}
+
 // --- Enrichment -------------------------------------------------------------
 
 export interface EnrichmentFill {
@@ -1282,6 +1334,33 @@ async function runImagesDeep(cli: CliArgs): Promise<void> {
   const outputDir = harvestOutputDir(cli.language);
   await mkdir(outputDir, { recursive: true });
 
+  // Run-scoped set-article cache: one fetch per setId covers EVERY card of
+  // that set across every chunk this run touches (null = the set article
+  // could not be resolved under any candidate title; also cached, so a
+  // missing article costs its candidate fetches only once per run).
+  const setPageCache = new Map<string, { rows: SetlistRow[]; articleSetName: string } | null>();
+
+  async function loadSetRowsCached(card: DeepImageJobCard): Promise<{ rows: SetlistRow[]; articleSetName: string } | null> {
+    const cached = setPageCache.get(card.setId);
+    if (cached !== undefined) return cached;
+    let resolved: { rows: SetlistRow[]; articleSetName: string } | null = null;
+    for (const title of buildDeepSetArticleCandidates(card.setName)) {
+      try {
+        const page = await client.parsePageWikitext(title);
+        const parsed = parseSetPageWikitext(page.wikitext);
+        resolved = {
+          rows: [...parsed.cardListRows, ...parsed.additionalCardRows],
+          articleSetName: deriveSetNameFromArticleTitle(page.title),
+        };
+        break;
+      } catch {
+        // title doesn't exist -- try the next candidate
+      }
+    }
+    setPageCache.set(card.setId, resolved);
+    return resolved;
+  }
+
   const chunks = chunkQueue(pending);
   for (let c = 0; c < chunks.length; c++) {
     const chunk = chunks[c];
@@ -1297,7 +1376,7 @@ async function runImagesDeep(cli: CliArgs): Promise<void> {
       // comment on why the plain-images-job's grouped version can't be
       // reused verbatim here.
       const guessed = await resolveFilenameGuessBatch(client, chunk);
-      const stillUnresolved: DeepImageJobCard[] = [];
+      const afterGuess: DeepImageJobCard[] = [];
       for (const card of chunk) {
         const hit = guessed.get(card.cardId);
         if (hit) {
@@ -1312,11 +1391,64 @@ async function runImagesDeep(cli: CliArgs): Promise<void> {
             skipReason: null,
           });
         } else {
-          stillUnresolved.push(card);
+          afterGuess.push(card);
         }
       }
 
-      // Steps (b)/(c)/(d): the per-card article-title ladder, one card at a
+      // Step (b): the set-article row match -- fetch each still-unresolved
+      // card's own set article ONCE per setId per run, match rows by print
+      // code, then resolve the matched rows' images through the very same
+      // resolveHarvestedCardImages path a fresh set harvest uses (its
+      // strategy (a) reads each row's own article-title disambiguator --
+      // the wiki's real naming -- which is exactly what our held setName
+      // was too divergent to guess; confirmed live for both the promo
+      // convention and reprint-only products like McDonald's sets).
+      const stillUnresolved: DeepImageJobCard[] = [];
+      const bySet = new Map<string, DeepImageJobCard[]>();
+      for (const card of afterGuess) {
+        const bucket = bySet.get(card.setId);
+        if (bucket) bucket.push(card);
+        else bySet.set(card.setId, [card]);
+      }
+      for (const [, setCards] of bySet) {
+        const setPage = await loadSetRowsCached(setCards[0]);
+        if (!setPage || setPage.rows.length === 0) {
+          stillUnresolved.push(...setCards);
+          continue;
+        }
+        const matches = matchDeepCardsToSetRows(setCards, setPage.rows, setPage.articleSetName);
+        const matchedIds = new Set(matches.map((m) => m.card.cardId));
+        stillUnresolved.push(...setCards.filter((card) => !matchedIds.has(card.cardId)));
+        if (matches.length === 0) continue;
+
+        const gen1Rows: Gen1MatchedRow[] = matches.map(({ card, row }) => ({
+          row,
+          dex: { number: card.dexNumber, name: card.name },
+        }));
+        const harvested = await resolveHarvestedCardImages(client, setPage.articleSetName, gen1Rows);
+        for (let i = 0; i < matches.length; i++) {
+          const { card } = matches[i];
+          const outcome = harvested[i];
+          if (outcome.imageUrl) {
+            results.push({
+              cardId: card.cardId,
+              dexNumber: card.dexNumber,
+              localId: card.localId,
+              imageFileTitle: outcome.imageFileTitle,
+              imageUrl: outcome.imageUrl,
+              imageMissing: false,
+              method: 'set-rows',
+              skipReason: null,
+            });
+          } else {
+            // The row matched but its image never resolved -- fall through
+            // to the per-card ladder rather than giving up here.
+            stillUnresolved.push(card);
+          }
+        }
+      }
+
+      // Steps (c)/(d)/(e): the per-card article-title ladder, one card at a
       // time -- each parsePageWikitext/searchPageTitles/queryImageInfo call
       // goes through the same client's shared politeScheduler, so the 5s
       // host gap applies automatically without any extra pacing code here.

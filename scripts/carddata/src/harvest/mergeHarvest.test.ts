@@ -312,6 +312,43 @@ describe('mergeImages', () => {
     expect(existing['1']).toHaveLength(0);
   });
 
+  it('fills a record held in a non-Gen1 generation file via the combined multi-generation view, in place through shared bucket references', () => {
+    // Mirrors exactly how main() builds its combined view for images files:
+    // per-generation objects keep their own identity, the combined object
+    // just aliases their bucket arrays under "<generation>:<dex>" keys.
+    const gen1Db: Record<string, CardRecord[]> = { '1': [] };
+    const gen5Db: Record<string, CardRecord[]> = {
+      '501': [
+        {
+          id: 'wk-de-bw1-1',
+          name: 'Serpifeu',
+          dexNumber: 501,
+          setId: 'bw1',
+          setName: 'Schwarz & Weiss',
+          localId: '1',
+          rarity: 'Common',
+          imageBase: '',
+          language: 'de',
+        },
+      ],
+    };
+    const combined: Record<string, CardRecord[]> = { '1:1': gen1Db['1'], '5:501': gen5Db['501'] };
+
+    const outcome = mergeImages(
+      combined,
+      imagesResult({
+        cards: [
+          { cardId: 'wk-de-bw1-1', dexNumber: 501, localId: '1', imageFileTitle: 'File:X.jpg', imageUrl: 'https://example.invalid/X.jpg', imageMissing: false },
+        ],
+      })
+    );
+
+    expect(outcome.filled).toBe(1);
+    expect(outcome.notFound).toBe(0);
+    // The fill landed in the ORIGINAL gen5 object, not a copy.
+    expect(gen5Db['501'][0].hostedThumbUrl).toBe('https://example.invalid/X.jpg');
+  });
+
   it('accepts an images-deep chunk output unchanged -- same required shape as a plain images job plus ignored diagnostics fields', () => {
     // Simulates exactly what runHarvest.ts's --job images-deep writes to
     // data/harvest/<lang>/images-deep-<chunk>.json and what mergeHarvest.ts's
