@@ -1,8 +1,28 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useReducedMotion } from 'framer-motion';
 import { CardZoomOverlay } from './CardZoomOverlay';
 import type { CardRecord } from '../types';
+
+// Defaults to motion enabled, matching every existing test below (none of
+// which care about reduced motion) and the same convention Tile.test.tsx /
+// BinderShelf.test.tsx / BinderView.test.tsx already use. The dedicated
+// "entrance animation" describe block flips this to true for its own
+// reduced-motion tests only.
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion');
+  return { ...actual, useReducedMotion: vi.fn(() => false) };
+});
+
+beforeEach(() => {
+  vi.mocked(useReducedMotion).mockReturnValue(false);
+});
+
+// Matches CardZoomOverlay's own ENTRANCE_DURATION_MS -- how long the
+// flip-and-grow entrance takes before the cursor tilt and one-shot glint
+// are allowed to switch on.
+const ENTRANCE_DURATION_MS = 720;
 
 const card: CardRecord = {
   id: 'sv03.5-199',
@@ -117,5 +137,72 @@ describe('CardZoomOverlay', () => {
       <CardZoomOverlay card={noImageCard} uploadedImageUri={undefined} onClose={() => {}} />
     );
     expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+  });
+
+  describe('entrance animation', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('plays the flip-and-grow entrance when reduced motion is off', () => {
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[data-entrance="flip"]')).toBeInTheDocument();
+      expect(dialog.querySelector('[data-entrance="fade"]')).not.toBeInTheDocument();
+    });
+
+    it('falls back to a plain fade entrance when reduced motion is preferred', () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[data-entrance="fade"]')).toBeInTheDocument();
+      expect(dialog.querySelector('[data-entrance="flip"]')).not.toBeInTheDocument();
+    });
+
+    it('keeps the cursor tilt off during the flip so it cannot fight the entrance mid-turn', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      const img = screen.getByAltText(/charizard ex from 151/i);
+      const cardBody = img.closest('div') as HTMLElement;
+
+      fireEvent.mouseMove(dialog, { clientX: 5, clientY: 5 });
+      expect(cardBody).not.toHaveClass('cardTilting');
+    });
+
+    it('turns the cursor tilt on once the entrance settles', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      const img = screen.getByAltText(/charizard ex from 151/i);
+      const cardBody = img.closest('div') as HTMLElement;
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      fireEvent.mouseMove(dialog, { clientX: 5, clientY: 5 });
+      expect(cardBody).toHaveClass('cardTilting');
+    });
+
+    it('never mounts the one-shot glint under reduced motion, since there is no flip for it to follow', () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[class*="glint"]')).not.toBeInTheDocument();
+    });
+
+    it('mounts the one-shot glint once the entrance settles, not before', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+      expect(dialog.querySelector('[class*="glint"]')).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      expect(dialog.querySelector('[class*="glint"]')).toBeInTheDocument();
+    });
   });
 });

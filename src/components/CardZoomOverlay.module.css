@@ -15,8 +15,17 @@
   justify-content: center;
   z-index: 300;
   padding: var(--space-4);
+  /* Gives .panel's own rotateY entrance (see CardZoomOverlay.tsx) real 3D
+     depth -- CSS perspective on a rotated element's PARENT is what makes a
+     single element's own rotation read as tipping through space instead of
+     a flat horizontal squash. */
+  perspective: 1600px;
 }
 
+/* Entrance (the flip-and-grow launch) is driven entirely by framer-motion's
+   inline transform on this element -- see CardZoomOverlay.tsx's panelMotion.
+   No transform/transition rule belongs here; one would fight the inline
+   style framer-motion writes for the same property. */
 .panel {
   position: relative;
   display: flex;
