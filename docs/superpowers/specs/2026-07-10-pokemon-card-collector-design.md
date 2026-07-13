@@ -11,7 +11,7 @@ A web app for tracking a personal collection of Gen 1 (Kanto, #001-151) Pokémon
 ## Goals / non-goals
 
 - Goal: comprehensive tracker across the *entire* history of full-art/special-art style cards for Gen 1, not just the current era.
-- Goal: works with live, free, no-API-key data sources only (no scraping, no paid feeds).
+- Goal: works with live, free, no-API-key data sources only (no harvesting, no paid feeds).
 - Goal: visually polished, custom UI with real animation. Not a generic templated look.
 - Goal: friendly and approachable for a first-time user, with a guided tutorial.
 - Non-goal: real per-condition (graded) pricing. Not available from free sources; condition is a reference-only label.
