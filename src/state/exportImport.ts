@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import type { ExportedUserData } from './store';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
+import type { GenerationId } from '../data/generations';
 
 export type { ExportedUserData } from './store';
 
@@ -17,7 +18,7 @@ export interface ExportableState {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
-  selectedGenerations: number[];
+  selectedGenerations: GenerationId[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
   binders: Binder[];

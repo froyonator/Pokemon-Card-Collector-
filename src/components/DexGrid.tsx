@@ -9,8 +9,10 @@ import {
 } from '../api/staticDatabase';
 import type { DexEntry } from '../data/gen1Dex';
 import { entriesForGenerations, generationForDexNumber } from '../data/generations';
-import { loadSpriteManifest, spriteUrls } from '../data/sprites';
+import { megaDexEntryByNumber, type MegaDexEntry } from '../data/megaDex';
+import { loadSpriteManifest, megaSpriteUrls, spriteUrls } from '../data/sprites';
 import { loadAllCardData, preserveReferencedCards } from '../state/loadCardData';
+import { loadMegaCardData, refreshMegaCardData } from '../state/loadMegaCardData';
 import { activeRarities, availableCardsForDex, computeTileState } from '../state/selectors';
 import { useAppStore } from '../state/store';
 import {
@@ -38,13 +40,21 @@ import styles from './DexGrid.module.css';
 // can't be determined (see generationForDexNumber) is treated as Gen 1's --
 // not reachable with today's contiguous GENERATIONS ranges, but a safe
 // default rather than a thrown error if that ever changes.
+//
+// Callers must only ever pass NORMAL (non-Mega) entries here -- Mega
+// entries have their own dedicated pipeline (see loadMegaCardData.ts) and
+// never a per-generation static file of their own, so generationForDexNumber
+// applied to a normal entry's dex number is guaranteed to return a real
+// numeric generation id, never 'mega'.
 async function staticDataByGeneration(
   language: string,
   entries: DexEntry[],
   loadGen1: (language: string) => Promise<Record<number, CardRecord[]> | null>,
   loadGen: (language: string, gen: number) => Promise<Record<number, CardRecord[]> | null>
 ): Promise<Map<number, Record<number, CardRecord[]> | null>> {
-  const generationIds = [...new Set(entries.map((entry) => generationForDexNumber(entry.number) ?? 1))];
+  const generationIds = [
+    ...new Set(entries.map((entry) => (generationForDexNumber(entry.number) as number | undefined) ?? 1)),
+  ];
   const results = await Promise.all(
     generationIds.map(async (gen) => {
       const data = gen === 1 ? await loadGen1(language) : await loadGen(language, gen);
@@ -136,6 +146,24 @@ export function DexGrid({
     [selectedGenerations]
   );
 
+  // Mega entries need an entirely different loading pipeline (their cards
+  // are a filtered VIEW over their base species' cards, not their own
+  // fetch -- see state/loadMegaCardData.ts), so every place below that
+  // drives fetching/refreshing splits `dexEntries` into these two groups.
+  // Rendering itself (the .map() further down) doesn't need this split: it
+  // reads spriteUrls vs megaSpriteUrls per-entry directly off dexEntries.
+  const normalDexEntries = useMemo(
+    () => dexEntries.filter((entry) => megaDexEntryByNumber(entry.number) === undefined),
+    [dexEntries]
+  );
+  const megaDexEntriesInScope = useMemo(
+    () =>
+      dexEntries
+        .map((entry) => megaDexEntryByNumber(entry.number))
+        .filter((entry): entry is MegaDexEntry => entry !== undefined),
+    [dexEntries]
+  );
+
   // Hoisted above the auto-load effect and handleRefreshData below (both
   // need it in scope) so the actual network fetch respects the user's live
   // Manage-Groups configuration instead of loadAllCardData's own hardcoded
@@ -221,10 +249,16 @@ export function DexGrid({
     // generation setup right below stay perfectly synchronous, matching
     // their exact pre-existing timing, instead of being delayed behind the
     // preload's own await.
-    const missingEntries = dexEntries.filter(
+    const missingEntries = normalDexEntries.filter(
       (entry) => getCachedCards(language, entry.number) === undefined
     );
-    if (missingEntries.length === 0) return;
+    // Same "missing" check, over the Mega entries currently in scope --
+    // see loadMegaCardData.ts for why these need an entirely separate
+    // fetch path from missingEntries above.
+    const missingMegaEntries = megaDexEntriesInScope.filter(
+      (entry) => getCachedCards(language, entry.number) === undefined
+    );
+    if (missingEntries.length === 0 && missingMegaEntries.length === 0) return;
 
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -279,13 +313,21 @@ export function DexGrid({
       // whatever it happened to fetch. When only Gen 1 is selected this is
       // exactly one fetch (loadStaticCardData(language)), identical to
       // before per-generation loading existed.
-      const staticByGeneration = await staticDataByGeneration(
-        language,
-        missingEntries,
-        loadStaticCardData,
-        loadStaticCardDataForGen
-      );
+      //
+      // Mega entries load in parallel with the normal preload above, via
+      // their own dedicated static-only pipeline (see loadMegaCardData.ts)
+      // -- awaited together with the static preload so isLoading/
+      // onLoadingChange (and the "stillMissing.length === 0" early return
+      // right below) don't flip false while a Mega fetch is still in
+      // flight.
+      const [staticByGeneration] = await Promise.all([
+        staticDataByGeneration(language, missingEntries, loadStaticCardData, loadStaticCardDataForGen),
+        missingMegaEntries.length > 0
+          ? loadMegaCardData(language, missingMegaEntries, { owned, wishlist })
+          : Promise.resolve(),
+      ]);
       if (cancelled || loadGeneration.current !== thisGeneration) return;
+      if (missingMegaEntries.length > 0) setDataVersion((v) => v + 1);
 
       // The static file is the COMPLETE truth for its language and
       // generation -- it was built from a full crawl of every set, so a dex
@@ -302,7 +344,7 @@ export function DexGrid({
       const stillMissing: DexEntry[] = [];
       let wroteAny = false;
       for (const entry of missingEntries) {
-        const gen = generationForDexNumber(entry.number) ?? 1;
+        const gen = (generationForDexNumber(entry.number) as number | undefined) ?? 1;
         const staticData = staticByGeneration.get(gen);
         if (!staticData) {
           stillMissing.push(entry);
@@ -436,12 +478,21 @@ export function DexGrid({
       // before this, it unconditionally ran the full live dex x rarity
       // fan-out -- 151 dex numbers x every active rarity -- even for a
       // language the static database already covers completely.
-      const staticByGeneration = await staticDataByGeneration(
-        language,
-        dexEntries,
-        refreshStaticCardData,
-        refreshStaticCardDataForGen
-      );
+      // Mega entries refresh in parallel via their own dedicated pipeline
+      // (see loadMegaCardData.ts) -- same "always static-only, no live
+      // fallback" contract as the auto-load effect above. onRefreshDexLoaded
+      // drains a Mega entry's dex number out of pendingRefreshDex exactly
+      // like any normal entry's.
+      const [staticByGeneration] = await Promise.all([
+        staticDataByGeneration(language, normalDexEntries, refreshStaticCardData, refreshStaticCardDataForGen),
+        megaDexEntriesInScope.length > 0
+          ? refreshMegaCardData(language, megaDexEntriesInScope, {
+              owned,
+              wishlist,
+              onEntryLoaded: onRefreshDexLoaded,
+            })
+          : Promise.resolve(),
+      ]);
       if (loadGeneration.current !== thisGeneration) return;
 
       // Entries whose generation has no static file (e.g. nl/ru/pl's Gen 1,
@@ -452,8 +503,8 @@ export function DexGrid({
       // never called at all -- matching the old "return" behavior exactly
       // for a Gen-1-only, static-covered session.
       const liveEntries: DexEntry[] = [];
-      for (const entry of dexEntries) {
-        const gen = generationForDexNumber(entry.number) ?? 1;
+      for (const entry of normalDexEntries) {
+        const gen = (generationForDexNumber(entry.number) as number | undefined) ?? 1;
         const staticData = staticByGeneration.get(gen);
         if (!staticData) {
           liveEntries.push(entry);
@@ -626,7 +677,18 @@ export function DexGrid({
             const allCards = cardsByDexNumber.get(entry.number) ?? [];
             const cards = availableCardsForDex(allCards, activeSet, cardOverrides, activeGroupIds);
             const ownedRecord = owned[entry.number];
-            const entrySpriteUrls = spriteUrls(entry.number);
+            // A Mega tile reads its own sprite files (public/sprites/mega/
+            // ...), falling back to the base species' sprite when the
+            // manifest has no mega coverage for it -- see megaSpriteUrls.
+            // Every other tile keeps the plain per-dex-number lookup
+            // unchanged.
+            const megaEntry = megaDexEntryByNumber(entry.number);
+            const entrySpriteUrls = megaEntry ? megaSpriteUrls(megaEntry) : spriteUrls(entry.number);
+            // The old live third-party fallback has no per-form Mega
+            // artwork to build a URL from, so a Mega tile's onError
+            // fallback degrades to its base species' own live sprite
+            // instead -- still infinitely better than a broken image icon.
+            const fallbackSpriteUrl = spriteUrl(megaEntry ? megaEntry.baseDexNumber : entry.number);
             // Self-heals if a fetch fails outright for some dex number: once
             // isLoading flips back to false in loadAllCardData's .finally(),
             // any dex number that never got a cache entry (its request
@@ -647,7 +709,7 @@ export function DexGrid({
                   name={entry.name}
                   spriteStaticUrl={entrySpriteUrls.staticUrl}
                   spriteAnimatedUrl={entrySpriteUrls.animatedUrl}
-                  spriteFallbackUrl={spriteUrl(entry.number)}
+                  spriteFallbackUrl={fallbackSpriteUrl}
                   state={state}
                   view={view}
                   ownedCardImageBase={ownedCard?.imageBase}

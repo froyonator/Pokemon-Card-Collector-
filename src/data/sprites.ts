@@ -8,15 +8,32 @@
 // onError fallback on the <img> itself, for the rare case a local file is
 // missing (e.g. a manifest/file mismatch from a partial deploy).
 
+// public/sprites/manifest.json's "mega" section -- one entry per Mega form
+// (see scripts/carddata/src/downloadMegaSprites.ts), keyed by the same
+// `slug` megaDex.ts's MegaDexEntry.spriteSlug carries.
+interface MegaManifestEntry {
+  slug: string;
+  baseDex: number;
+  name: string;
+  animated: boolean;
+}
+
 // public/sprites/manifest.json's own shape -- see downloadSprites.ts.
 interface SpriteManifest {
   animated: number[];
   animatedFormat?: Record<string, string>;
+  mega?: MegaManifestEntry[];
 }
 
 interface SpriteManifestCache {
   animatedDexNumbers: Set<number>;
   animatedFormats: Record<string, string>;
+  // Every Mega slug the manifest lists a static PNG for, regardless of
+  // animated coverage -- megaSpriteUrls below falls all the way back to the
+  // base species' own sprite when a slug isn't in this set at all (e.g. a
+  // future roster addition the sprite pipeline hasn't downloaded yet).
+  megaStaticSlugs: Set<string>;
+  megaAnimatedSlugs: Set<string>;
 }
 
 // Empty coverage -- every dex number resolves to "no animated sprite" (pure
@@ -27,6 +44,8 @@ interface SpriteManifestCache {
 const EMPTY_MANIFEST: SpriteManifestCache = {
   animatedDexNumbers: new Set(),
   animatedFormats: {},
+  megaStaticSlugs: new Set(),
+  megaAnimatedSlugs: new Set(),
 };
 
 // Set once loadSpriteManifest's fetch resolves (successfully or not --
@@ -51,9 +70,12 @@ async function fetchSpriteManifest(fetchImpl: typeof fetch): Promise<SpriteManif
     const response = await fetchImpl(`${import.meta.env.BASE_URL}sprites/manifest.json`);
     if (!response.ok) return EMPTY_MANIFEST;
     const data = (await response.json()) as Partial<SpriteManifest>;
+    const mega = data.mega ?? [];
     return {
       animatedDexNumbers: new Set(data.animated ?? []),
       animatedFormats: data.animatedFormat ?? {},
+      megaStaticSlugs: new Set(mega.map((m) => m.slug)),
+      megaAnimatedSlugs: new Set(mega.filter((m) => m.animated).map((m) => m.slug)),
     };
   } catch {
     return EMPTY_MANIFEST;
@@ -100,6 +122,25 @@ export function spriteUrls(dexNumber: number): SpriteUrls {
     staticUrl,
     animatedUrl: `${import.meta.env.BASE_URL}sprites/animated/${dexNumber}.${ext}`,
   };
+}
+
+// Same synchronous, stateless-lookup contract as spriteUrls above, but for
+// a Mega form's own sprite files (public/sprites/mega/{static,animated}/
+// <spriteSlug>.{png,gif}) instead of a plain dex number's. Falls all the way
+// back to the BASE species' own static/animated sprite (spriteUrls(
+// baseDexNumber)) when the manifest doesn't list this slug at all -- e.g. a
+// future roster addition the sprite pipeline hasn't downloaded yet -- so a
+// Mega tile never shows a broken image before even trying the <img>'s own
+// onError fallback.
+export function megaSpriteUrls(entry: { spriteSlug: string; baseDexNumber: number }): SpriteUrls {
+  if (!manifestCache.megaStaticSlugs.has(entry.spriteSlug)) {
+    return spriteUrls(entry.baseDexNumber);
+  }
+  const staticUrl = `${import.meta.env.BASE_URL}sprites/mega/static/${entry.spriteSlug}.png`;
+  const animatedUrl = manifestCache.megaAnimatedSlugs.has(entry.spriteSlug)
+    ? `${import.meta.env.BASE_URL}sprites/mega/animated/${entry.spriteSlug}.gif`
+    : null;
+  return { staticUrl, animatedUrl };
 }
 
 // Test-only: clears the module-level manifest memo so each test can drive

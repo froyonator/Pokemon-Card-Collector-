@@ -10,15 +10,33 @@ import {
   GEN8_DEX,
   GEN9_DEX,
 } from './fullDex';
+import { MEGA_DEX_ENTRIES } from './megaDex';
+
+// A real national-dex generation is numbered 1-9; 'mega' is a special,
+// non-numeric grouping id for the synthetic-numbered Mega Evolution entries
+// (see megaDex.ts) -- a pseudo-generation today, kept cleanly separable
+// because the product plan is to move it to a different grouping concept
+// later without disturbing how real generations work.
+export type GenerationId = number | 'mega';
 
 export interface Generation {
-  id: number;
+  id: GenerationId;
   label: string;
   // Read-only: this holds the literal dex array reference (e.g. GEN1_DEX),
   // not a defensive copy. Never mutate `entries` in place — read through
   // `entriesForGenerations`/`allDexEntries`, which return fresh arrays.
   entries: DexEntry[];
 }
+
+// MEGA_DEX_ENTRIES carries baseDexNumber/slug/spriteSlug metadata this
+// registry doesn't need -- entries here are just the plain {number, name}
+// pairs every other generation already uses, so Mega tiles flow through
+// entriesForGenerations/allDexEntries/the DexGrid tile map exactly like any
+// other generation's entries.
+const MEGA_DEX: DexEntry[] = MEGA_DEX_ENTRIES.map((entry) => ({
+  number: entry.number,
+  name: entry.name,
+}));
 
 // When adding a new generation here, also update README.md's "Gen 1 (Kanto,
 // #001-151)" / "All 151 Gen 1 Pokemon" language (that file was written when
@@ -35,9 +53,10 @@ export const GENERATIONS: Generation[] = [
   { id: 7, label: 'Generation 7 (Alola)', entries: GEN7_DEX },
   { id: 8, label: 'Generation 8 (Galar & Hisui)', entries: GEN8_DEX },
   { id: 9, label: 'Generation 9 (Paldea)', entries: GEN9_DEX },
+  { id: 'mega', label: 'Mega', entries: MEGA_DEX },
 ];
 
-export function entriesForGenerations(generationIds: number[]): DexEntry[] {
+export function entriesForGenerations(generationIds: GenerationId[]): DexEntry[] {
   return GENERATIONS.filter((g) => generationIds.includes(g.id))
     .flatMap((g) => g.entries)
     .sort((a, b) => a.number - b.number);
@@ -57,7 +76,15 @@ export function allDexEntries(): DexEntry[] {
 // rather than throwing -- callers fall back to treating it as ungrouped
 // (e.g. skip the static preload and defer straight to the live-API path)
 // instead of crashing on a future/unmapped dex number.
-export function generationForDexNumber(dexNumber: number): number | undefined {
+//
+// Can return 'mega' for a synthetic Mega dex number -- callers that route
+// through the normal per-generation static file loader (DexGrid's
+// staticDataByGeneration) must never feed it a synthetic number in the
+// first place (Mega entries use their own dedicated loadMegaCardData
+// pipeline instead, see state/loadMegaCardData.ts), so in practice this
+// only ever surfaces 'mega' to a caller that's specifically asking about a
+// Mega entry's own (synthetic) number.
+export function generationForDexNumber(dexNumber: number): GenerationId | undefined {
   const generation = GENERATIONS.find((g) => {
     if (g.entries.length === 0) return false;
     const first = g.entries[0].number;

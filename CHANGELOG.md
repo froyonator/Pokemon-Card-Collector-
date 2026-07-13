@@ -13,9 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in card databases for generations 2 through 9 in eleven languages (Japanese, French, German, Spanish, Italian, Portuguese, Traditional and Simplified Chinese, Thai, Indonesian, and Korean), nearly 63,000 cards, so the newly selectable generations load instantly with no live lookups in covered languages. English joins them with another 14,300 cards covering every generation 2 to 9 species.
 
 - Big Gen 1 database growth in the languages that needed it most: Simplified Chinese grew from 86 to 2,511 cards (a full sweep of the mainland-exclusive sets), Indonesian from 244 to 827, Thai from 299 to 685, plus new English and Japanese promo sets. Nearly all new cards come with card images.
+- A new "Mega" option in the generation filter, alongside the regular generations. Turning it on adds one tile per Mega Evolution form (all 48, including both Mega Charizard X and Y, and both Mega Mewtwo X and Y), each with its own animated Mega sprite, shown in the order they were first released. Clicking a Mega tile opens a picker showing only that Pokemon's Mega card prints, so a Mega Charizard X tile shows Mega Charizard X cards, not plain Charizard or Mega Charizard Y cards. Owning a Mega card is tracked separately from owning the regular Pokemon.
 
 ### Changed
 
+- Clicking a card to enlarge it now feels a bit magical: the card launches from its resting size and turns one full flip while growing continuously, landing exactly at its final large size the instant the turn completes. Anyone with reduced motion turned on still gets the simple, non-spinning entrance from before.
 - Pokemon sprites in the dex grid now animate: a Pokemon you don't own yet shows a lively animated sprite, while one you already own shows the same animation but heavily greyed out, so collected and uncollected Pokemon are easy to tell apart at a glance. Pokemon with no cards released yet still show a plain, dulled still image. Sprites now load from the app itself instead of a third-party site, so the dex grid loads faster and stays smooth while scrolling, and automatically switches to still images if your system prefers reduced motion.
 
 ### Fixed

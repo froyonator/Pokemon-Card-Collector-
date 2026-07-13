@@ -15,6 +15,7 @@ import {
 import { GEN1_DEX } from '../data/gen1Dex';
 import { GEN2_DEX } from '../data/fullDex';
 import { GENERATIONS } from '../data/generations';
+import { MEGA_DEX_ENTRIES } from '../data/megaDex';
 import type { CardRecord } from '../types';
 
 // Wraps the real loadAllCardData in a vi.fn so most tests below get its
@@ -1178,7 +1179,13 @@ describe('Multi-generation static preload', () => {
 
 describe('Scale: full National Pokedex selection', () => {
   it('renders all 1025 tiles without hanging when every generation is selected', async () => {
-    useAppStore.setState({ selectedGenerations: GENERATIONS.map((g) => g.id) });
+    // Deliberately the nine real, numbered generations only -- excludes the
+    // 'mega' pseudo-generation (see the "Mega grouping" describe block
+    // further down for its own dedicated coverage), so this test's "full
+    // National Pokedex" scale assertion (1025) stays unchanged.
+    useAppStore.setState({
+      selectedGenerations: GENERATIONS.filter((g) => typeof g.id === 'number').map((g) => g.id),
+    });
 
     // Every generation resolves full static coverage (an empty card list per
     // dex number is enough -- this test is about render scale, not card
@@ -1201,4 +1208,122 @@ describe('Scale: full National Pokedex selection', () => {
     );
     expect(screen.getAllByRole('button')).toHaveLength(1025);
   }, 20000);
+});
+
+describe('Mega grouping', () => {
+  function megaCard(overrides: Partial<CardRecord>): CardRecord {
+    return {
+      id: 'id',
+      name: 'M Charizard-EX',
+      dexNumber: 6,
+      setId: 'set',
+      setName: 'Test Set',
+      localId: '1',
+      // 'Ultra Rare' is in a default-active rarity group (see
+      // defaultRarityGroups.ts) so these fixtures show up without needing
+      // to touch the store's groups/activeGroupIds -- same rarity the
+      // Multi-generation static preload tests above already use.
+      rarity: 'Ultra Rare',
+      imageBase: '',
+      language: 'en',
+      ...overrides,
+    };
+  }
+
+  // Charizard's dex-6 static bucket: a mix of Mega and non-Mega prints, used
+  // to exercise both the picker's Mega-only filter and its X/Y split.
+  function charizardCoverage(): Record<number, CardRecord[]> {
+    return {
+      6: [
+        megaCard({ id: 'legacy', name: 'M Charizard-EX' }),
+        megaCard({ id: 'modern-x', name: 'Mega Charizard X ex' }),
+        megaCard({ id: 'modern-y', name: 'Mega Charizard Y ex' }),
+        megaCard({ id: 'plain', name: 'Charizard ex' }),
+      ],
+    };
+  }
+
+  it('renders one tile per Mega form, in release order, when Mega is selected', async () => {
+    useAppStore.setState({ selectedGenerations: ['mega'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue(charizardCoverage());
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /mega venusaur/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /mega audino/i })).toBeInTheDocument();
+
+    const tiles = screen.getAllByRole('button');
+    expect(tiles).toHaveLength(48);
+    // MEGA_DEX_ENTRIES is already in release order -- the rendered DOM order
+    // of tile names must match it exactly.
+    expect(tiles.map((t) => t.getAttribute('title'))).toEqual(
+      tiles.map((_t, i) => expect.stringContaining(MEGA_DEX_ENTRIES[i].name))
+    );
+  });
+
+  it("uses the mega sprite path (not the base species'), falling back to the base species sprite for a slug the manifest doesn't cover", async () => {
+    useAppStore.setState({ selectedGenerations: ['mega'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue({});
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /mega charizard x/i });
+    // The tile starts in the 'loading' state (no <img> yet, just the Poke
+    // Ball spinner) until this entry's Mega load resolves.
+    await waitFor(() => {
+      const img = within(tile).getByRole('img') as HTMLImageElement;
+      // No sprite manifest was loaded in this test (loadSpriteManifest's own
+      // fetch isn't mocked here), so megaSpriteUrls falls all the way back to
+      // the base species' plain static sprite -- dex 6's -- exactly as
+      // documented for a slug the manifest doesn't list.
+      expect(img.src).toContain('/sprites/static/6.png');
+    });
+  });
+
+  it('opens a picker showing ONLY that species\' Mega prints, split by X/Y variant, when a Mega tile is clicked', async () => {
+    useAppStore.setState({ selectedGenerations: ['mega'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue(charizardCoverage());
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /mega charizard x/i });
+    await userEvent.click(tile);
+
+    const dialog = await screen.findByRole('dialog');
+    // Each card's image/placeholder carries an accessible name of "<card
+    // name> from <set name>" -- CardImage renders either a real <img alt=…>
+    // or (as here, since these fixtures have no imageBase) a role="img"
+    // placeholder with the same string as its aria-label, so querying by
+    // role+name covers both. The legacy (variant-ambiguous) and X-specific
+    // modern prints both show up on the X tile; the Y-specific print and
+    // the plain non-mega "Charizard ex" print do not.
+    await waitFor(() => {
+      expect(within(dialog).getByRole('img', { name: /m charizard-ex from/i })).toBeInTheDocument();
+    });
+    expect(within(dialog).getByRole('img', { name: /mega charizard x ex from/i })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('img', { name: /mega charizard y ex from/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('img', { name: /^charizard ex from/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps ownership of a Mega form independent of the base species: marking the Mega owned does not mark the base dex number owned', async () => {
+    useAppStore.setState({ selectedGenerations: [1, 'mega'] });
+    vi.mocked(loadStaticCardData).mockResolvedValue(charizardCoverage());
+
+    render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+
+    const tile = await screen.findByRole('button', { name: /mega charizard x/i });
+    await userEvent.click(tile);
+    const dialog = await screen.findByRole('dialog');
+    const cardImage = await within(dialog).findByRole('img', { name: /mega charizard x ex from/i });
+    await userEvent.click(cardImage);
+    await userEvent.click(screen.getByRole('button', { name: /near mint/i }));
+
+    const megaEntry = MEGA_DEX_ENTRIES.find((e) => e.slug === 'charizard-mega-x')!;
+    await waitFor(() => {
+      expect(useAppStore.getState().owned[megaEntry.number]).toBeDefined();
+    });
+    expect(useAppStore.getState().owned[6]).toBeUndefined();
+  });
 });

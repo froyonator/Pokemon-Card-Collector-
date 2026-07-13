@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { __resetSpriteManifestForTests, loadSpriteManifest, spriteUrls } from './sprites';
+import { __resetSpriteManifestForTests, loadSpriteManifest, megaSpriteUrls, spriteUrls } from './sprites';
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as Response;
@@ -69,6 +69,57 @@ describe('spriteUrls', () => {
     })) as unknown as typeof fetch;
     await loadSpriteManifest(fetchImpl);
     expect(spriteUrls(6).animatedUrl).toBeNull();
+  });
+});
+
+describe('megaSpriteUrls', () => {
+  const entry = { spriteSlug: 'charizard-mega-x', baseDexNumber: 6 };
+
+  it('falls back entirely to the base species sprite before the manifest has ever loaded', () => {
+    const urls = megaSpriteUrls(entry);
+    expect(urls).toEqual(spriteUrls(6));
+  });
+
+  it('builds the mega static/animated URLs once the manifest lists this slug as animated', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        mega: [{ slug: 'charizard-mega-x', baseDex: 6, name: 'Mega Charizard X', animated: true }],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = megaSpriteUrls(entry);
+    expect(urls.staticUrl).toBe(`${import.meta.env.BASE_URL}sprites/mega/static/charizard-mega-x.png`);
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/mega/animated/charizard-mega-x.gif`);
+  });
+
+  it('returns the mega static URL with a null animatedUrl when the manifest lists this slug without animated coverage', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [],
+        animatedFormat: {},
+        mega: [{ slug: 'charizard-mega-x', baseDex: 6, name: 'Mega Charizard X', animated: false }],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = megaSpriteUrls(entry);
+    expect(urls.staticUrl).toBe(`${import.meta.env.BASE_URL}sprites/mega/static/charizard-mega-x.png`);
+    expect(urls.animatedUrl).toBeNull();
+  });
+
+  it('falls back entirely to the base species sprite when the manifest does not list this slug at all', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        animated: [6],
+        animatedFormat: {},
+        mega: [{ slug: 'venusaur-mega', baseDex: 3, name: 'Mega Venusaur', animated: true }],
+      })
+    );
+    await loadSpriteManifest(fetchImpl);
+    const urls = megaSpriteUrls(entry);
+    expect(urls).toEqual(spriteUrls(6));
+    expect(urls.animatedUrl).toBe(`${import.meta.env.BASE_URL}sprites/animated/6.gif`);
   });
 });
 

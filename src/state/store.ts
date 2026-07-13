@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_RARITY_GROUPS } from '../data/defaultRarityGroups';
 import { DEFAULT_CARD_OVERRIDES } from '../data/defaultCardOverrides';
+import type { GenerationId } from '../data/generations';
 import type {
   Binder,
   BinderConfig,
@@ -39,7 +40,7 @@ export interface ExportedUserData {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
-  selectedGenerations: number[];
+  selectedGenerations: GenerationId[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
   binders: Binder[];
@@ -91,7 +92,7 @@ export interface AppState {
   groups: RarityGroup[];
   owned: Record<number, OwnedRecord>;
   wishlist: Record<number, WishlistRecord>;
-  selectedGenerations: number[];
+  selectedGenerations: GenerationId[];
   cardOverrides: Record<string, string>;
   uploadedImages: Record<string, string>;
   binders: Binder[];
@@ -101,7 +102,7 @@ export interface AppState {
   setLanguage: (language: string) => void;
   toggleActiveGroup: (groupId: string) => void;
   setGroups: (groups: RarityGroup[]) => void;
-  toggleGeneration: (id: number) => void;
+  toggleGeneration: (id: GenerationId) => void;
   setCardOverride: (cardId: string, groupId: string | null) => void;
   setUploadedImage: (cardId: string, dataUri: string | null) => void;
   createBinder: (name: string, language: string) => void;

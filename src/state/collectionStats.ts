@@ -1,4 +1,4 @@
-import { entriesForGenerations } from '../data/generations';
+import { entriesForGenerations, type GenerationId } from '../data/generations';
 import { activeRarities, availableCardsForDex } from './selectors';
 import { getCachedCards } from '../storage/cardCache';
 import type { OwnedRecord, RarityGroup } from '../types';
@@ -16,7 +16,7 @@ export interface CollectionStatsData {
 // card lists, since the sidebar summary this feeds doesn't otherwise need
 // per-dex card data threaded into it.
 export function computeCollectionStats(
-  selectedGenerations: number[],
+  selectedGenerations: GenerationId[],
   owned: Record<number, OwnedRecord>,
   language: string,
   groups: RarityGroup[],

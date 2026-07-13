@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { GENERATIONS, allDexEntries, entriesForGenerations, generationForDexNumber } from './generations';
+import {
+  GENERATIONS,
+  allDexEntries,
+  entriesForGenerations,
+  generationForDexNumber,
+} from './generations';
 import { GEN1_DEX } from './gen1Dex';
 import { GEN2_DEX, GEN9_DEX } from './fullDex';
+import { MEGA_DEX_BASE, MEGA_DEX_ENTRIES } from './megaDex';
+
+// The nine real, numbered generations -- excludes the 'mega' pseudo-
+// generation, which uses synthetic dex numbers far outside the real
+// national dex range and so breaks the "contiguous 1..N" assumptions these
+// pre-existing tests check. See the "Mega generation" describe block below
+// for its own dedicated coverage.
+const NUMBERED_GENERATIONS = GENERATIONS.filter((g) => typeof g.id === 'number');
 
 describe('GENERATIONS', () => {
   it('includes Generation 1 backed by GEN1_DEX, unmodified', () => {
@@ -15,22 +28,29 @@ describe('GENERATIONS', () => {
     expect(GEN1_DEX).toEqual(before);
   });
 
-  it('covers exactly generations 1 through 9, one entry each, in order', () => {
-    expect(GENERATIONS.map((g) => g.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  it('covers generations 1 through 9, one entry each, in order, plus a trailing Mega entry', () => {
+    expect(GENERATIONS.map((g) => g.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 'mega']);
   });
 
-  it('has a contiguous dex range across all nine generations with no gaps or overlaps', () => {
+  it('has a contiguous dex range across all nine numbered generations with no gaps or overlaps', () => {
     let expectedNext = 1;
-    for (const generation of GENERATIONS) {
+    for (const generation of NUMBERED_GENERATIONS) {
       expect(generation.entries[0].number).toBe(expectedNext);
       expectedNext = generation.entries[generation.entries.length - 1].number + 1;
     }
     expect(expectedNext).toBe(1026);
   });
 
-  it('sums to exactly 1025 entries across every generation', () => {
-    const total = GENERATIONS.reduce((sum, g) => sum + g.entries.length, 0);
+  it('sums to exactly 1025 entries across the nine numbered generations', () => {
+    const total = NUMBERED_GENERATIONS.reduce((sum, g) => sum + g.entries.length, 0);
     expect(total).toBe(1025);
+  });
+
+  it('has a "mega" entry with exactly 48 synthetic-numbered entries, all above every real dex number', () => {
+    const mega = GENERATIONS.find((g) => g.id === 'mega');
+    expect(mega?.label).toBe('Mega');
+    expect(mega?.entries).toHaveLength(48);
+    expect(mega?.entries.every((e) => e.number > MEGA_DEX_BASE)).toBe(true);
   });
 });
 
@@ -64,19 +84,36 @@ describe('entriesForGenerations', () => {
     expect(entries[0].number).toBe(1);
     expect(entries[entries.length - 1].number).toBe(1025);
   });
+
+  it('returns the Mega entries, in release order, when "mega" is requested', () => {
+    const entries = entriesForGenerations(['mega']);
+    expect(entries).toHaveLength(48);
+    expect(entries.map((e) => e.number)).toEqual(
+      MEGA_DEX_ENTRIES.map((e) => e.number).sort((a, b) => a - b)
+    );
+  });
+
+  it('merges a numbered generation with "mega", sorted so Mega entries trail every real dex number', () => {
+    const entries = entriesForGenerations([1, 'mega']);
+    expect(entries).toHaveLength(151 + 48);
+    expect(entries[0].name).toBe('Bulbasaur');
+    expect(entries[150].name).toBe('Mew');
+    expect(entries[151].number).toBeGreaterThan(MEGA_DEX_BASE);
+  });
 });
 
 describe('allDexEntries', () => {
-  it('returns every entry across every known generation, sorted by dex number', () => {
+  it('returns every entry across every known generation, including Mega, sorted by dex number', () => {
     const entries = allDexEntries();
-    expect(entries).toHaveLength(1025);
+    expect(entries).toHaveLength(1025 + 48);
     expect(entries[0].name).toBe('Bulbasaur');
-    expect(entries[entries.length - 1].name).toBe('Pecharunt');
+    expect(entries[1024].name).toBe('Pecharunt');
+    expect(entries[entries.length - 1].number).toBe(MEGA_DEX_BASE + 48);
   });
 
-  it('is numbered sequentially from 1 to 1025 with no gaps or duplicates', () => {
+  it('is numbered sequentially from 1 to 1025 for the real dex range, with no gaps or duplicates', () => {
     const entries = allDexEntries();
-    entries.forEach((entry, index) => {
+    entries.slice(0, 1025).forEach((entry, index) => {
       expect(entry.number).toBe(index + 1);
     });
   });
@@ -95,6 +132,10 @@ describe('generationForDexNumber', () => {
 
   it('maps the final Gen 9 dex number to generation id 9', () => {
     expect(generationForDexNumber(GEN9_DEX[GEN9_DEX.length - 1].number)).toBe(9);
+  });
+
+  it('maps a synthetic Mega dex number to the "mega" generation id', () => {
+    expect(generationForDexNumber(MEGA_DEX_ENTRIES[0].number)).toBe('mega');
   });
 
   it('returns undefined for a dex number outside every known generation', () => {

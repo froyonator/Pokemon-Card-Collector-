@@ -66,4 +66,20 @@ describe('FilterBar', () => {
     await userEvent.click(checkbox);
     expect(useAppStore.getState().selectedGenerations).toContain(1);
   });
+
+  it('shows a Mega checkbox in the Generations list and toggles it independently of the numbered generations', async () => {
+    render(<FilterBar />);
+    await userEvent.click(screen.getByText('Filters'));
+    await userEvent.click(screen.getByText('Generations'));
+    const megaCheckbox = screen.getByLabelText('Mega');
+    expect(megaCheckbox).not.toBeChecked();
+
+    await userEvent.click(megaCheckbox);
+    expect(useAppStore.getState().selectedGenerations).toContain('mega');
+    // Toggling Mega on doesn't disturb the already-selected numbered generation.
+    expect(useAppStore.getState().selectedGenerations).toContain(1);
+
+    await userEvent.click(megaCheckbox);
+    expect(useAppStore.getState().selectedGenerations).not.toContain('mega');
+  });
 });
