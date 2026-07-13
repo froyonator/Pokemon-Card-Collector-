@@ -142,3 +142,27 @@ export function generationForDexNumber(dexNumber: number): GenerationId | undefi
 export function isSyntheticDexNumber(dexNumber: number): boolean {
   return dexNumber >= MEGA_DEX_BASE;
 }
+
+// Bumped whenever ANY synthetic-form matcher/filter logic changes --
+// megaDex.ts's cardMatchesMegaEntry/VARIANT_OVERRIDES, vmaxDex.ts's
+// cardMatchesVmaxEntry/VMAX_NAME_PATTERNS, regionalDex.ts's
+// isRegionalCardName/REGIONAL_LOCALE_MARKERS/excludeRegionalFormCards, or
+// the roster data (*_DEX_ENTRIES) any of those read from. This is the cheap
+// half of the guarantee isSyntheticDexNumber's own doc comment above
+// describes: state/loadSyntheticFormCardData.ts stamps this value onto
+// every synthetic entry's cache slot when it (re)computes that entry (see
+// storage/cardCache.ts's getSyntheticFilterVersion/setSyntheticFilterVersion),
+// and skips recomputing an entry whose stamp already matches -- so a stale
+// entry from before a matcher fix shipped still gets picked up on the very
+// next load (its stamp won't match), without every OTHER, already-correct
+// entry paying the cost of an unconditional refilter-and-rewrite on every
+// single load the way it used to (reported live as the Mega/VMAX/regional
+// tabs turning sluggish -- hundreds of entries' worth of redundant
+// localStorage writes on every tab switch). No session has ever stamped a
+// value under this key before this mechanism existed, so starting at 1
+// already forces a first-time recompute for every existing cache. From here
+// on, EVERY future change to a synthetic matcher/filter (or its underlying
+// roster data) MUST increment this by 1 in the same commit, or an
+// already-stamped entry will keep serving its pre-fix cached result until a
+// manual Refresh Data.
+export const SYNTHETIC_FILTER_VERSION = 1;

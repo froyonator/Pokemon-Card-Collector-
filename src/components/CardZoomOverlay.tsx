@@ -1,10 +1,12 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { cardImageUrl } from '../api/tcgdex';
+import { getCardFoilEffect } from '../state/cardFoilMask';
 import { useCardTilt } from '../state/useCardTilt';
 import type { CardRecord } from '../types';
 import { CardImage } from './CardImage';
+import effectStyles from './cardEffects.module.css';
 import styles from './CardZoomOverlay.module.css';
 
 export interface CardZoomOverlayProps {
@@ -268,6 +270,25 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
   // clipping regardless of where it's opened from.
   const cardAlt = `${card.name} from ${card.setName}`;
 
+  // The rarity-tiered holo/foil pointer effect (see cardEffects.module.css
+  // and src/state/cardFoilMask.ts). Purely a function of the card's own
+  // rarity + setId, so this is computed once per card rather than on every
+  // pointer move -- the actual pointer reactivity comes entirely from the
+  // --tilt-shine-x/y/opacity custom properties useCardTilt already writes
+  // onto .cardBody's inline style below (see the tilt const above), which
+  // the effect layers just inherit. No second mousemove listener anywhere
+  // in this file.
+  const foilEffect = useMemo(
+    () => getCardFoilEffect(card.rarity, card.setId),
+    [card.rarity, card.setId]
+  );
+  const foilMaskStyle: CSSProperties | undefined =
+    foilEffect.mask.shape === 'window' && foilEffect.mask.inset
+      ? {
+          clipPath: `inset(${foilEffect.mask.inset.top}% ${foilEffect.mask.inset.right}% ${foilEffect.mask.inset.bottom}% ${foilEffect.mask.inset.left}%)`,
+        }
+      : undefined;
+
   // The card art itself, shared by both the flip-capable path (wrapped in
   // the two-faced .cardFaces below) and the reduced-motion path (rendered
   // directly, no faces/back needed since there's never any turn to reveal a
@@ -332,6 +353,43 @@ export function CardZoomOverlay({ card, uploadedImageUri, onClose }: CardZoomOve
       )}
       <span className={styles.sheen} aria-hidden="true" />
       <span className={styles.glare} aria-hidden="true" />
+      {/* Rarity-tiered holo/foil layer (see cardEffects.module.css). Skipped
+          entirely for the 'none' tier (Common/Uncommon -- see
+          cardFoilMask.ts) rather than mounted invisible, so a plain card's
+          DOM has no trace of it. Otherwise mirrors the glint's own gating:
+          mounted only once the entrance has settled (hasEntered) so its
+          pointer-driven shine can't fight the flip mid-turn, and unmounted
+          the instant closing starts (isLeaving) for the same reason the
+          glint/tilt switch off then. Reduced motion gets a separate,
+          always-mounted static variant instead (below) -- never this
+          pointer-tracking one, since under reduced motion useCardTilt never
+          writes the --tilt-shine-* custom properties this one depends on
+          at all. */}
+      {foilEffect.tier !== 'none' && !shouldReduceMotion && hasEntered && !isLeaving && (
+        <span
+          className={effectStyles.foilEffect}
+          data-foil-tier={foilEffect.tier}
+          style={foilMaskStyle}
+          aria-hidden="true"
+        >
+          <span className={effectStyles.foilShine} />
+          <span className={effectStyles.foilSparkle} />
+          <span className={effectStyles.foilRainbow} />
+        </span>
+      )}
+      {foilEffect.tier !== 'none' && shouldReduceMotion && (
+        <span
+          className={effectStyles.foilEffect}
+          data-foil-tier={foilEffect.tier}
+          data-static="true"
+          style={foilMaskStyle}
+          aria-hidden="true"
+        >
+          <span className={effectStyles.foilShine} />
+          <span className={effectStyles.foilSparkle} />
+          <span className={effectStyles.foilRainbow} />
+        </span>
+      )}
     </>
   );
 

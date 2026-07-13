@@ -295,6 +295,11 @@ function siblingVariantToken(entry: VmaxDexEntry): string | null {
   return match[1].replace(/\s+Style$/, '').trim();
 }
 
+// Changing this function's matching logic (or VMAX_NAME_PATTERNS/
+// siblingVariantToken above) changes which cards a cached VMAX tile's entry
+// resolves to -- bump generations.ts's SYNTHETIC_FILTER_VERSION in the same
+// commit, or an already-cached tile keeps serving its pre-change result
+// until a manual Refresh Data (see that constant's own doc comment).
 export function cardMatchesVmaxEntry(cardName: string, entry: VmaxDexEntry): boolean {
   if (!isVmaxCardName(cardName)) return false;
   const siblings = vmaxDexEntriesForBaseDex(entry.baseDexNumber);

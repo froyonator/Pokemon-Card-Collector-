@@ -40,6 +40,37 @@ if (typeof Blob.prototype.text !== 'function') {
 // src/state/binderSlotSizing.ts), so every test that renders BinderView --
 // directly or via DexGrid's Binder view -- needs this stubbed with a
 // nonzero size, or the measurement effect throws.
+// jsdom's AbortSignal implementation predates the AbortSignal.any()/
+// AbortSignal.timeout() static methods (both broadly supported in real
+// browsers and in Node itself since 2022-2023) -- polyfill minimal,
+// spec-shaped versions so code under test (src/api/tcgdex.ts's
+// composeSignalWithTimeout) can compose a caller-supplied signal with a
+// request timeout exactly as it does in production, instead of throwing
+// "AbortSignal.timeout is not a function" the moment any fetch call runs.
+if (typeof AbortSignal.timeout !== 'function') {
+  AbortSignal.timeout = (ms: number): AbortSignal => {
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+    }, ms);
+    return controller.signal;
+  };
+}
+
+if (typeof AbortSignal.any !== 'function') {
+  AbortSignal.any = (signals: AbortSignal[]): AbortSignal => {
+    const controller = new AbortController();
+    for (const signal of signals) {
+      if (signal.aborted) {
+        controller.abort(signal.reason);
+        break;
+      }
+      signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+    }
+    return controller.signal;
+  };
+}
+
 if (typeof globalThis.ResizeObserver === 'undefined') {
   class MockResizeObserver {
     callback: ResizeObserverCallback;

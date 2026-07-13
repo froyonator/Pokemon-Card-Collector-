@@ -114,6 +114,14 @@ export function Picker({
   const [showAllCards, setShowAllCards] = useState(false);
   const [allCards, setAllCards] = useState<CardRecord[] | null>(null);
   const [isLoadingAllCards, setIsLoadingAllCards] = useState(false);
+  // Set when a "Show all cards" fetch fails or times out (see
+  // loadAllPrintingsForDex/tcgdex.ts's fetch timeout) -- distinct from
+  // `warning` above, which is for a different, unrelated failure mode
+  // (rejecting a wishlist star click). Cleared at the start of every fresh
+  // attempt (including a retry) and whenever "Show all cards" is toggled
+  // off, so switching away from and back into "Show all cards" always
+  // starts clean instead of immediately re-showing a stale error.
+  const [allCardsError, setAllCardsError] = useState<string | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [zoomedCard, setZoomedCard] = useState<CardRecord | null>(null);
@@ -158,12 +166,16 @@ export function Picker({
     setSelectedCardIds(new Set());
   }
 
-  async function handleToggleShowAll() {
-    const next = !showAllCards;
-    setShowAllCards(next);
-    if (next && allCards === null) {
-      const requestedLanguage = language;
-      setIsLoadingAllCards(true);
+  // Shared by the initial "Show all cards" toggle-on and the error state's
+  // own "Try again" retry button -- both need to run the exact same fetch,
+  // language-staleness guard, and success/failure handling; only how each
+  // one is TRIGGERED differs (see handleToggleShowAll and the retry button
+  // below).
+  async function fetchAllCards() {
+    const requestedLanguage = language;
+    setIsLoadingAllCards(true);
+    setAllCardsError(null);
+    try {
       const fetched = await loadAllPrintingsForDex(requestedLanguage, dexNumber, pokemonName);
       // The effective language can change while this fetch is in flight --
       // e.g. opened from the ordinary Dex Grid (no languageOverride), so
@@ -179,6 +191,32 @@ export function Picker({
       setAllCards(fetched);
       onAllCardsLoaded?.();
       setIsLoadingAllCards(false);
+    } catch {
+      // A genuine failure (bad status, network error, or the request timing
+      // out -- see tcgdex.ts's own request timeout) used to leave
+      // isLoadingAllCards stuck true forever: this call was never awaited
+      // inside a try/catch before, so the rejection just became an
+      // unhandled promise rejection and the loading spinner never cleared.
+      // Same stale-language guard as the success path above, for the same
+      // reason.
+      if (languageRef.current !== requestedLanguage) return;
+      setIsLoadingAllCards(false);
+      setAllCardsError("Couldn't load the full card list. Try again.");
+    }
+  }
+
+  async function handleToggleShowAll() {
+    const next = !showAllCards;
+    setShowAllCards(next);
+    if (!next) {
+      // Toggling back off: clear any error from a previous failed attempt,
+      // so toggling "Show all cards" back on later starts clean instead of
+      // immediately re-showing a stale error from before.
+      setAllCardsError(null);
+      return;
+    }
+    if (allCards === null) {
+      await fetchAllCards();
     }
   }
 
@@ -193,6 +231,7 @@ export function Picker({
     setShowAllCards(false);
     setAllCards(null);
     setIsLoadingAllCards(false);
+    setAllCardsError(null);
   }, [language]);
 
   // "Show all cards" must never make a card the user could already see
@@ -284,6 +323,22 @@ export function Picker({
                 text lives inside it, visually hidden but announced to
                 screen readers (and findable by tests). */}
             <PokeballSpinner size={32} label="Loading all cards..." />
+          </div>
+        )}
+        {/* A genuine "Show all cards" failure (bad status, network error, or
+            a request that timed out -- see tcgdex.ts's own fetch timeout)
+            gets a plain failure state with a retry, never an eternal
+            spinner. Rendered alongside whatever curated cards are already
+            visible below (displayedCards falls back to just `cards` when
+            allCards is still null), not in place of them -- "Show all
+            cards" failing must never make an already-visible card
+            disappear. */}
+        {allCardsError && !isLoadingAllCards && (
+          <div className={styles.errorState} role="alert">
+            <p>{allCardsError}</p>
+            <button type="button" onClick={() => fetchAllCards()}>
+              Try again
+            </button>
           </div>
         )}
         {owned && (

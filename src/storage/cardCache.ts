@@ -2,9 +2,29 @@ import type { CardRecord } from '../types';
 
 const CARD_CACHE_KEY = 'pcc:cardCache:v1';
 const FULL_PRINT_HISTORY_KEY = 'pcc:fullPrintHistory:v1';
+const SYNTHETIC_FILTER_VERSION_KEY = 'pcc:syntheticFilterVersion:v1';
 
 interface CardCacheShape {
   [key: string]: CardRecord[];
+}
+
+// Stamped, per language+dexNumber, onto every synthetic-form entry's
+// (Mega/VMAX/regional) cache slot right alongside its filtered CardRecord[]
+// -- see generations.ts's SYNTHETIC_FILTER_VERSION and
+// state/loadSyntheticFormCardData.ts's use of this to skip recomputing an
+// entry whose stamp already matches the current version, instead of
+// unconditionally refiltering and rewriting every synthetic entry on every
+// single load. That unconditional-recompute behavior (needed so a matcher/
+// filter fix doesn't get stuck behind a stale cache forever, see
+// generations.ts's isSyntheticDexNumber doc comment) used to mean every tab
+// switch involving Mega/VMAX/regional entries redid hundreds of filter
+// passes AND hundreds of individual localStorage writes, even when nothing
+// about the underlying data or filter logic had changed -- reported live as
+// those tabs turning sluggish. A stamp mismatch (including "never stamped
+// at all") still forces a full recompute, so the staleness guarantee is
+// unchanged; only the "already correct, nothing to do" case got cheaper.
+interface SyntheticFilterVersionCacheShape {
+  [key: string]: number;
 }
 
 // Tracks, per language+dexNumber key, whether the cache entry currently
@@ -150,6 +170,18 @@ export function setCachedCards(language: string, dexNumber: number, cards: CardR
 export function clearCardCache(): void {
   localStorage.removeItem(CARD_CACHE_KEY);
   localStorage.removeItem(FULL_PRINT_HISTORY_KEY);
+  localStorage.removeItem(SYNTHETIC_FILTER_VERSION_KEY);
+}
+
+export function getSyntheticFilterVersion(language: string, dexNumber: number): number | undefined {
+  const cache = readJson<SyntheticFilterVersionCacheShape>(SYNTHETIC_FILTER_VERSION_KEY, {});
+  return cache[cardCacheKey(language, dexNumber)];
+}
+
+export function setSyntheticFilterVersion(language: string, dexNumber: number, version: number): void {
+  const cache = readJson<SyntheticFilterVersionCacheShape>(SYNTHETIC_FILTER_VERSION_KEY, {});
+  cache[cardCacheKey(language, dexNumber)] = version;
+  writeJson(SYNTHETIC_FILTER_VERSION_KEY, cache);
 }
 
 export function hasFullPrintHistory(language: string, dexNumber: number): boolean {

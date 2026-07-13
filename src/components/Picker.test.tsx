@@ -25,10 +25,11 @@ vi.mock('../state/imageResize', () => ({
 // before enrichment existed.
 vi.mock('../api/staticDatabase', () => ({
   loadStaticCardData: vi.fn(async () => null),
+  loadStaticCardDataForGen: vi.fn(async () => null),
 }));
 
-function jsonResponse(body: unknown) {
-  return { ok: true, status: 200, json: async () => body } as Response;
+function jsonResponse(body: unknown, ok = true, status = 200) {
+  return { ok, status, json: async () => body } as Response;
 }
 
 const cardA: CardRecord = {
@@ -216,6 +217,85 @@ describe('Picker', () => {
     await waitFor(() => {
       expect(screen.queryByText(/loading all cards/i)).not.toBeInTheDocument();
     });
+  });
+
+  it('shows an error state with a retry, instead of hanging forever, when the Show all cards fetch fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+          return jsonResponse(null, false, 500);
+        }
+        return jsonResponse([]);
+      })
+    );
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
+    expect(await screen.findByText(/couldn't load the full card list/i)).toBeInTheDocument();
+    expect(screen.queryByText(/loading all cards/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    // A failed "Show all cards" fetch must never make an already-visible
+    // curated card disappear.
+    expect(screen.getByAltText(/charizard ex from 151/i)).toBeInTheDocument();
+  });
+
+  it('retrying after a failed Show all cards fetch clears the error and shows the fetched cards on success', async () => {
+    let dexQueryAttempt = 0;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/cards/svp-044')) {
+        return jsonResponse({
+          id: 'svp-044',
+          localId: '044',
+          name: 'Charizard',
+          rarity: 'Promo',
+          set: { id: 'svp', name: 'SVP Black Star Promos' },
+        });
+      }
+      if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+        dexQueryAttempt += 1;
+        if (dexQueryAttempt === 1) {
+          return jsonResponse(null, false, 500);
+        }
+        return jsonResponse([
+          { id: 'svp-044', localId: '044', name: 'Charizard', image: 'https://assets.tcgdex.net/en/sv/svp/044' },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: /show all cards/i }));
+    await screen.findByText(/couldn't load the full card list/i);
+
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    expect(await screen.findByAltText(/charizard from svp black star promos/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load the full card list/i)).not.toBeInTheDocument();
+  });
+
+  it('toggling "Show all cards" off after a failed fetch, then back on, retries cleanly instead of immediately re-showing the stale error', async () => {
+    let dexQueryAttempt = 0;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('dexId=eq%3A6') || url.includes('dexId=eq:6')) {
+        dexQueryAttempt += 1;
+        return dexQueryAttempt === 1 ? jsonResponse(null, false, 500) : jsonResponse([]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    render(<Picker dexNumber={6} pokemonName="Charizard" cards={[cardA]} onClose={() => {}} />);
+    const toggle = screen.getByRole('button', { name: /show all cards/i });
+    await userEvent.click(toggle);
+    await screen.findByText(/couldn't load the full card list/i);
+
+    await userEvent.click(toggle); // off
+    expect(screen.queryByText(/couldn't load the full card list/i)).not.toBeInTheDocument();
+
+    await userEvent.click(toggle); // on again
+    await waitFor(() => {
+      expect(screen.queryByText(/loading all cards/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/couldn't load the full card list/i)).not.toBeInTheDocument();
   });
 
   it('does not refetch on a second toggle-on once the full print history is already cached', async () => {

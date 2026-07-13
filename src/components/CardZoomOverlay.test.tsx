@@ -42,6 +42,24 @@ const noImageCard: CardRecord = {
   imageBase: '',
 };
 
+const commonCard: CardRecord = {
+  ...card,
+  id: 'sv01-107',
+  name: 'Mankey',
+  rarity: 'Common',
+  setId: 'sv01',
+  imageBase: 'https://assets.tcgdex.net/en/sv/sv01/107',
+};
+
+const holoCard: CardRecord = {
+  ...card,
+  id: 'base1-4',
+  name: 'Charizard',
+  rarity: 'Rare Holo',
+  setId: 'base1',
+  imageBase: 'https://assets.tcgdex.net/en/base/base1/4',
+};
+
 describe('CardZoomOverlay', () => {
   it('renders card.hostedFullUrl instead of the live-API-constructed URL when present', () => {
     const hostedCard: CardRecord = {
@@ -326,6 +344,109 @@ describe('CardZoomOverlay', () => {
       const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
       expect(dialog.querySelectorAll('img')).toHaveLength(0);
       expect(screen.getByText(/no image available/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('holo/foil pointer effect', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('renders the foil effect layer for a holo-tier rarity, once the entrance has settled', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={holoCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      const layer = dialog.querySelector('[class*="foilEffect"]');
+      expect(layer).toBeInTheDocument();
+      expect(layer).toHaveAttribute('data-foil-tier', 'holo');
+    });
+
+    it('renders the stronger ultra tier for a full-art-adjacent rarity', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      expect(dialog.querySelector('[class*="foilEffect"]')).toHaveAttribute('data-foil-tier', 'ultra');
+    });
+
+    it('renders no foil effect layer at all for a Common-rarity card', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={commonCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Mankey enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      expect(dialog.querySelector('[class*="foilEffect"]')).not.toBeInTheDocument();
+    });
+
+    it('keeps the foil effect off until the entrance settles, same as the tilt/glint', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={holoCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard enlarged' });
+
+      expect(dialog.querySelector('[class*="foilEffect"]')).not.toBeInTheDocument();
+    });
+
+    it('turns the foil effect off the instant closing starts, even after the entrance had settled', async () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={holoCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+      expect(dialog.querySelector('[class*="foilEffect"]')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(dialog.querySelector('[class*="foilEffect"]')).not.toBeInTheDocument();
+    });
+
+    it('renders a static, non-pointer-reactive foil variant under reduced motion instead of the dynamic one', () => {
+      vi.mocked(useReducedMotion).mockReturnValue(true);
+      render(<CardZoomOverlay card={holoCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard enlarged' });
+
+      const layer = dialog.querySelector('[class*="foilEffect"]');
+      expect(layer).toBeInTheDocument();
+      expect(layer).toHaveAttribute('data-static', 'true');
+    });
+
+    it('masks the holo tier to a clip-path illustration window, not the full card', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={holoCard} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      const layer = dialog.querySelector('[class*="foilEffect"]') as HTMLElement;
+      expect(layer.style.clipPath).toMatch(/^inset\(/);
+    });
+
+    it('leaves the ultra tier unmasked (full-surface foil)', () => {
+      vi.useFakeTimers();
+      render(<CardZoomOverlay card={card} uploadedImageUri={undefined} onClose={() => {}} />);
+      const dialog = screen.getByRole('dialog', { name: 'Charizard ex enlarged' });
+
+      act(() => {
+        vi.advanceTimersByTime(ENTRANCE_DURATION_MS);
+      });
+
+      const layer = dialog.querySelector('[class*="foilEffect"]') as HTMLElement;
+      expect(layer.style.clipPath).toBe('');
     });
   });
 

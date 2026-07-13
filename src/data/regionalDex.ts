@@ -302,6 +302,12 @@ const REGIONAL_LOCALE_MARKERS: Record<RegionalFamily, LocaleMarker[]> = {
   ],
 };
 
+// Changing this function's matching logic (or REGIONAL_LOCALE_MARKERS
+// above, or excludeRegionalFormCards below) changes which cards a cached
+// regional-family tile's entry resolves to -- bump generations.ts's
+// SYNTHETIC_FILTER_VERSION in the same commit, or an already-cached tile
+// keeps serving its pre-change result until a manual Refresh Data (see that
+// constant's own doc comment).
 export function isRegionalCardName(family: RegionalFamily, speciesToken: string, cardName: string): boolean {
   const token = escapeRegExp(speciesToken);
   return REGIONAL_LOCALE_MARKERS[family].some((marker) => marker.build(token).test(cardName));

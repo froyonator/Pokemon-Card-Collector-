@@ -146,6 +146,38 @@ describe('fetchCardDetail', () => {
   });
 });
 
+describe('fetch timeout handling', () => {
+  // Every exported fetch* function now composes its caller signal with a
+  // 15s watchdog (see tcgdex.ts's composeSignalWithTimeout) so a single
+  // stalled connection can no longer hang a caller forever. These two cases
+  // cover the branch that distinguishes a genuine caller cancellation (left
+  // alone, so loadCardData.ts's isAbortError handling keeps treating it as
+  // the expected, silent outcome it already is) from the watchdog itself
+  // firing (a real failure that must propagate, not get silently swallowed
+  // as if it were an expected cancellation).
+  it('rethrows the original error unchanged when the caller\'s own AbortSignal is what aborted the fetch', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async () => {
+      controller.abort();
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+    await expect(
+      fetchCardsForDexAndRarity(6, 'Ultra Rare', 'en', fetchImpl, controller.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('throws a plain, non-abort Error (not silently swallowed upstream as an expected cancellation) when the internal request timeout is what aborted the fetch', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+    await expect(fetchCardsForDexAndRarity(6, 'Ultra Rare', 'en', fetchImpl)).rejects.toThrow(
+      'TCGdex request timed out'
+    );
+    await expect(fetchCardDetail('sv03.5-199', 'en', fetchImpl)).rejects.toThrow(
+      'TCGdex request timed out'
+    );
+    await expect(fetchSets('en', fetchImpl)).rejects.toThrow('TCGdex request timed out');
+  });
+});
+
 describe('cardImageUrl', () => {
   it('appends quality and extension to the base image path', () => {
     expect(cardImageUrl('https://assets.tcgdex.net/en/sv/sv03.5/199')).toBe(

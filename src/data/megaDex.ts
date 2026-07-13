@@ -461,6 +461,11 @@ function derivePlainSpeciesName<T extends { name: string }>(cards: T[]): string 
 // heuristic below: a tokenless card WITH an override is no longer
 // ambiguous, so it stops showing on every variant tile and instead shows
 // only on its one confirmed one.
+// Changing this function's matching logic (or VARIANT_OVERRIDES/
+// VARIANT_SPLIT_BASE_DEX above) changes which cards a cached Mega tile's
+// entry resolves to -- bump generations.ts's SYNTHETIC_FILTER_VERSION in the
+// same commit, or an already-cached tile keeps serving its pre-change
+// result until a manual Refresh Data (see that constant's own doc comment).
 export function cardMatchesMegaEntry(
   cardName: string,
   entry: MegaDexEntry,

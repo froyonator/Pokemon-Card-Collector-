@@ -353,20 +353,28 @@ export function DexGrid({
       // awaited together with the static preload so isLoading/
       // onLoadingChange (and the "stillMissing.length === 0" early return
       // right below) don't flip false while any of them is still in flight.
-      const [staticByGeneration] = await Promise.all([
+      // loadMegaCardData/loadVmaxCardData/loadRegionalCardData each resolve
+      // to whether THEY actually wrote anything -- an entry already stamped
+      // with the current SYNTHETIC_FILTER_VERSION (see
+      // loadSyntheticFormCardData.ts) is left untouched, so most tab
+      // switches resolve `false` here even though every entry "in scope"
+      // was passed in. Used below to gate the dataVersion bump on genuine
+      // writes instead of unconditionally bumping (and paying for the
+      // resulting cardsByDexNumber recompute + re-render) on every load.
+      const [staticByGeneration, wroteMega, wroteVmax, wroteRegional] = await Promise.all([
         staticDataByGeneration(language, missingEntries, loadStaticCardData, loadStaticCardDataForGen),
         missingMegaEntries.length > 0
           ? loadMegaCardData(language, missingMegaEntries, { owned, wishlist })
-          : Promise.resolve(),
+          : Promise.resolve(false),
         missingVmaxEntries.length > 0
           ? loadVmaxCardData(language, missingVmaxEntries, { owned, wishlist })
-          : Promise.resolve(),
+          : Promise.resolve(false),
         missingRegionalEntries.length > 0
           ? loadRegionalCardData(language, missingRegionalEntries, { owned, wishlist })
-          : Promise.resolve(),
+          : Promise.resolve(false),
       ]);
       if (cancelled || loadGeneration.current !== thisGeneration) return;
-      if (hasMissingFormEntries) setDataVersion((v) => v + 1);
+      if (wroteMega || wroteVmax || wroteRegional) setDataVersion((v) => v + 1);
 
       // The static file is the COMPLETE truth for its language and
       // generation -- it was built from a full crawl of every set, so a dex
