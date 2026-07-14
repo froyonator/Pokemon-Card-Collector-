@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Card images for the recently added languages and recovered promos are now stored in the project's own image hosting instead of being loaded from outside sites. Around 7,700 cards across Simplified and Traditional Chinese, Thai, Indonesian, English, and Japanese now load their scans from the same place as the rest of the app, which fixes the Chinese cards that listed correctly but showed "no image available" because their previous image host refused to serve pictures to other websites.
+
 ## [0.4.0] - 2026-07-14
 
 ### Added
