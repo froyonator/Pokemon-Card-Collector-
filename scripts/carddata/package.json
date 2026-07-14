@@ -24,7 +24,8 @@
     "download-sprites": "tsx src/downloadSprites.ts",
     "download-mega-sprites": "tsx src/downloadMegaSprites.ts",
     "download-gmax-sprites": "tsx src/downloadGmaxSprites.ts",
-    "download-regional-sprites": "tsx src/downloadRegionalSprites.ts"
+    "download-regional-sprites": "tsx src/downloadRegionalSprites.ts",
+    "mirror-images": "tsx src/mirrorExternalImages.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
