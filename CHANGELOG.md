@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- About a thousand cards across six languages were wearing another print's artwork after a resolver bug assigned one image to several cards in the same set. Those wrong images are removed immediately; each affected card either shows its true artwork as the individual re-resolution completes or an honest "no image available" with the search and upload options, never a lookalike.
+
+### Fixed
+
 - Several distinct illustration-rare prints of the same Pokemon in Simplified Chinese sets (Collection 151's Pikachu showcase quartet, Eevee's Terastal Gathering pair, and a run of Eevee & Snorlax tag-team cards, among others) were all showing the exact same picture instead of their own unique artwork, because the harvesting step could pick the wrong printing's scan when several prints shared one source page. That picking mistake is fixed; Collection 151's four Pikachu showcase prints now each show their own real artwork. The other affected cards show the "no image available" placeholder instead of the wrong picture until their real scans can be tracked down individually. A guard was also added that rejects any newly fetched image whose proportions don't look like a card at all (a screenshot or a hand-holding-a-card photo, for example), which cleared a handful of clearly wrong pictures out of the self-hosted image mirror.
 - The Chinese-exclusive Gem Pack full arts (including Cubone and Gengar from Vol. 3, plus Pikachu, Eevee, Meowth, and Ponyta across the four volumes) were missing entirely because those sets are barely documented anywhere; they were recovered card by card and every Simplified Chinese set is now accounted for.
 
