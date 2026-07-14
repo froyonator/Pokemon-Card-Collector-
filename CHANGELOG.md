@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-14
+
 ### Fixed
 
 - Nearly 500 more cards that showed "no image available" now display their real scan, recovered print by print with a safeguard that never attaches the wrong version's artwork. English promo-heavy Pokemon like Pikachu and Eevee benefit most: English's missing-image count dropped from about 950 to 85.
