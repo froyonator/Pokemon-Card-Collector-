@@ -21,6 +21,6 @@ export default defineConfig({
     // otherwise silently replace rather than extend) so this root test run
     // never tries to import packages that only exist in that project's own
     // separate node_modules, which CI's root `npm ci` never installs.
-    exclude: [...configDefaults.exclude, 'scripts/carddata/**'],
+    exclude: [...configDefaults.exclude, 'scripts/carddata/**', '.claude/**'],
   },
 });
