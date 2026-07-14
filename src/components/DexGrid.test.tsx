@@ -66,8 +66,47 @@ function jsonResponse(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
 
+// Event-driven settling for every test whose assertions depend on DexGrid's
+// live-path load having fully completed. The real loadAllCardData (the vi.fn
+// wrapper above delegates through) fans out to ~2100 mocked fetches per run
+// (151 dex numbers x every active rarity, at concurrency 6): a few hundred
+// milliseconds on a fast dev machine, but 1.5-2.5s on a slower, contended CI
+// runner -- past testing-library's fixed 1s default waitFor timeout, which is
+// exactly how these tests came to pass locally while failing in CI (observed
+// live: 5 CI failures, all "tile never reached tile--available" with the test
+// finishing at 1.6-2.7s). Awaiting the mock's own result promises instead is
+// deterministic: it waits precisely as long as the fan-out actually takes,
+// however slow the runner, so the follow-up DOM waitFor only has to cover a
+// single React commit rather than racing a wall clock against the whole
+// fan-out.
+//
+// `expectedCalls` is how many loadAllCardData calls this test expects to have
+// been kicked off so far (1 for the mount auto-load; 2 once a refresh has
+// also fired) -- the initial waitFor is on the CALL being registered (a
+// microtask chain, not CPU-scaled work), never on its completion.
+//
+// Promise.allSettled, not Promise.all: a test that deliberately makes a load
+// fail (the Refresh Data fetch-failure test) must still settle here instead
+// of rethrowing a rejection DexGrid itself already handles.
+//
+// Relies on the beforeEach mockClear below scoping mock.results to the
+// current test: without it, a never-resolving promise installed by an
+// EARLIER test's mockImplementationOnce (e.g. the abort-signal test's
+// intentionally-hanging loads) would sit in the shared results array forever
+// and deadlock this await for every test after it.
+async function settleCardLoads(expectedCalls = 1) {
+  const mocked = vi.mocked(loadAllCardData);
+  await waitFor(() => expect(mocked.mock.calls.length).toBeGreaterThanOrEqual(expectedCalls));
+  await Promise.allSettled(mocked.mock.results.map((result) => result.value));
+}
+
 beforeEach(() => {
   localStorage.clear();
+  // Scopes loadAllCardData's mock.calls/mock.results to the current test
+  // (implementation is untouched -- still the delegate-through wrapper).
+  // Required by settleCardLoads above; also makes the per-test call-count
+  // snapshots several tests below take start from a clean slate.
+  vi.mocked(loadAllCardData).mockClear();
   useAppStore.setState({
     language: 'en',
     activeGroupIds: DEFAULT_RARITY_GROUPS.map((g) => g.id),
@@ -108,6 +147,7 @@ describe('DexGrid', () => {
     render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
     expect(screen.getByText('Bulbasaur')).toBeInTheDocument();
     expect(screen.getByText('Mew')).toBeInTheDocument();
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -128,6 +168,7 @@ describe('DexGrid', () => {
 
     // Let the fetch chain and effect resolve so no dangling act() warnings
     // leak into subsequent tests.
+    await settleCardLoads();
     await waitFor(() => {
       expect(bulbasaurTile).not.toHaveClass('tile--loading');
     });
@@ -270,6 +311,7 @@ describe('DexGrid', () => {
       activeGroupIds: [...DEFAULT_RARITY_GROUPS.map((g) => g.id), 'custom-promo'],
     });
     render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -288,6 +330,7 @@ describe('DexGrid', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -303,6 +346,8 @@ describe('DexGrid', () => {
     );
     expect(onLoadingChange).toHaveBeenCalledWith(true);
 
+    // The refresh's own loadAllCardData call is the second in this test.
+    await settleCardLoads(2);
     await waitFor(() => {
       expect(onLoadingChange).toHaveBeenCalledWith(false);
     });
@@ -312,6 +357,7 @@ describe('DexGrid', () => {
 
   it('opens the picker for a Pokemon with available cards when its tile is clicked', async () => {
     render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -329,6 +375,7 @@ describe('DexGrid', () => {
 
   it('auto-fetches a newly-selected generation even when this language was already cached for a different one', async () => {
     render(<DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -350,6 +397,7 @@ describe('DexGrid', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={onLoadingChange} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -361,6 +409,8 @@ describe('DexGrid', () => {
     );
     expect(onLoadingChange).toHaveBeenCalledWith(true);
 
+    // The refresh's own loadAllCardData call is the second in this test.
+    await settleCardLoads(2);
     await waitFor(() => {
       expect(onLoadingChange).toHaveBeenCalledWith(false);
     });
@@ -381,6 +431,7 @@ describe('DexGrid', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -510,6 +561,7 @@ describe('DexGrid', () => {
     // tree, so a DexGrid-only render exercises the same view via the `view`
     // prop instead of clicking a button that no longer exists here.
     render(<DexGrid view="card" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />);
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -682,10 +734,10 @@ describe('Static database preload', () => {
       fullCoverage[entry.number] = [staticRecord(entry.number, entry.name)];
     }
     vi.mocked(loadStaticCardData).mockResolvedValueOnce(fullCoverage);
-    // loadAllCardData's mock (declared at the top of this file) is never
-    // reset between tests, so its call count carries over from every test
-    // that ran before this one -- a delta against this snapshot, not an
-    // absolute count, is what actually proves THIS render made no new call.
+    // loadAllCardData's mock call history is cleared per test (see the
+    // top-level beforeEach's mockClear), so this snapshot is 0 in practice
+    // -- kept as a delta anyway so this assertion stays correct even if
+    // that per-test clearing ever changes.
     const loadAllCardDataCallsBefore = vi.mocked(loadAllCardData).mock.calls.length;
 
     render(
@@ -746,6 +798,7 @@ describe('Static database preload', () => {
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
 
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -815,6 +868,7 @@ describe('Refresh Data static-first path', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -848,6 +902,7 @@ describe('Refresh Data static-first path', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -873,6 +928,7 @@ describe('Refresh Data static-first path', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -921,6 +977,7 @@ describe('Refresh Data static-first path', () => {
     const { rerender } = render(
       <DexGrid view="sprite" isManualArrangeActive={false} onLoadingChange={() => {}} refreshRequestId={0} />
     );
+    await settleCardLoads();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /charizard/i })).toHaveClass(/tile--available/);
     });
@@ -1132,7 +1189,11 @@ describe('Multi-generation static preload', () => {
     // Chikorita has no static coverage, so it goes through the live fetch
     // path (this file's default fetch mock resolves an empty card list for
     // any URL it doesn't special-case) and ends up unavailable, not stuck
-    // loading forever.
+    // loading forever. Settled event-driven first (see settleCardLoads) so
+    // the waitFor below only covers the final React commit, not the whole
+    // Gen 2 dex x rarity fan-out; the generous timeout stays as a
+    // belt-and-braces bound on that commit.
+    await settleCardLoads();
     await waitFor(
       () => {
         expect(screen.getByRole('button', { name: /chikorita/i })).toHaveClass(/tile--unavailable/);
