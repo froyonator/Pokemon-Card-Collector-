@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   guessCardImageFilename,
+  isCardShapedImage,
   parseCardArticleDisambiguator,
   parseCardInfoboxImageFilename,
   resolveCardImages,
@@ -116,6 +117,114 @@ describe('parseCardInfoboxImageFilename', () => {
 
   it('returns null when the wikitext has no infobox template at all', () => {
     expect(parseCardInfoboxImageFilename('Just some prose, no template here.', ['Battle Styles'])).toBeNull();
+  });
+
+  describe('printNumber guard (regression: the illustration-rare "parade" bug)', () => {
+    // Real evidence: Pikachu (Collection 151) fetches to ONE shared article
+    // whose infobox carries FOUR different reprints -- 170, 171, 172, 173 --
+    // all recaptioned with the exact same "Collection 151" set name. Without
+    // a print-number check, set-name matching alone picks the FIRST of the
+    // four for every one of them, silently handing all four rows the same
+    // scan. Only the reprintN filename itself distinguishes which print is
+    // which.
+    const parade =
+      '{{PokémoncardInfobox|cardname=Pikachu' +
+      '|image=Pikachu25PokémonCard151.jpg|caption=Regular print' +
+      '|reprints=6' +
+      '|reprint1=Pikachu173PokémonCard151.jpg|recaption1={{TCG|Illustration rare}} print' +
+      '|reprint2=Pikachu170Collection151.jpg|recaption2={{ATCG|Collection 151}} "Journey" print' +
+      '|reprint3=Pikachu171Collection151.jpg|recaption3={{ATCG|Collection 151}} "Hope" print' +
+      '|reprint4=Pikachu172Collection151.jpg|recaption4={{ATCG|Collection 151}} "Scare" print' +
+      '|reprint5=Pikachu173Collection151.jpg|recaption5={{ATCG|Collection 151}} "Gather" print}}';
+
+    it('picks the reprint whose OWN filename carries this row print number, not just the first set-name match', () => {
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '170')).toBe('Pikachu170Collection151.jpg');
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '171')).toBe('Pikachu171Collection151.jpg');
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '172')).toBe('Pikachu172Collection151.jpg');
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '173')).toBe('Pikachu173Collection151.jpg');
+    });
+
+    it('never falls back to the first set-name match for a number this infobox does not carry', () => {
+      // No reprint filename in `parade` carries "174" -- must stay
+      // unresolved rather than guessing reprint2 (the old, buggy behavior).
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '174')).toBeNull();
+    });
+
+    it('does not confuse a substring digit run for the real print number', () => {
+      // "17" must not match inside "170"/"171"/"172"/"173" or "173" (reprint1).
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'], '17')).toBeNull();
+    });
+
+    it('without a printNumber, preserves the pre-fix set-name-only behavior (first match)', () => {
+      expect(parseCardInfoboxImageFilename(parade, ['Collection 151'])).toBe('Pikachu170Collection151.jpg');
+    });
+
+    it('still trusts a single unambiguous set-name match even when the filename does not carry the number', () => {
+      const wikitext =
+        '{{PokémoncardInfobox|cardname=Pikachu' +
+        '|image=PikachuPaldeaEvolved62.jpg|caption={{TCG|Paldea Evolved}} print' +
+        '|reprint1=PikachuPaldeanFates131.jpg|recaption1={{TCG|Paldean Fates}} print}}';
+      // "18" (this row's own number) is not in "PikachuPaldeanFates131.jpg",
+      // but it's the ONLY reprint candidate in the infobox, so it's still trusted.
+      expect(parseCardInfoboxImageFilename(wikitext, ['Paldean Fates'], '18')).toBe('PikachuPaldeanFates131.jpg');
+    });
+
+    it('does not fall back to the bare image= field for a multi-print infobox with no number match', () => {
+      // image= belongs to a DIFFERENT (Regular, #25) print -- must not be
+      // handed to a row asking about #174, which this infobox never mentions.
+      expect(parseCardInfoboxImageFilename(parade, [], '174')).toBeNull();
+    });
+
+    it('rejects a number-only coincidence against an UNRELATED product (regression: Team Up vs Shining Synergy)', () => {
+      // Real evidence: "Eevee & Snorlax-GX" has exactly ONE wiki article --
+      // its 2019 origin release, "Team Up". A numbered title guess for the
+      // zh-cn-exclusive "Shining Synergy" print (also numbered 171, purely
+      // by coincidence) redirects to this SAME Team Up article, whose own
+      // reprint1 also happens to be numbered 171 -- but for a completely
+      // different, unrelated product. The number matches; the set does not.
+      const teamUpArticle =
+        '{{PokémoncardInfobox|cardname=Eevee & Snorlax' +
+        '|image=EeveeSnorlaxGXTeamUp120.jpg|caption={{TCG|Team Up}} Regular print' +
+        '|reprint1=EeveeSnorlaxGXTeamUp171.jpg|recaption1={{TCG|Team Up}} Full Art print' +
+        '|reprint2=EeveeSnorlaxGXTeamUp191.jpg|recaption2={{TCG|Team Up}} Rainbow Rare print}}';
+      expect(parseCardInfoboxImageFilename(teamUpArticle, ['Shining Synergy Summon', 'Shining Synergy'], '171')).toBeNull();
+    });
+
+    it('DOES trust the bare image= field when its OWN filename carries this row print number', () => {
+      // Real evidence: Mew ex (151 151)'s shared article -- the base print
+      // (#151) is the bare `image=` field, while every reprintN entry names
+      // a DIFFERENT numbered print (193, 205, ...). Row 151 asking about
+      // itself should resolve via the bare field, on the same
+      // number-in-filename evidence as any reprintN candidate.
+      const mewArticle =
+        '{{PokémoncardInfobox|cardname=Mew' +
+        '|image=Mewex151PokémonCard151.jpg|caption=Regular print' +
+        '|reprint1=Mewex193PokémonCard151.jpg|recaption1={{TCG|Ultra rare}} print' +
+        '|reprint2=Mewex205PokémonCard151.jpg|recaption2={{TCG|Hyper rare}} print}}';
+      expect(parseCardInfoboxImageFilename(mewArticle, ['Collection 151'], '151')).toBe('Mewex151PokémonCard151.jpg');
+      // A number the article genuinely does not carry (a zh-cn-exclusive
+      // print the source has no distinct scan for) still stays unresolved.
+      expect(parseCardInfoboxImageFilename(mewArticle, ['Collection 151'], '185')).toBeNull();
+    });
+  });
+});
+
+describe('isCardShapedImage (aspect-ratio guard)', () => {
+  it('accepts a real card scan-shaped image', () => {
+    expect(isCardShapedImage({ width: 734, height: 1024 })).toBe(true);
+  });
+
+  it('rejects a landscape photo (e.g. a news photo of a hand holding a card)', () => {
+    expect(isCardShapedImage({ width: 1200, height: 800 })).toBe(false);
+  });
+
+  it('rejects an implausibly narrow/tall image', () => {
+    expect(isCardShapedImage({ width: 200, height: 1200 })).toBe(false);
+  });
+
+  it('treats missing dimensions as inconclusive (never rejects on missing metadata alone)', () => {
+    expect(isCardShapedImage({})).toBe(true);
+    expect(isCardShapedImage({ width: 500 })).toBe(true);
   });
 });
 

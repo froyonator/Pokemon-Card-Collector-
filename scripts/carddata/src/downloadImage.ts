@@ -7,6 +7,15 @@ const ACCEPTED_CONTENT_TYPES = new Set(['image/webp', 'image/png', 'image/jpeg']
 const MIN_WIDTH = 200;
 const MIN_HEIGHT = 280;
 
+// A physical card scan's width/height ratio is close to 63x88mm (~0.716).
+// This range is tolerant of scan borders/sleeves/margins but excludes
+// landscape photos, banners, and other non-scan images that otherwise pass
+// every other check (real image, big enough, right content-type) --
+// confirmed live: a news/event photo of a hand holding a card, hotlinked in
+// place of a real scan, is landscape-oriented and clears every other guard.
+export const MIN_CARD_ASPECT_RATIO = 0.63;
+export const MAX_CARD_ASPECT_RATIO = 0.8;
+
 export type ImageValidationResult = { ok: true } | { ok: false; reason: string };
 
 export function validateImageResponse(input: {
@@ -39,13 +48,20 @@ export function validateImageDimensions(input: {
   if (input.width < MIN_WIDTH || input.height < MIN_HEIGHT) {
     return { ok: false, reason: `image dimensions too small (${input.width}x${input.height})` };
   }
+  const ratio = input.width / input.height;
+  if (ratio < MIN_CARD_ASPECT_RATIO || ratio > MAX_CARD_ASPECT_RATIO) {
+    return {
+      ok: false,
+      reason: `aspect ratio ${ratio.toFixed(3)} outside card-scan range ${MIN_CARD_ASPECT_RATIO}-${MAX_CARD_ASPECT_RATIO} (${input.width}x${input.height}) -- likely not a card scan`,
+    };
+  }
   return { ok: true };
 }
 
 // Downloads via the same Playwright browser context (not a plain fetch),
 // consistent with every other network call this data pipeline makes -- tested
 // live for HTML pages already in Task 2; images are served from a separate
-// static.tcgcollector.com host and were not independently confirmed to also
+// static asset host and were not independently confirmed to also
 // require a browser context during design research, so verify this against
 // a plain `fetch()` first when implementing (it may work without a browser,
 // since it's a static asset CDN rather than the main site's Cloudflare

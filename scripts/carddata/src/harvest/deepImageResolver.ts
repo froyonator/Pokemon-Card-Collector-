@@ -18,6 +18,7 @@
 // placeholder.
 import {
   guessCardImageFilename,
+  isCardShapedImage,
   parseCardInfoboxImageFilename,
   resolveCardImages,
   toFileTitle,
@@ -193,7 +194,7 @@ export async function resolveFilenameGuessBatch(
     );
     for (const state of pending) {
       const result = info.get(toFileTitle(state.candidates[round]));
-      if (result && !result.missing) state.resolved = result;
+      if (result && !result.missing && isCardShapedImage(result)) state.resolved = result;
     }
   }
 
@@ -407,7 +408,7 @@ async function resolveInfoboxImage(
   if (!filename) return null;
   const info = await resolveCardImages(client, [filename]);
   const result = info.get(toFileTitle(filename));
-  return result && !result.missing ? result : null;
+  return result && !result.missing && isCardShapedImage(result) ? result : null;
 }
 
 function notResolved(card: DeepImageJobCard, skipReason: string | null = null): DeepResolvedCard {

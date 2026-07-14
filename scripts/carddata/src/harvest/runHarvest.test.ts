@@ -318,6 +318,66 @@ describe('resolveHarvestedCardImages', () => {
     expect(resolved.imageMissing).toBe(false);
     expect(resolved.imageUrl).toBe('https://example.invalid/File:PikachuPaldeanFates131.jpg');
   });
+
+  it('regression: an illustration-rare "parade" of same-set rows each gets its OWN image, never a shared one', async () => {
+    // Real evidence (the reported bug): four DIFFERENT Collection 151
+    // Pikachu prints -- 170, 171, 172, 173 -- all fetch (via redirect) to
+    // ONE shared article whose infobox recaptions every one of them with
+    // the exact same "Collection 151" set name. Before the printNumber
+    // guard, strategy (c) handed all four rows the SAME first-matching
+    // reprint image.
+    const paradeWikitext =
+      '{{PokémoncardInfobox|cardname=Pikachu' +
+      '|image=Pikachu25PokémonCard151.jpg|caption=Regular print' +
+      '|reprint1=Pikachu173PokémonCard151.jpg|recaption1={{TCG|Illustration rare}} print' +
+      '|reprint2=Pikachu170Collection151.jpg|recaption2={{ATCG|Collection 151}} "Journey" print' +
+      '|reprint3=Pikachu171Collection151.jpg|recaption3={{ATCG|Collection 151}} "Hope" print' +
+      '|reprint4=Pikachu172Collection151.jpg|recaption4={{ATCG|Collection 151}} "Scare" print' +
+      '|reprint5=Pikachu173Collection151.jpg|recaption5={{ATCG|Collection 151}} "Gather" print}}';
+
+    const rows = ['170', '171', '172', '173'].map((n) =>
+      makeRow({
+        cardNumber: `${n}/165`,
+        displayName: 'Pikachu',
+        cardArticleTitle: `Pikachu (Collection 151 ${n})`,
+      })
+    );
+    const gen1Rows = filterGen1Rows(rows);
+
+    // The redirect lands on the SAME shared page for every row, regardless
+    // of which numbered title was requested.
+    const parsePageWikitext = async (): Promise<WikiPageWikitext> => ({
+      title: 'Pikachu (151 25)',
+      pageId: 1,
+      wikitext: paradeWikitext,
+    });
+    // Every filename-guess candidate misses -- only the infobox fallback
+    // (strategy c) can resolve these.
+    const queryImageInfo = async (fileTitles: string[]) => {
+      const map = new Map<string, WikiImageInfo>();
+      const realFiles = new Set([
+        'File:Pikachu170Collection151.jpg',
+        'File:Pikachu171Collection151.jpg',
+        'File:Pikachu172Collection151.jpg',
+        'File:Pikachu173Collection151.jpg',
+      ]);
+      for (const title of fileTitles) {
+        map.set(title, { fileTitle: title, url: realFiles.has(title) ? `https://example.invalid/${title}` : null, missing: !realFiles.has(title) });
+      }
+      return map;
+    };
+
+    const resolved = await resolveHarvestedCardImages({ queryImageInfo, parsePageWikitext }, 'Collection 151', gen1Rows);
+
+    expect(resolved.map((c) => c.imageUrl)).toEqual([
+      'https://example.invalid/File:Pikachu170Collection151.jpg',
+      'https://example.invalid/File:Pikachu171Collection151.jpg',
+      'https://example.invalid/File:Pikachu172Collection151.jpg',
+      'https://example.invalid/File:Pikachu173Collection151.jpg',
+    ]);
+    // Every resolved image is DISTINCT -- the whole point of the fix.
+    expect(new Set(resolved.map((c) => c.imageUrl)).size).toBe(4);
+  });
 });
 
 describe('harvestFromResolvedArticles (multi-article concatenation)', () => {

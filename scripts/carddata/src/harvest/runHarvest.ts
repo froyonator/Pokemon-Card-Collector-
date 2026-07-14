@@ -69,6 +69,7 @@ import type { CardRecord } from '../augmentFromSupplemental';
 import { GEN1_DEX, type DexEntry } from '../../../../src/data/gen1Dex';
 import {
   guessCardImageFilename,
+  isCardShapedImage,
   parseCardArticleDisambiguator,
   parseCardInfoboxImageFilename,
   resolveCardImages,
@@ -268,6 +269,15 @@ export function buildRowImageCandidates(promoSetName: string, row: SetlistRow): 
  * `parseCardInfoboxImageFilename` matches a numbered field against,
  * alongside the row's originSetName and the promo set it was harvested
  * from.
+ *
+ * The row's OWN print number is passed through as well -- confirmed live,
+ * a shared article can carry SEVERAL reprintN entries that all name the
+ * SAME target set (an illustration-rare "parade" of four different prints
+ * -- 170/171/172/173 -- filed under one "Collection 151" article, with
+ * only the reprintN filename itself distinguishing which print is which).
+ * Without the number, set-name matching alone silently picks the FIRST
+ * such entry for every one of those rows, handing them all the same scan.
+ * See parseCardInfoboxImageFilename's own doc comment for the full guard.
  */
 async function resolveViaCardArticleInfobox(
   parsePageWikitext: WikiApiClient['parsePageWikitext'],
@@ -280,7 +290,8 @@ async function resolveViaCardArticleInfobox(
     const targetSetNames = [disambiguatorSetName, row.originSetName, promoSetName].filter(
       (s): s is string => Boolean(s)
     );
-    return parseCardInfoboxImageFilename(page.wikitext, targetSetNames);
+    const printNumber = extractNumerator(row.cardNumber);
+    return parseCardInfoboxImageFilename(page.wikitext, targetSetNames, printNumber);
   } catch {
     return null;
   }
@@ -322,7 +333,7 @@ export async function resolveHarvestedCardImages(
     );
     for (const state of pending) {
       const result = info.get(toFileTitle(state.candidates[round]));
-      if (result && !result.missing) state.resolved = result;
+      if (result && !result.missing && isCardShapedImage(result)) state.resolved = result;
     }
   }
 
@@ -334,7 +345,7 @@ export async function resolveHarvestedCardImages(
       if (!filename) continue;
       const info = await resolveCardImages(client, [filename]);
       const result = info.get(toFileTitle(filename));
-      if (result && !result.missing) state.resolved = result;
+      if (result && !result.missing && isCardShapedImage(result)) state.resolved = result;
     }
   }
 
