@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-07-14
 
-### Fixed
-
-- Nearly 500 more cards that showed "no image available" now display their real scan, recovered print by print with a safeguard that never attaches the wrong version's artwork. English promo-heavy Pokemon like Pikachu and Eevee benefit most: English's missing-image count dropped from about 950 to 85.
-
 ### Added
 
 - Enlarged cards now shine like the real thing. Holo and full-art prints catch a foil sheen and sparkle that reacts to your cursor, with the effect tiered by the card's own rarity: plain cards stay understated, classic holo prints shine across their artwork, and the rarest full-art, secret, and rainbow prints get a stronger foil with a rainbow sweep across the whole card. Common and Uncommon cards are unchanged. Anyone with reduced motion turned on gets a gentle, still sheen instead of a cursor-tracked one.
@@ -23,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Nearly 500 more cards that showed "no image available" now display their real scan, recovered print by print with a safeguard that never attaches the wrong version's artwork. English promo-heavy Pokemon like Pikachu and Eevee benefit most: English's missing-image count dropped from about 950 to 85.
 - The app now refreshes its local card data automatically when the built-in database updates, instead of continuing to serve older cached data until you happen to press Refresh Data. This also fixes the Summary tab's "how current is the card database" note, which used to make a live lookup on every visit; it now reads the same built-in update signal instead.
 - "Show all cards" in a Pokemon's picker could hang for several minutes with no result, especially for Pokemon with many prints, because it always fetched every single print live one at a time instead of using the built-in card database. It now reads the complete print list straight from the built-in database for any language it covers, so it opens almost instantly with no live lookups at all. Languages without database coverage still fetch live, but every one of those requests now gives up after 15 seconds instead of hanging forever, and if a fetch does fail or time out, the picker shows a plain "Couldn't load the full card list. Try again." message with a retry button instead of spinning forever.
 - The Mega, VMAX, and regional-form tabs had gotten noticeably slower to switch between, because every tile in those tabs was being fully recomputed and rewritten to storage on every single visit, even when nothing about it had changed. Each tile now remembers that it's already up to date and skips redoing that work, while still catching up automatically the moment a tile's underlying data or matching rules actually change.
