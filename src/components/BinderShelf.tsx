@@ -125,39 +125,57 @@ function BinderVolume({ binder, onOpenBinder, isOnlyBinder }: BinderVolumeProps)
           aria-label={`Open ${binder.name}`}
           onClick={() => onOpenBinder(binder.id)}
         >
+          {/* A true 3D box, not a flat card: four faces (back, pages edge,
+              spine, front cover) each rotated/translated out to their own
+              plane of the box -- see BinderShelf.module.css's .volume
+              comment for the geometry. DOM order doesn't drive paint order
+              here (the browser depth-sorts the box's own faces), so it just
+              runs back-to-front for readability. */}
           <span className={styles.volume}>
-            <span className={styles.pagesEdge} aria-hidden="true" />
-            <span className={styles.cover} style={{ backgroundColor: color }} aria-hidden="true">
-              {coverImageUri ? (
-                <>
-                  <img className={styles.coverPlate} src={coverImageUri} alt="" />
-                  {/* Scrim so the title stays legible over a bright or busy
-                      picture; the empty-state emblem needs no such thing. */}
-                  <span className={styles.coverScrim} aria-hidden="true" />
-                </>
-              ) : (
-                <span className={styles.coverEmblem} />
-              )}
-              <span className={styles.coverStitch} />
-              <span
-                className={
-                  coverImageUri
-                    ? `${styles.coverTitle} ${styles.coverTitleOnImage}`
-                    : styles.coverTitle
-                }
-              >
-                {binder.name}
-              </span>
-            </span>
             <span
-              className={styles.spineStrip}
+              className={styles.faceBack}
+              style={{ backgroundColor: color }}
+              aria-hidden="true"
+            />
+            <span className={styles.facePages} aria-hidden="true" />
+            <span
+              className={styles.faceSpine}
               style={{ backgroundColor: color }}
               aria-hidden="true"
             >
               <span className={styles.spineText}>{binder.cover?.spineText || binder.name}</span>
             </span>
+            <span className={styles.faceFrontMount}>
+              <span
+                className={styles.faceFront}
+                style={{ backgroundColor: color }}
+                aria-hidden="true"
+              >
+                {coverImageUri ? (
+                  <>
+                    <img className={styles.coverPlate} src={coverImageUri} alt="" />
+                    {/* Scrim so the title stays legible over a bright or busy
+                        picture; the empty-state emblem needs no such thing. */}
+                    <span className={styles.coverScrim} aria-hidden="true" />
+                  </>
+                ) : (
+                  <span className={styles.coverEmblem} />
+                )}
+                <span className={styles.coverStitch} />
+                <span
+                  className={
+                    coverImageUri
+                      ? `${styles.coverTitle} ${styles.coverTitleOnImage}`
+                      : styles.coverTitle
+                  }
+                >
+                  {binder.name}
+                </span>
+              </span>
+            </span>
           </span>
         </button>
+        <span className={styles.groundShadow} aria-hidden="true" />
         <button
           type="button"
           className={styles.deleteButton}

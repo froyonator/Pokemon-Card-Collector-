@@ -113,7 +113,7 @@ describe('BinderShelf', () => {
         />
       );
       const volume = screen.getByRole('button', { name: 'Open My Binder' });
-      const cover = volume.querySelector('.cover') as HTMLElement;
+      const cover = volume.querySelector('.faceFront') as HTMLElement;
       const image = cover.querySelector('img') as HTMLImageElement;
       expect(image).toHaveClass('coverPlate');
       // The scrim sits behind the title, over the full-bleed image.
@@ -132,12 +132,61 @@ describe('BinderShelf', () => {
     it('leaves the empty-state emblem exactly as before when no cover picture is set', () => {
       render(<BinderShelf binders={[makeBinder()]} onOpenBinder={() => {}} onCreateBinder={() => {}} />);
       const volume = screen.getByRole('button', { name: 'Open My Binder' });
-      const cover = volume.querySelector('.cover') as HTMLElement;
+      const cover = volume.querySelector('.faceFront') as HTMLElement;
       expect(cover.querySelector('img')).not.toBeInTheDocument();
       expect(cover.querySelector('.coverScrim')).not.toBeInTheDocument();
       expect(cover.querySelector('.coverEmblem')).toBeInTheDocument();
       const title = cover.querySelector('.coverTitle') as HTMLElement;
       expect(title).not.toHaveClass('coverTitleOnImage');
+    });
+  });
+
+  describe('3D box faces', () => {
+    // The volume is a true box (front, back, spine, pages) rather than a
+    // flat card with a strip laid on top -- see BinderShelf.module.css's
+    // .volume comment. These assert the faces actually exist in the DOM,
+    // each carrying the right content, independent of the CSS that
+    // positions them (jsdom doesn't compute 3D transforms -- see the "hover
+    // turn" describe block above for that same caveat).
+    it('renders all four box faces, with the spine and front carrying the right content', () => {
+      render(
+        <BinderShelf
+          binders={[
+            makeBinder({ cover: { color: '#1e3325', spineText: 'GEN 1 FULL ARTS' } }),
+          ]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      const volume = screen.getByRole('button', { name: 'Open My Binder' }).querySelector(
+        '.volume'
+      ) as HTMLElement;
+      expect(volume.querySelector('.faceFront')).toBeInTheDocument();
+      expect(volume.querySelector('.faceBack')).toBeInTheDocument();
+      expect(volume.querySelector('.faceSpine')).toBeInTheDocument();
+      expect(volume.querySelector('.facePages')).toBeInTheDocument();
+      // The spine face is the one carrying the (possibly custom) spine
+      // label, not the front.
+      const spine = volume.querySelector('.faceSpine') as HTMLElement;
+      expect(spine).toHaveTextContent('GEN 1 FULL ARTS');
+      const front = volume.querySelector('.faceFront') as HTMLElement;
+      expect(front).not.toHaveTextContent('GEN 1 FULL ARTS');
+    });
+
+    it('gives the front, back, and spine faces the binder cover color', () => {
+      render(
+        <BinderShelf
+          binders={[makeBinder({ cover: { color: '#1c2740' } })]}
+          onOpenBinder={() => {}}
+          onCreateBinder={() => {}}
+        />
+      );
+      const volume = screen.getByRole('button', { name: 'Open My Binder' }).querySelector(
+        '.volume'
+      ) as HTMLElement;
+      expect(volume.querySelector('.faceFront')).toHaveStyle({ backgroundColor: '#1c2740' });
+      expect(volume.querySelector('.faceBack')).toHaveStyle({ backgroundColor: '#1c2740' });
+      expect(volume.querySelector('.faceSpine')).toHaveStyle({ backgroundColor: '#1c2740' });
     });
   });
 

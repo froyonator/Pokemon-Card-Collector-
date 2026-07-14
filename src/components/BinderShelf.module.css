@@ -1,6 +1,9 @@
 /* The binder library: leather volumes standing on the desk, each slightly
-   turned toward the room. Hovering a volume eases its cover open a touch,
-   like a hand reaching for it. */
+   turned toward the room. Hovering a volume eases its cover open a touch and
+   turns the whole book so its spine catches the light, like a hand reaching
+   for it. Lighting is a single soft key from the upper left across every
+   leather surface (front, back, spine), matching the rest of the app's
+   lamplit-study look (see global.css's --grain and --color-gold tokens). */
 
 .shelf {
   display: flex;
@@ -43,10 +46,16 @@
   gap: var(--space-3);
 }
 
-/* Wraps the tilting .book button and the .deleteButton overlay that sits on
-   top of it. Sized to match .book exactly so the delete button's absolute
-   positioning has a stable, correctly-sized box to anchor against -- a
-   sibling overlay rather than a button nested inside a button. */
+/* Wraps the tilting .book button, the .deleteButton overlay, and the
+   grounded .groundShadow beneath -- all sized/anchored against this one box.
+   Sized to match .book exactly so the delete button's absolute positioning
+   has a stable, correctly-sized box to anchor against -- a sibling overlay
+   rather than a button nested inside a button. transform-style: preserve-3d
+   is set all the way down this chain (bookWrap -> book -> volume ->
+   faceFrontMount -> faceFront) even on links that never transform
+   themselves -- a single "flat" link anywhere flattens the whole 3D scene
+   for everything below it (same lesson as CardZoomOverlay.module.css's
+   .panel -> .cardFrame -> .cardBody -> .cardFaces chain). */
 .bookWrap {
   position: relative;
   width: 158px;
@@ -55,13 +64,12 @@
      mechanism this is built from uses a single strong perspective on the
      book's container), rather than one shared across the whole shelf row. */
   perspective: 3000px;
+  transform-style: preserve-3d;
 }
 
 /* One volume. The button is the stationary hit target -- it never
    transforms itself, so the click/hit area stays put through the turn. The
-   .volume span inside it is the actual 3D scene root that turns on
-   hover/focus: pages block behind, cover in front (hinged left), spine
-   strip on the left edge. */
+   .volume span inside it is the real 3D box that turns on hover/focus. */
 .book {
   position: relative;
   width: 158px;
@@ -72,19 +80,26 @@
   box-shadow: none;
   border-radius: 4px 10px 10px 4px;
   cursor: pointer;
+  transform-style: preserve-3d;
 }
 
-/* The turning volume itself. At rest it stands nearly face-on to the
-   shelf; on hover or keyboard focus it eases through a full 35-degree turn
-   on the Y axis, swinging its left edge -- where the spine strip lives --
-   toward the viewer so the spine and its lettering present clearly. */
+/* The turning volume: a true 3D box, not a flat card with a strip laid on
+   top. Its four visible faces (front cover, back cover, left spine, right
+   pages edge) are positioned as separate children below, each translated
+   and rotated out to its own plane of the box -- see the --depth custom
+   property, read by every face. At rest the box stands nearly face-on
+   (-4deg), just enough to hint the pages edge has real thickness without
+   the sliver reading as a stray line; on hover or keyboard focus it turns a
+   full 35 degrees, swinging the left edge -- where the spine lives --
+   toward the viewer so the spine face rotates into view and its lettering
+   reads clearly. */
 .volume {
+  --depth: 30px;
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  transform: rotate3d(0, 1, 0, -6deg);
+  transform: rotate3d(0, 1, 0, -4deg);
   transition: transform 0.5s var(--ease-out);
-  box-shadow: 10px 18px 34px rgba(0, 0, 0, 0.45);
 }
 
 .book:hover .volume,
@@ -92,36 +107,64 @@
   transform: rotate3d(0, 1, 0, 35deg);
 }
 
-/* The page block: the white fore-edge peeking out on the right. */
-.pagesEdge {
+/* A cast shadow on the desk/shelf surface the book is standing on --
+   deliberately NOT part of the preserve-3d box (it never rotates in 3D
+   itself), so it reads as ground contact rather than a shadow stuck to the
+   object. It softens and stretches toward the turn on hover/focus, in the
+   same 0.5s curve as the box itself, so the two feel like one motion. */
+.groundShadow {
   position: absolute;
-  inset: 4px 0 4px 12px;
-  border-radius: 2px 8px 8px 2px;
-  background:
-    repeating-linear-gradient(
-      180deg,
-      #d9cfb8 0 2px,
-      #c9bfa8 2px 3px
-    );
-  transform: translateZ(-8px);
-  box-shadow: 6px 8px 18px rgba(0, 0, 0, 0.5);
+  left: 50%;
+  bottom: -12px;
+  z-index: -1;
+  width: 128px;
+  height: 20px;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), transparent 75%);
+  filter: blur(3px);
+  transform: translateX(-50%) scaleX(1);
+  transition: transform 0.5s var(--ease-out), opacity 0.5s var(--ease-out);
+  opacity: 0.75;
+  pointer-events: none;
 }
 
-/* The front cover: hinged on its left edge (transform-origin 0% 50%, same
-   axis the spine sits on); eases open a touch on hover, on top of the
-   whole volume's own turn, for a slight cover-open accent. */
-.cover {
+.book:hover ~ .groundShadow,
+.book:focus-visible ~ .groundShadow {
+  transform: translateX(-50%) translateX(14px) scaleX(1.22);
+  opacity: 0.55;
+}
+
+/* Depth offset only -- gives the front cover its place at the box's front
+   plane (+depth/2) without itself rotating, so the cover-open hinge accent
+   below can rotate purely around the spine edge without fighting this
+   translate for control of the same transform. */
+.faceFrontMount {
   position: absolute;
-  inset: 0 0 0 10px;
-  border-radius: 3px 10px 10px 3px;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: translateZ(calc(var(--depth) / 2));
+}
+
+/* The front cover face: hinged on its left edge (transform-origin 0% 50%,
+   the same edge the spine sits behind), full-bleed picture/emblem/plaque/
+   stitching. Eases open a touch on hover, on top of the whole box's own
+   turn, for the cover-open accent. backface-visibility hidden so it
+   disappears cleanly once the box has turned far enough to show its back. */
+.faceFront {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px 10px 10px 4px;
   background-image:
     var(--grain),
-    radial-gradient(120% 90% at 30% 0%, rgba(255, 225, 180, 0.12), transparent 60%);
-  background-blend-mode: overlay, normal;
-  border: 1px solid rgba(0, 0, 0, 0.5);
+    radial-gradient(150% 120% at 20% 12%, rgba(255, 225, 180, 0.18), transparent 58%),
+    linear-gradient(205deg, rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.4) 100%);
+  background-blend-mode: overlay, normal, normal;
+  border: 1px solid rgba(0, 0, 0, 0.55);
   box-shadow:
-    inset 0 1px 0 rgba(255, 230, 190, 0.12),
-    inset 0 0 34px rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 rgba(255, 230, 190, 0.13),
+    inset 0 0 30px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    8px 14px 26px rgba(0, 0, 0, 0.4);
+  backface-visibility: hidden;
   transform-origin: 0% 50%;
   transform: rotateY(0deg);
   transition: transform 0.5s var(--ease-out);
@@ -134,8 +177,8 @@
   overflow: hidden;
 }
 
-.book:hover .cover,
-.book:focus-visible .cover {
+.book:hover .faceFront,
+.book:focus-visible .faceFront {
   transform: rotateY(-14deg);
 }
 
@@ -149,10 +192,11 @@
   pointer-events: none;
 }
 
-/* The uploaded picture, mounted edge to edge across the whole cover face
-   (not a small framed plate) -- inset 0 fills .cover's own box, ignoring
-   its flex padding, and the inherited radius keeps the corners matching
-   even though .cover's own overflow: hidden would clip it regardless. */
+/* The uploaded picture, mounted edge to edge across the whole front face
+   (not a small framed plate) -- inset 0 fills .faceFront's own box,
+   ignoring its flex padding, and the inherited radius keeps the corners
+   matching even though .faceFront's own overflow: hidden would clip it
+   regardless. */
 .coverPlate {
   position: absolute;
   inset: 0;
@@ -225,37 +269,140 @@
     0 0 12px rgba(0, 0, 0, 0.55);
 }
 
-/* The spine: a strip standing at the book's left edge, lettered top to
-   bottom like a real labeled binder. Widened (and its text sized up) from
-   a purely-decorative sliver so the label is still genuinely legible once
-   the hover turn brings it toward the viewer, not just a colored hint of
-   one. */
-.spineStrip {
+/* The back cover: a true fourth face of the box, plain leather (no picture,
+   no title -- it is never the side being read from), so the box never shows
+   a hollow interior no matter how far it turns. Sits at the box's back
+   plane (rotateY(180deg) then translateZ(depth/2), which in the face's own
+   post-rotation local space places it at the box's rear) and is dimmed
+   (filter: brightness) since it faces away from the key light. */
+.faceBack {
   position: absolute;
+  inset: 0;
+  border-radius: 10px 4px 4px 10px;
+  background-image:
+    var(--grain),
+    radial-gradient(150% 120% at 20% 12%, rgba(255, 225, 180, 0.1), transparent 58%),
+    linear-gradient(205deg, rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.4) 100%);
+  background-blend-mode: overlay, normal, normal;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  filter: brightness(0.68);
+  backface-visibility: hidden;
+  transform: rotateY(180deg) translateZ(calc(var(--depth) / 2));
+}
+
+/* The spine: the box's true left face, a strip with real depth (not a flat
+   overlay on the front) carrying the binder's name top to bottom. Centered
+   on the box's left edge (left: -depth/2, width: depth) and rotated -90deg
+   about that same center, so it sweeps from lying flat in the box's own
+   front plane out to standing as the box's left wall -- see the .volume
+   comment above for the geometry. Dimmed slightly (it catches less of the
+   upper-left key light than the front) and given its own hairline border so
+   the seam against the front face reads as an intentional bevel rather than
+   a gap. */
+.faceSpine {
+  position: absolute;
+  /* Full height, same leather shell as the front/back covers (the spine is
+     bound leather, not paper) -- it's the .facePages block below that gets
+     inset shorter, so the shell always encloses the paper with no gap. */
   top: 0;
-  bottom: 0;
-  left: 0;
-  width: 28px;
-  border-radius: 3px 0 0 3px;
-  border-right: 1px solid rgba(0, 0, 0, 0.55);
-  filter: brightness(0.82);
+  left: calc(var(--depth) / -2);
+  width: var(--depth);
+  height: 100%;
+  border-radius: 3px;
+  background-image:
+    var(--grain),
+    radial-gradient(160% 140% at 30% 10%, rgba(255, 225, 180, 0.14), transparent 60%),
+    linear-gradient(200deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.45) 100%);
+  background-blend-mode: overlay, normal, normal;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 190, 0.1),
+    inset 0 0 20px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  filter: brightness(0.86);
+  backface-visibility: hidden;
+  transform: rotateY(-90deg);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 
+/* Gold-leaf lettering: a foil gradient clipped to the text itself instead of
+   a flat color, so the spine label reads as pressed gold rather than paint --
+   same display face (Fraunces) and letter-spacing rhythm as the rest of the
+   app's type. drop-shadow (not text-shadow, which a transparent
+   background-clip: text fill would otherwise mute) keeps the engraving edge
+   crisp against every cover color. */
 .spineText {
   writing-mode: vertical-rl;
   font-family: var(--font-display);
+  font-weight: 700;
   font-size: var(--text-sm);
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  color: rgba(240, 231, 211, 0.85);
+  letter-spacing: 0.15em;
   white-space: nowrap;
   max-height: 92%;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: linear-gradient(
+    180deg,
+    #fbe7ba 0%,
+    #e7bb6c 28%,
+    #a9761f 52%,
+    #f0be62 76%,
+    #d9a441 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.5));
+}
+
+/* The pages edge: a block of paper sitting INSIDE the leather shell, not
+   another full-height shell face -- like a real book, it is shorter than
+   the covers and recessed a hair in Z, so the cover's rounded corners
+   always enclose it with no gap at any turn angle. Inset top/bottom past
+   the front/back covers' 10px corner radius on this side (plus a couple
+   pixels of margin), and narrowed below the full --depth while staying
+   centered on the same edge, which pulls its outer edge a hair short of
+   the covers' own front/back planes.
+   Color: a dim, muted parchment (sampled from the same warm paper family as
+   the app's own --color-text/--grain, not a flat white) with hairline
+   striations for individual page edges, darkened further at the top,
+   bottom, and the seam against the cover so it reads as pages tucked into a
+   binder rather than a stray bright sliver. Mirrors .faceSpine's geometry
+   on the opposite side (rotated the other way) so at rest it only shows a
+   narrow hint of thickness, and recedes out of view as the box turns to
+   present the spine. */
+.facePages {
+  position: absolute;
+  top: 14px;
+  left: calc(100% - ((var(--depth) - 6px) / 2));
+  width: calc(var(--depth) - 6px);
+  height: calc(100% - 28px);
+  border-radius: 2px;
+  background-color: #c7b88f;
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      rgba(84, 68, 40, 0.24) 0px,
+      rgba(84, 68, 40, 0.24) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    linear-gradient(200deg, rgba(255, 246, 222, 0.2) 0%, rgba(0, 0, 0, 0.3) 100%);
+  background-blend-mode: normal, overlay;
+  box-shadow:
+    inset 6px 0 10px -6px rgba(0, 0, 0, 0.65),
+    inset 0 8px 10px -8px rgba(0, 0, 0, 0.55),
+    inset 0 -8px 10px -8px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  filter: brightness(0.8);
+  backface-visibility: hidden;
+  transform: rotateY(90deg);
 }
 
 /* Engraved nameplate under each volume. */
@@ -270,9 +417,9 @@
    top-right corner of the book, matching the corner dock's circular icon
    buttons (see ExportImportControls.module.css's .dockButton). Sits flat
    above the tilting .volume as a plain sibling, so it never itself leans
-   with the cursor. Hidden until the volume (or the button itself, for
-   keyboard users) is hovered/focused, so it doesn't compete visually with
-   the cover art at rest. */
+   with the cursor or turns with the box. Hidden until the volume (or the
+   button itself, for keyboard users) is hovered/focused, so it doesn't
+   compete visually with the cover art at rest. */
 .deleteButton {
   position: absolute;
   top: 6px;
@@ -426,23 +573,30 @@
 
 /* Reduced motion: no 3D turn at all, in either direction -- rest pose is
    plain and front-on, and hover/focus swaps the turn for a simple shadow
-   cue so the affordance still reads without any rotation. */
+   cue so the affordance still reads without any rotation. The ground shadow
+   also freezes in place rather than stretching. */
 @media (prefers-reduced-motion: reduce) {
   .volume,
-  .cover {
+  .faceFront,
+  .groundShadow {
     transition: none;
     transform: none;
   }
 
   .book:hover .volume,
   .book:focus-visible .volume,
-  .book:hover .cover,
-  .book:focus-visible .cover {
+  .book:hover .faceFront,
+  .book:focus-visible .faceFront {
+    transform: none;
+  }
+
+  .book:hover ~ .groundShadow,
+  .book:focus-visible ~ .groundShadow {
     transform: none;
   }
 
   .book:hover .volume,
   .book:focus-visible .volume {
-    box-shadow: var(--shadow-focus), 10px 18px 34px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-focus);
   }
 }
