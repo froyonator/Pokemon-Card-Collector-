@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Nearly 500 more cards that showed "no image available" now display their real scan, recovered print by print with a safeguard that never attaches the wrong version's artwork. English promo-heavy Pokemon like Pikachu and Eevee benefit most: English's missing-image count dropped from about 950 to 85.
+
 ### Added
 
 - Enlarged cards now shine like the real thing. Holo and full-art prints catch a foil sheen and sparkle that reacts to your cursor, with the effect tiered by the card's own rarity: plain cards stay understated, classic holo prints shine across their artwork, and the rarest full-art, secret, and rainbow prints get a stronger foil with a rainbow sweep across the whole card. Common and Uncommon cards are unchanged. Anyone with reduced motion turned on gets a gentle, still sheen instead of a cursor-tracked one.
