@@ -79,9 +79,8 @@
    on the Y axis, swinging its left edge -- where the spine strip lives --
    toward the viewer so the spine and its lettering present clearly. */
 .volume {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   transform-style: preserve-3d;
   transform: rotate3d(0, 1, 0, -6deg);
   transition: transform 0.5s var(--ease-out);
