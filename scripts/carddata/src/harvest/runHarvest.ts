@@ -36,6 +36,26 @@
 //                        data/harvest/zh-cn-articles.json, without ever
 //                        overwriting a curated entry. See zhCnDiscovery.ts.
 //
+//   --job repair-duplicates  Hash-audits already-mirrored images (the local
+//                        pcc-assets-d clone, see mirrorExternalImages.ts) for
+//                        cards sharing one setId: two different print
+//                        numbers whose mirrored image content is
+//                        byte-identical almost certainly inherited ONE
+//                        article's image before this pipeline's
+//                        print-number-anchoring fix (cardImageResolver.ts's
+//                        disambiguator guard). Every card in such a group has
+//                        its hostedThumbUrl/hostedFullUrl CLEARED (making it
+//                        eligible for --job images-deep to re-resolve under
+//                        the now-anchored resolver) and gets an entry written
+//                        to data/harvest/repair-<lang>.json. Pure decision
+//                        logic lives in repairDuplicates.ts; this job is only
+//                        the I/O shell (reading local mirror files, hashing,
+//                        rewriting the affected public/data/cards files).
+//                        Never fetches anything over the network -- a
+//                        same-content hash ACROSS different setIds (the
+//                        legitimate shared-reprint-artwork pattern) is left
+//                        untouched.
+//
 //   --job images-deep    Per-card deep image resolution for already-held
 //                        cards with NO image at all, across every generation
 //                        file for a language (not just Gen1) -- the harder
@@ -85,6 +105,15 @@ import {
 } from './deepImageResolver';
 import { generateTitleVariants } from './titleVariants';
 import { buildEnrichmentJobs, type EnrichmentJob, type LocalIncompleteManifest } from './enrichmentJobs';
+import {
+  buildRepairReport,
+  clearDuplicateCards,
+  collectMirroredCards,
+  findDuplicateGroups,
+  hashBytes,
+  type DuplicateAuditCard,
+  type RepairRecord,
+} from './repairDuplicates';
 import {
   buildMissingSetJobs,
   buildZhCnJobs,
@@ -874,14 +903,22 @@ export function selectPendingJobs<T>(jobs: T[], isDone: (job: T) => boolean, lim
 
 interface CliArgs {
   language: string;
-  job: 'missing-sets' | 'enrich' | 'images' | 'images-deep' | 'retry-failed' | 'discover-zh-cn';
+  job: 'missing-sets' | 'enrich' | 'images' | 'images-deep' | 'retry-failed' | 'discover-zh-cn' | 'repair-duplicates';
   limit?: number;
   dryRun: boolean;
   /** Dumps every fetched article's wikitext to data/harvest/debug/, not just zero-row ones (which always dump regardless of this flag). */
   dumpWikitext: boolean;
 }
 
-const JOB_VALUES = ['missing-sets', 'enrich', 'images', 'images-deep', 'retry-failed', 'discover-zh-cn'] as const;
+const JOB_VALUES = [
+  'missing-sets',
+  'enrich',
+  'images',
+  'images-deep',
+  'retry-failed',
+  'discover-zh-cn',
+  'repair-duplicates',
+] as const;
 
 export function parseArgs(argv: string[]): CliArgs {
   let language: string | undefined;
@@ -1520,6 +1557,90 @@ async function runImagesDeep(cli: CliArgs): Promise<void> {
   }
 }
 
+// --- Duplicate-image repair --------------------------------------------------
+
+const REPAIR_ASSET_REPO_DIR = path.join(DATA_DIR, 'asset-repos', 'pcc-assets-d');
+
+function repairReportPath(language: string): string {
+  return path.join(DATA_DIR, 'harvest', `repair-${language}.json`);
+}
+
+/** The local mirror clone's on-disk path for one already-mirrored card's original image -- the pcc-assets-d twin of mirroredHostedUrl's own <language>/<setId>/<id>/ scheme. */
+function localMirrorImagePath(card: { language: string; setId: string; cardId: string; ext: string }): string {
+  return path.join(REPAIR_ASSET_REPO_DIR, card.language, card.setId, card.cardId, `original.${card.ext}`);
+}
+
+/**
+ * I/O shell for --job repair-duplicates: loads every generation file for the
+ * language (a duplicate group can span generation files, since one TCG set
+ * can hold Pokemon from several generations), collects every card already
+ * mirrored locally, hashes each one's on-disk original image exactly once,
+ * then hands the pure grouping/clearing logic in repairDuplicates.ts the
+ * assembled {cardId -> sha256} map. Never re-fetches or re-validates an
+ * image -- the file was already downloaded and validated when it was first
+ * mirrored; this job only reads what's already on disk.
+ */
+async function runRepairDuplicates(cli: CliArgs): Promise<void> {
+  const generationFiles = await loadAllGenerationsForLanguage(cli.language);
+  if (generationFiles.size === 0) {
+    console.log(`No card database files found for ${cli.language}; nothing to audit.`);
+    return;
+  }
+
+  const allCards: DuplicateAuditCard[] = [];
+  for (const cardsByDex of generationFiles.values()) {
+    allCards.push(...collectMirroredCards(cardsByDex, cli.language));
+  }
+  console.log(`${allCards.length} already-mirrored card(s) for ${cli.language} to hash-check across ${generationFiles.size} generation file(s).`);
+
+  const hashByCardId = new Map<string, string>();
+  let unreadable = 0;
+  for (const card of allCards) {
+    const filePath = localMirrorImagePath({ language: cli.language, setId: card.setId, cardId: card.cardId, ext: card.ext });
+    try {
+      const bytes = await readFile(filePath);
+      hashByCardId.set(card.cardId, hashBytes(bytes));
+    } catch {
+      unreadable++;
+    }
+  }
+  if (unreadable > 0) {
+    console.warn(`  [warn] ${unreadable} card(s) had no readable local mirror file (skipped -- run --job repair-duplicates only after the mirror clone is up to date).`);
+  }
+
+  const groups = findDuplicateGroups(allCards, hashByCardId);
+  const affectedCount = groups.reduce((n, g) => n + g.cards.length, 0);
+  console.log(`Found ${groups.length} within-set duplicate group(s), ${affectedCount} affected card(s).`);
+
+  if (cli.dryRun) {
+    for (const group of groups.slice(0, 30)) {
+      console.log(`  [dry-run] ${group.setId} hash=${group.hash.slice(0, 10)}: ${group.cards.map((c) => c.localId).join(', ')}`);
+    }
+    if (groups.length > 30) console.log(`  [dry-run] ...and ${groups.length - 30} more group(s).`);
+    return;
+  }
+  if (groups.length === 0) return;
+
+  const allRepaired: RepairRecord[] = [];
+  for (const [generation, cardsByDex] of generationFiles) {
+    const repaired = clearDuplicateCards(cardsByDex, groups);
+    if (repaired.length === 0) continue;
+    allRepaired.push(...repaired);
+    const filePath =
+      generation === 1 ? path.join(APP_CARDS_DIR, `${cli.language}.json`) : path.join(APP_CARDS_DIR, cli.language, `gen${generation}.json`);
+    await writeFile(filePath, JSON.stringify(cardsByDex), 'utf8');
+  }
+
+  const report = buildRepairReport(cli.language, groups, allRepaired, new Date().toISOString());
+  await mkdir(path.dirname(repairReportPath(cli.language)), { recursive: true });
+  await writeFile(repairReportPath(cli.language), JSON.stringify(report, null, 2), 'utf8');
+
+  console.log(
+    `Cleared ${allRepaired.length} card(s) across ${groups.length} duplicate group(s); now eligible for --job images-deep. ` +
+      `Report: ${repairReportPath(cli.language)}`
+  );
+}
+
 // --- Retry-failed -------------------------------------------------------------
 
 function expectedSuffixFor(language: string): 'TCG' | 'ATCG' {
@@ -1686,6 +1807,7 @@ async function main(): Promise<void> {
   else if (cli.job === 'images') await runImages(cli);
   else if (cli.job === 'images-deep') await runImagesDeep(cli);
   else if (cli.job === 'retry-failed') await runRetryFailed(cli);
+  else if (cli.job === 'repair-duplicates') await runRepairDuplicates(cli);
   else await runDiscoverZhCn(cli);
 }
 
