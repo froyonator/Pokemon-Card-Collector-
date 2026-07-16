@@ -54,11 +54,25 @@ export interface GuessCardImageFilenameInput {
  * observed on real card articles. This is a fallback for use before a card
  * article's own infobox has been fetched; always prefer the literal
  * infobox value once it's available.
+ *
+ * Returns null when the card name, the set name, or the number would
+ * vanish from the guess -- `clean()` strips every non-ASCII-alphanumeric
+ * character, so a name/set written entirely outside ASCII (Japanese/Chinese
+ * especially) cleans to the empty string. A guess missing any of its three
+ * identity components carries no evidence tying it to THIS card, and can
+ * collide with a completely unrelated file on the reference wiki (confirmed
+ * live: a Japanese card name + Japanese set name both vanishing produced the
+ * bare guess "11.jpg", which the wiki hosts as an unrelated merchandise
+ * photo -- 11 different cards whose localId normalized to "11" all got
+ * assigned that same photo). Never attempt a guess missing a component.
  */
-export function guessCardImageFilename(input: GuessCardImageFilenameInput): string {
+export function guessCardImageFilename(input: GuessCardImageFilenameInput): string | null {
   const numerator = input.cardNumber.split('/')[0]?.replace(/^0+(?=\d)/, '') ?? '';
   const clean = (value: string) => value.replace(/[^A-Za-z0-9]/g, '');
-  return `${clean(input.cardName)}${clean(input.setName)}${numerator}.${input.extension ?? 'jpg'}`;
+  const cardName = clean(input.cardName);
+  const setName = clean(input.setName);
+  if (!cardName || !setName || !numerator) return null;
+  return `${cardName}${setName}${numerator}.${input.extension ?? 'jpg'}`;
 }
 
 export interface CardArticleDisambiguator {

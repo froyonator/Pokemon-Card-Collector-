@@ -180,7 +180,7 @@ export async function resolveFilenameGuessBatch(
     candidates: [
       guessCardImageFilename({ cardName: card.name, setName: card.setName, cardNumber: card.localId, extension: 'jpg' }),
       guessCardImageFilename({ cardName: card.name, setName: card.setName, cardNumber: card.localId, extension: 'png' }),
-    ],
+    ].filter((f): f is string => f !== null),
     resolved: null,
   }));
 
@@ -275,8 +275,17 @@ const NUMBERLESS_SET_NAME_OVERLAP_THRESHOLD = 0.75;
  * to exist). A number-less "Name (Set)" title is accepted only under a
  * stricter set-name bar, since the print number can't corroborate it.
  * Any check failing is reported, never silently guessed past.
+ *
+ * `card` only needs the three identity fields (name, localId, setName), not
+ * the full DeepImageJobCard shape -- runHarvest.ts's own strategy-(c) guard
+ * (resolveViaCardArticleInfobox) reuses this same guard for a bare literal
+ * cardArticleTitle row, which has no dexNumber/generation/rarity/setId to
+ * offer.
  */
-export function checkArticleMatchesPrint(fetchedTitle: string, card: DeepImageJobCard): ArticleMatchResult {
+export function checkArticleMatchesPrint(
+  fetchedTitle: string,
+  card: Pick<DeepImageJobCard, 'name' | 'localId' | 'setName'>
+): ArticleMatchResult {
   const disambiguator = parsePrintDisambiguator(fetchedTitle);
   if (!disambiguator) {
     return { ok: false, reason: `no "(Set Number)" disambiguator to verify against` };

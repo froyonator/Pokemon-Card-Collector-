@@ -61,6 +61,27 @@ describe('resolveFilenameGuessBatch', () => {
     const resolved = await resolveFilenameGuessBatch({ queryImageInfo }, cards);
     expect(resolved.has('a')).toBe(false);
   });
+
+  it('never issues an imageinfo query for a degenerate guess (regression: bare "11.jpg" colliding with an unrelated merchandise photo)', async () => {
+    // A fully non-Latin name and set name both clean to the empty string,
+    // degenerating the guess to a bare "11.jpg" -- confirmed live to
+    // resolve to an unrelated merchandise photo on the reference wiki. No
+    // candidate carrying no identity evidence should ever be queried.
+    const cards = [card({ cardId: 'a', name: 'スキプルーム', setName: '地図にない町', localId: '011' })];
+    const queriedTitles: string[] = [];
+    const queryImageInfo = async (fileTitles: string[]) => {
+      queriedTitles.push(...fileTitles);
+      const map = new Map<string, WikiImageInfo>();
+      for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+      return map;
+    };
+
+    const resolved = await resolveFilenameGuessBatch({ queryImageInfo }, cards);
+
+    expect(queriedTitles).not.toContain('File:11.jpg');
+    expect(queriedTitles.length).toBe(0);
+    expect(resolved.has('a')).toBe(false);
+  });
 });
 
 describe('normalizeCardCode', () => {

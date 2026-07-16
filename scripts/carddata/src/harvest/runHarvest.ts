@@ -97,6 +97,7 @@ import {
 } from './cardImageResolver';
 import {
   cardCodesMatch,
+  checkArticleMatchesPrint,
   normalizeCardCode,
   resolveCardArticleLadder,
   resolveFilenameGuessBatch,
@@ -254,6 +255,8 @@ interface RowImageState {
  *     symbol.
  */
 export function buildRowImageCandidates(promoSetName: string, row: SetlistRow): string[] {
+  const isCandidate = (f: string | null): f is string => f !== null;
+
   const disambiguator = parseCardArticleDisambiguator(row.cardArticleTitle);
   if (disambiguator) {
     return [
@@ -269,19 +272,19 @@ export function buildRowImageCandidates(promoSetName: string, row: SetlistRow): 
         cardNumber: disambiguator.number,
         extension: 'png',
       }),
-    ];
+    ].filter(isCandidate);
   }
 
   const cardName = deriveImageGuessCardName(row.cardArticleTitle);
   const setNames = row.originSetName ? [promoSetName, row.originSetName] : [promoSetName];
-  const candidates: string[] = [];
+  const candidates: Array<string | null> = [];
   for (const setName of setNames) {
     candidates.push(
       guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'jpg' }),
       guessCardImageFilename({ cardName, setName, cardNumber: row.cardNumber, extension: 'png' })
     );
   }
-  return candidates;
+  return candidates.filter(isCandidate);
 }
 
 /**
@@ -307,6 +310,25 @@ export function buildRowImageCandidates(promoSetName: string, row: SetlistRow): 
  * Without the number, set-name matching alone silently picks the FIRST
  * such entry for every one of those rows, handing them all the same scan.
  * See parseCardInfoboxImageFilename's own doc comment for the full guard.
+ *
+ * A row whose OWN cardArticleTitle carries no "(Set Number)" disambiguator
+ * (a bare `literal` name -- the shape every image-only job row has, see
+ * imageJobCardToGen1Row) has no built-in evidence that the page fetched
+ * under that bare name is even a CARD article for this print, let alone
+ * this exact one: a same-named non-card article (confirmed live: "Armored
+ * Mewtwo" fetched a franchise-character article of the same name, whose
+ * infobox `image=` is a video still) would otherwise sail straight through
+ * to parseCardInfoboxImageFilename's own final fallback. For that case, the
+ * FETCHED page's own title (not the row's requested one -- parsePageWikitext
+ * follows redirects and reports the resolved title, so a bare name that
+ * redirects to the true "Name (Set Number)" card article still passes) must
+ * itself clear checkArticleMatchesPrint against the row's held identity
+ * before its infobox is trusted at all. Checked against promoSetName, or
+ * against row.originSetName too when present (either one passing is
+ * enough -- a reprint row's real scan can file under either set name, same
+ * as strategy (a)/(b)'s own candidate list). A row whose OWN title already
+ * carries a disambiguator skips this guard entirely: the title itself was
+ * already the identity evidence, exactly the pre-existing behavior.
  */
 async function resolveViaCardArticleInfobox(
   parsePageWikitext: WikiApiClient['parsePageWikitext'],
@@ -315,7 +337,18 @@ async function resolveViaCardArticleInfobox(
 ): Promise<string | null> {
   try {
     const page = await parsePageWikitext(row.cardArticleTitle);
-    const disambiguatorSetName = parseCardArticleDisambiguator(row.cardArticleTitle)?.setName ?? null;
+    const rowDisambiguator = parseCardArticleDisambiguator(row.cardArticleTitle);
+
+    if (!rowDisambiguator) {
+      const guardCard = { name: row.displayName, localId: extractNumerator(row.cardNumber), setName: promoSetName };
+      const passesPromo = checkArticleMatchesPrint(page.title, guardCard).ok;
+      const passesOrigin = row.originSetName
+        ? checkArticleMatchesPrint(page.title, { ...guardCard, setName: row.originSetName }).ok
+        : false;
+      if (!passesPromo && !passesOrigin) return null;
+    }
+
+    const disambiguatorSetName = rowDisambiguator?.setName ?? null;
     const targetSetNames = [disambiguatorSetName, row.originSetName, promoSetName].filter(
       (s): s is string => Boolean(s)
     );

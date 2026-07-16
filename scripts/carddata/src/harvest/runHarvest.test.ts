@@ -21,6 +21,7 @@ import {
   ENRICHMENT_MATCH_THRESHOLD,
   extractNumerator,
   filterGen1Rows,
+  type Gen1MatchedRow,
   harvestFromResolvedArticles,
   imageJobCardToGen1Row,
   isDeepImageCardDone,
@@ -150,6 +151,20 @@ describe('buildRowImageCandidates', () => {
   it('strategy (b) without an originSetName only tries the promo set name', () => {
     const row = makeRow({ cardNumber: '5/30', cardArticleTitle: 'Bare Name' });
     expect(buildRowImageCandidates('Some Promo', row)).toEqual(['BareNameSomePromo5.jpg', 'BareNameSomePromo5.png']);
+  });
+
+  it('yields no candidates for a literal row whose name and set are both non-Latin -- every guess would degenerate to a bare number', () => {
+    // Real evidence: a katakana card name against a katakana promo set name
+    // both clean to the empty string, degenerating every guess to a bare
+    // numeric filename that collides with unrelated files on the reference
+    // wiki. No candidate carries any identity evidence, so none is emitted.
+    const row = makeRow({
+      cardNumber: '011/070',
+      displayName: 'スキプルーム',
+      cardArticleTitle: 'スキプルーム',
+      nameSource: 'literal',
+    });
+    expect(buildRowImageCandidates('地図にない町', row)).toEqual([]);
   });
 });
 
@@ -377,6 +392,85 @@ describe('resolveHarvestedCardImages', () => {
     ]);
     // Every resolved image is DISTINCT -- the whole point of the fix.
     expect(new Set(resolved.map((c) => c.imageUrl)).size).toBe(4);
+  });
+
+  describe('strategy (c) guard for a bare literal cardArticleTitle (regression: a same-named non-card article)', () => {
+    // Real evidence: an image-only job's row has NO "(Set Number)"
+    // disambiguator at all (imageJobCardToGen1Row builds cardArticleTitle as
+    // the bare card name), so nothing previously verified the fetched page
+    // was even a CARD article for this print. "Armored Mewtwo" fetched a
+    // franchise-character article of the same name, whose infobox image= is
+    // a video still, and the parser's final fallback handed it over anyway.
+    it('rejects the fetched page and leaves the card imageMissing when it carries no disambiguator at all', async () => {
+      const row = makeRow({
+        cardNumber: 'SM228',
+        displayName: 'Armored Mewtwo',
+        cardArticleTitle: 'Armored Mewtwo',
+        nameSource: 'literal',
+      });
+      const gen1Rows: Gen1MatchedRow[] = [{ row, dex: { number: 150, name: 'Mewtwo' } }];
+
+      const queriedTitles: string[] = [];
+      const queryImageInfo = async (fileTitles: string[]) => {
+        queriedTitles.push(...fileTitles);
+        const map = new Map<string, WikiImageInfo>();
+        for (const title of fileTitles) map.set(title, { fileTitle: title, url: null, missing: true });
+        return map;
+      };
+      const parsePageWikitext = async (title: string): Promise<WikiPageWikitext> => {
+        expect(title).toBe('Armored Mewtwo');
+        return {
+          title: 'Armored Mewtwo', // no disambiguator -- this article was never established as a card article
+          pageId: 1,
+          wikitext: '{{Infobox character|name=Armored Mewtwo|image=SomeStill.png}}',
+        };
+      };
+
+      const [card] = await resolveHarvestedCardImages(
+        { queryImageInfo, parsePageWikitext },
+        'SM Black Star Promos',
+        gen1Rows
+      );
+
+      expect(card.imageMissing).toBe(true);
+      expect(queriedTitles).not.toContain('File:SomeStill.png');
+    });
+
+    it('accepts the fetched page when parsePageWikitext resolves (via redirect) to the true disambiguated card article', async () => {
+      const row = makeRow({
+        cardNumber: 'SM228',
+        displayName: 'Armored Mewtwo',
+        cardArticleTitle: 'Armored Mewtwo',
+        nameSource: 'literal',
+      });
+      const gen1Rows: Gen1MatchedRow[] = [{ row, dex: { number: 150, name: 'Mewtwo' } }];
+
+      const parsePageWikitext = async (title: string): Promise<WikiPageWikitext> => {
+        expect(title).toBe('Armored Mewtwo');
+        return {
+          title: 'Armored Mewtwo (SM Promo 228)', // redirect resolved to the real, disambiguated card article
+          pageId: 1,
+          wikitext: '{{PokémoncardInfobox|cardname=Armored Mewtwo|image=ArmoredMewtwoSMPromo228.jpg}}',
+        };
+      };
+      const queryImageInfo = async (fileTitles: string[]) => {
+        const map = new Map<string, WikiImageInfo>();
+        for (const title of fileTitles) {
+          const isRealFile = title === 'File:ArmoredMewtwoSMPromo228.jpg';
+          map.set(title, { fileTitle: title, url: isRealFile ? `https://example.invalid/${title}` : null, missing: !isRealFile });
+        }
+        return map;
+      };
+
+      const [card] = await resolveHarvestedCardImages(
+        { queryImageInfo, parsePageWikitext },
+        'SM Black Star Promos',
+        gen1Rows
+      );
+
+      expect(card.imageMissing).toBe(false);
+      expect(card.imageUrl).toBe('https://example.invalid/File:ArmoredMewtwoSMPromo228.jpg');
+    });
   });
 });
 

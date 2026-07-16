@@ -44,6 +44,43 @@ describe('guessCardImageFilename', () => {
       })
     ).toBe('CaterpieBattlePartners1.png');
   });
+
+  describe('degenerate-guess guard (regression: bare "11.jpg" colliding with an unrelated merchandise photo)', () => {
+    // Real evidence: clean() strips every non-ASCII-alphanumeric character,
+    // so a card name and set name written entirely in katakana/hanzi both
+    // clean to the empty string, and the guess degenerates to a bare
+    // "11.jpg" -- which the reference wiki really hosts as an unrelated
+    // merchandise photo. A guess missing any of its three identity
+    // components carries no evidence tying it to this specific card, so it
+    // must never be attempted.
+    it('returns null when the card name is entirely non-ASCII (both name and set name vanish)', () => {
+      expect(
+        guessCardImageFilename({ cardName: 'スキプルーム', setName: '地図にない町', cardNumber: '011' })
+      ).toBeNull();
+    });
+
+    it('returns null when only the set name cleans to empty (Latin card name, non-Latin set name)', () => {
+      expect(
+        guessCardImageFilename({ cardName: 'Skiploom', setName: '地図にない町', cardNumber: '011' })
+      ).toBeNull();
+    });
+
+    it('returns null when only the card name cleans to empty (non-Latin card name, Latin set name)', () => {
+      expect(
+        guessCardImageFilename({ cardName: 'スキプルーム', setName: 'Uncharted Forest', cardNumber: '011' })
+      ).toBeNull();
+    });
+
+    it('returns null when the card number has no numerator digits (an empty cardNumber)', () => {
+      expect(guessCardImageFilename({ cardName: 'Skiploom', setName: 'Uncharted Forest', cardNumber: '' })).toBeNull();
+    });
+
+    it('still returns the ordinary guess when all three components are present', () => {
+      expect(
+        guessCardImageFilename({ cardName: 'Skiploom', setName: 'Uncharted Forest', cardNumber: '011/070' })
+      ).toBe('SkiploomUnchartedForest11.jpg');
+    });
+  });
 });
 
 describe('parseCardArticleDisambiguator', () => {
